@@ -1,0 +1,81 @@
+#!/usr/bin/ash
+# LUKS unlock with a duress slot that must not look like success.
+# Wrong passphrase and duress both wait CICADA_DURESS_BUDGET seconds, then
+# print the same line. Real unlock returns immediately (daily driver).
+# Duress: luksErase + header smash + poweroff (keys gone).
+
+CICADA_DURESS_BUDGET=12
+
+_pad() {
+  local start="$1"
+  local now elapsed wait
+  now="$(date +%s)"
+  elapsed=$((now - start))
+  wait=$((CICADA_DURESS_BUDGET - elapsed))
+  [ "${wait}" -gt 0 ] && sleep "${wait}"
+}
+
+_parse_cryptdevice() {
+  local param rest
+  for param in $(cat /proc/cmdline); do
+    case "${param}" in
+      cryptdevice=*)
+        rest="${param#cryptdevice=}"
+        rest="${rest%%,*}"
+        CRYPTDEV="${rest%%:*}"
+        CRYPTNAME="${rest#*:}"
+        ;;
+    esac
+  done
+}
+
+run_hook() {
+  _parse_cryptdevice
+  [ -n "${CRYPTDEV}" ] && [ -n "${CRYPTNAME}" ] || return 0
+  [ "${CRYPTDEV#UUID=}" != "${CRYPTDEV}" ] && CRYPTDEV="/dev/disk/by-uuid/${CRYPTDEV#UUID=}"
+
+  local pass rc start got want
+
+  while true; do
+    echo -n "Enter passphrase for ${CRYPTNAME}: "
+    read -r -s pass
+    echo
+    start="$(date +%s)"
+
+    printf '%s' "${pass}" | cryptsetup open --type luks "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1
+    rc=$?
+
+    if [ "${rc}" -eq 0 ]; then
+      mkdir -p /cicada-check
+      if mount -o ro,subvol=@ "/dev/mapper/${CRYPTNAME}" /cicada-check 2>/dev/null \
+        || mount -o ro "/dev/mapper/${CRYPTNAME}" /cicada-check 2>/dev/null; then
+        if [ -f /cicada-check/etc/cicada/duress.sha256 ]; then
+          got="$(printf '%s' "${pass}" | sha256sum | awk '{print $1}')"
+          want="$(cat /cicada-check/etc/cicada/duress.sha256)"
+          if [ "${got}" = "${want}" ]; then
+            umount /cicada-check 2>/dev/null
+            cryptsetup close "${CRYPTNAME}" 2>/dev/null
+            cryptsetup luksErase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 \
+              || cryptsetup erase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 || true
+            dd if=/dev/zero of="${CRYPTDEV}" bs=1M count=4 conv=notrunc >/dev/null 2>&1 || true
+            pass=""
+            _pad "${start}"
+            echo "Invalid passphrase"
+            poweroff -f
+          fi
+        fi
+        umount /cicada-check 2>/dev/null
+      fi
+      pass=""
+      return 0
+    fi
+
+    pass=""
+    _pad "${start}"
+    echo "Invalid passphrase"
+  done
+}
+
+run_latehook() {
+  return 0
+}

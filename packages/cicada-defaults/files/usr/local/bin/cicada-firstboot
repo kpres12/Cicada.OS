@@ -12,8 +12,13 @@ cat <<'EOF'
 ║         nimbus // channel:dev                ║
 ║  radios blocked · inbound deny · usbguard    ║
 ║  wifi: dock icon or Super+N                  ║
+║  live: overlay is RAM · yank USB = panic     ║
 ╚══════════════════════════════════════════════╝
 EOF
+
+if [[ ! -d /run/archiso ]] && [[ -f /usr/lib/libhardened_malloc.so && ! -f /etc/cicada/hardened-malloc-disable ]]; then
+  echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
+fi
 
 systemctl enable --now nftables.service 2>/dev/null || true
 systemctl enable --now cicada-radios-off.service 2>/dev/null || true

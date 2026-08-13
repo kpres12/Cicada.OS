@@ -2,8 +2,12 @@
 
 Helium is the intended default browser (ungoogled-chromium lineage, like Vanadium is to Chrome).
 
-It is **not packaged**. Helium lives on the AUR / as a source build. Cicada ISO policy: official repos only until a PKGBUILD is read and logged in `docs/aur-audit.md`.
+**Not on the ISO.** AUR `helium-browser-bin` is third-party binaries — rejected in `docs/aur-audit.md`. Building Helium from source is a Chromium compile (hours, tens of GB).
 
-Until then: Arch `chromium` + managed policy in `/etc/chromium/policies/managed/cicada.json` + `cicada-run org.cicada.helium`.
+`/usr/local/bin/chromium` already prefers, in order:
 
-Do not add a Helium PKGBUILD that `makepkg`s from AUR in CI.
+1. `/usr/bin/helium`
+2. `/usr/bin/helium-browser`
+3. Arch `chromium`
+
+Install Helium yourself on an installed system; the dock Web icon keeps working. Policies in `/etc/chromium/policies/` apply to Chromium; Helium may honor a subset.

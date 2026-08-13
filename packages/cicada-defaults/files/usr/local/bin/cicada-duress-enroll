@@ -1,7 +1,50 @@
 #!/usr/bin/env bash
-# Refuse to enroll until the unlock path is timing-safe. Fail closed.
+# Enroll a LUKS duress passphrase. Timing vs wrong PIN is handled in cicada-crypt.
 set -euo pipefail
 command -v cicada-auth >/dev/null && cicada-auth confirm duress.enroll
-echo "cicada-duress-enroll: not implemented." >&2
-echo "A duress slot that *looks* different from a wrong password is worse than none." >&2
-exit 1
+[[ ${EUID} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+command -v cryptsetup >/dev/null || { echo "cryptsetup missing" >&2; exit 1; }
+
+dev=""
+if [[ -f /etc/cicada/install.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/install.env
+  [[ -n "${CICADA_LUKS_UUID:-}" ]] && dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
+fi
+if [[ -z "${dev}" || ! -e "${dev}" ]]; then
+  dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')"
+fi
+[[ -e "${dev}" ]] || {
+  echo "cicada-duress-enroll: no LUKS device (install to disk first)" >&2
+  exit 1
+}
+
+if [[ -f /etc/cicada/duress.sha256 ]]; then
+  echo "duress verifier already present. Refuse to silently rotate (wipe+re-enroll by hand)." >&2
+  exit 1
+fi
+
+read -r -s -p "Duress passphrase (NOT your real unlock): " d1; echo
+read -r -s -p "Again: " d2; echo
+[[ "${d1}" == "${d2}" ]] || { echo "mismatch" >&2; exit 1; }
+[[ ${#d1} -ge 8 ]] || { echo "too short" >&2; exit 1; }
+
+echo "Unlock with the REAL passphrase when cryptsetup asks, then the duress key is added from stdin."
+printf '%s' "${d1}" | cryptsetup luksAddKey "${dev}"
+printf '%s' "${d1}" | sha256sum | awk '{print $1}' > /etc/cicada/duress.sha256
+chmod 400 /etc/cicada/duress.sha256
+unset d1 d2
+
+if [[ -f /etc/mkinitcpio.conf ]]; then
+  if ! grep -q 'cicada-crypt' /etc/mkinitcpio.conf; then
+    sed -i 's/encrypt /cicada-crypt /' /etc/mkinitcpio.conf
+    if ! grep -q 'cicada-crypt' /etc/mkinitcpio.conf; then
+      sed -i 's/^HOOKS=(base /HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block cicada-crypt /' /etc/mkinitcpio.conf
+    fi
+  fi
+  mkinitcpio -P
+fi
+
+command -v cicada-seal >/dev/null && cicada-seal append duress.enroll "{}" >/dev/null 2>&1 || true
+echo "Duress enrolled. Wrong PIN and duress both wait ~12s then say Invalid passphrase."
+echo "Duress also wipes LUKS keyslots and poweroffs. Real unlock is unchanged."

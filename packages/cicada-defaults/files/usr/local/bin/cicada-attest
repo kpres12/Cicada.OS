@@ -4,20 +4,36 @@
 set -euo pipefail
 command -v cicada-seal >/dev/null && cicada-seal init >/dev/null 2>&1 || true
 
+BUNDLE="${CICADA_ATTEST_DIR:-$HOME/cicada-attest}"
+mkdir -p "${BUNDLE}"
+cicada-seal pubkey > "${BUNDLE}/device.pub" 2>/dev/null || true
+cicada-seal tip > "${BUNDLE}/seal.tip" 2>/dev/null || true
+date -u +%Y-%m-%dT%H:%M:%SZ > "${BUNDLE}/generated.utc"
+cat > "${BUNDLE}/README.txt" <<'EOF'
+Cicada attest bundle — pin device.pub on a Graphene Pixel you own.
+
+If quote.msg exists: on a trusted Linux (or this laptop) run:
+  cicada-quote-verify /path/to/this/dir
+
+That is tpm2_checkquote over PCR 0,1,2,3,7. It is not Graphene Auditor.
+EOF
+
 if [[ -c /dev/tpmrm0 ]] && command -v tpm2_quote >/dev/null 2>&1; then
-  out=/var/lib/cicada/tpm-quote
-  mkdir -p "$(dirname "${out}")"
-  tpm2_createek --ek-context "${out}.ek" --key-algorithm rsa 2>/dev/null || true
-  tpm2_quote --key-context "${out}.ek" --qualification "cicada" --message "${out}.msg" --signature "${out}.sig" --pcr-list sha256:0,1,2,3,7 \
-    && cicada-seal append tpm.quote "{\"pcrs\":\"0,1,2,3,7\"}" \
-    && echo "quote wrote ${out}.msg" \
-    && exit 0
+  out="${BUNDLE}/quote"
+  if tpm2_createek -c "${out}.ek" -G rsa \
+    && tpm2_createak -C "${out}.ek" -c "${out}.ak" -G rsa -g sha256 -s rsassa -u "${out}.ak.pub" \
+    && tpm2_quote -c "${out}.ak" -l sha256:0,1,2,3,7 -q cicada -m "${out}.msg" -s "${out}.sig"; then
+    cicada-seal append tpm.quote "{\"pcrs\":\"0,1,2,3,7\"}" >/dev/null 2>&1 || true
+    echo "quote bundle: ${BUNDLE}"
+    exit 0
+  fi
 fi
 
 echo "no TPM2 quote (expected on Apple EFI MBA)."
-echo "Pin this Ed25519 device pubkey on your Pixel (Auditor-style root):"
+echo "Pin this Ed25519 device pubkey on your Pixel:"
 echo
-cicada-seal pubkey
-cicada-seal append tpm.absent "{}" >/dev/null
+cat "${BUNDLE}/device.pub"
+cicada-seal append tpm.absent "{}" >/dev/null 2>&1 || true
 echo
-echo "Later: laptop tpm2_quote → Pixel verifies against this pin. See docs/ATTEST.md"
+echo "bundle: ${BUNDLE}"
+echo "See docs/ATTEST.md"

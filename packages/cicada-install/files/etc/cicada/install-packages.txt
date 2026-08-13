@@ -1,18 +1,35 @@
-# Cicada extras merged on top of official archiso releng.
-# Keep this list product-layer only — rescue/install tooling comes from releng.
-
-# --- GPU (Intel MBA 2015–2017: HD 5000/6000) ---
+# Packages pacstrap'd by cicada-install (official repos only).
+# Desktop + security baseline. Missing packages are skipped, not fatal.
+base
+linux
+linux-hardened
+linux-firmware
+intel-ucode
+amd-ucode
+mkinitcpio
+efibootmgr
+sudo
+rsync
+kbd
+btrfs-progs
+cryptsetup
+tpm2-tools
+sbctl
+networkmanager
+iwd
+nftables
+usbguard
+apparmor
+bubblewrap
+xdg-dbus-proxy
+python
 mesa
 vulkan-intel
 libva-intel-driver
 intel-media-driver
-libva-utils
 linux-firmware-broadcom
-# pin providers so pacstrap is non-interactive
 iptables
 pipewire-jack
-
-# --- Hyprland daily driver ---
 hyprland
 xdg-desktop-portal
 xdg-desktop-portal-hyprland
@@ -20,6 +37,7 @@ xdg-desktop-portal-gtk
 hyprpolkitagent
 hyprpaper
 hyprlock
+hypridle
 waybar
 wofi
 kitty
@@ -29,6 +47,7 @@ slurp
 swappy
 wl-clipboard
 qt6-wayland
+qt6ct
 xorg-xwayland
 pipewire
 pipewire-pulse
@@ -41,12 +60,8 @@ ttf-jetbrains-mono-nerd
 ttf-font-awesome
 noto-fonts
 noto-fonts-emoji
-
-# --- browser (Helium when packaged; Chromium until then) ---
 chromium
 xdg-utils
-
-# --- desktop shell (mouse-first; Hyprland is the engine, not the UX) ---
 thunar
 thunar-volman
 thunar-archive-plugin
@@ -64,29 +79,12 @@ pavucontrol
 nwg-dock-hyprland
 nwg-look
 zenity
-networkmanager
 nm-connection-editor
 network-manager-applet
-
-# --- privacy / security baseline ---
-python
-nftables
-usbguard
-apparmor
-firejail
-bubblewrap
-xdg-dbus-proxy
 keepassxc
 gnupg
 age
 wireguard-tools
-macchanger
 libnotify
-lynis
-linux-hardened
-sbctl
-tpm2-tools
-hypridle
-qt6ct
-flatpak
 restic
+flatpak

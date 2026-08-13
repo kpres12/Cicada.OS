@@ -14,5 +14,8 @@ Super+/               this sheet
 cicada-seal verify    tamper-evident log
 cicada-attest         Pixel pin / TPM quote
 cicada-beacon         Meshtastic duress (no radio → exit 2)
+cicada-backup         restic to USB (not this disk)
+cicada-profile        Work / Burner homes
+yank the live USB     panic reboot (amnesic entry = copy to RAM)
 
 Windows tile. You drive the machine by clicking.

@@ -1,0 +1,2 @@
+# If this file exists, firstboot will not install /etc/ld.so.preload.
+# Touch it if an app (GPU blob, some Electron) hard-breaks, then reboot.

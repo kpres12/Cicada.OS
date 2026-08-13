@@ -23,6 +23,11 @@ mkdir -p "${OUT}" "${WORK}"
 export CICADA_PROFILE_DIR="${PROFILE}"
 "${ROOT}/iso/assemble-profile.sh"
 
+if [[ -x "${ROOT}/scripts/build-hardened-malloc.sh" ]]; then
+  "${ROOT}/scripts/build-hardened-malloc.sh" "${PROFILE}/airootfs" || \
+    echo "==> hardened_malloc build skipped (ISO still boots; preload is a no-op)"
+fi
+
 echo "==> mkarchiso  work=${WORK}/mkarchiso  out=${OUT}"
 rm -rf "${WORK}/mkarchiso"
 mkdir -p "${WORK}/mkarchiso"

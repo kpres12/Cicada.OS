@@ -1,60 +1,170 @@
 #!/usr/bin/env bash
+# Graphene-shaped profiles: separate homes. Optional LUKS file for Burner.
+# Not Android UIDs. Next apps launched via cicada-run follow the active profile.
 set -euo pipefail
-# v0 stub — layout for Graphene-like profiles.
-# Future: separate homes, net ns, clipboard policy, freeze/dispose.
 
 BASE="${CICADA_PROFILE_ROOT:-$HOME/.local/share/cicada/profiles}"
-mkdir -p "${BASE}"
+CUR="${HOME}/.local/share/cicada/current-profile"
+mkdir -p "${BASE}" "$(dirname "${CUR}")"
 
 usage() {
   cat <<'EOF'
-cicada-profile — Cicada compartment profiles (stub)
+cicada-profile — Work / Personal / Burner compartments
 
-Usage:
   cicada-profile list
-  cicada-profile create <name>
-  cicada-profile switch <name>     # stub: prints path only
-  cicada-profile freeze <name>     # stub
-  cicada-profile dispose <name>    # deletes profile dir
+  cicada-profile create <name> [--encrypt|--user]
+  cicada-profile switch <name>     # directory profiles: next cicada-run apps
+  cicada-profile enter <name>      # subshell with HOME set
+  cicada-profile login <name>      # Unix-UID profile: new TTY session (Ctrl+Alt+F3)
+  cicada-profile freeze <name>
+  cicada-profile unlock <name>
+  cicada-profile dispose <name>
 
-Profiles are the north-star isolation UX (lighter than Qubes).
+--encrypt  LUKS2 loop (sudo). Unlocking Work does not unwrap Burner.
+--user     real Unix account cicada-NAME (different UID). Same Hyprland cannot
+           see that user's files. Log in as that user (Graphene users analogue).
 EOF
 }
 
-cmd="${1:-}"
 name="${2:-}"
+dest() { echo "${BASE}/${1}"; }
+home_of() { echo "${BASE}/${1}/home"; }
+img_of() { echo "${BASE}/${1}/vault.img"; }
 
+write_current() {
+  local n="$1"
+  cat > "${CUR}" <<EOF
+CICADA_PROFILE=${n}
+CICADA_PROFILE_HOME=$(home_of "${n}")
+EOF
+}
+
+seed_home() {
+  local h="$1"
+  mkdir -p "${h}"
+  if [[ -d /etc/skel ]]; then
+    rsync -a /etc/skel/ "${h}/" 2>/dev/null || true
+  fi
+  mkdir -p "${h}/.local/share/cicada/scopes" "${h}/Downloads"
+}
+
+cmd="${1:-}"
 case "${cmd}" in
   list)
     if compgen -G "${BASE}/*" >/dev/null; then
       for d in "${BASE}"/*; do
-        [[ -d "${d}" ]] && printf '%s\n' "$(basename "${d}")"
+        [[ -d "${d}" ]] || continue
+        n="$(basename "${d}")"
+        extra=""
+        [[ -f "$(img_of "${n}")" ]] && extra=" encrypted"
+        [[ -f "${d}/state/UID" ]] && extra="${extra} uid"
+        [[ -f "${d}/state/FROZEN" ]] && extra="${extra} frozen"
+        if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${n}$" "${CUR}"; then
+          extra="${extra} active"
+        fi
+        printf '%s%s\n' "${n}" "${extra}"
       done
     else
-      echo "personal"
+      echo "personal (default home)"
     fi
     ;;
   create)
     [[ -n "${name}" ]] || { usage; exit 1; }
-    dest="${BASE}/${name}"
-    mkdir -p "${dest}"/{home,apps,state}
-    printf 'created profile %s at %s\n' "${name}" "${dest}"
+    mkdir -p "$(dest "${name}")/state"
+    if [[ "${3:-}" == "--user" ]]; then
+      sudo -n /usr/local/bin/cicada-profile-helper create "${name}"
+      echo "uid" > "$(dest "${name}")/state/UID"
+      echo "login: cicada-${name}  (Ctrl+Alt+F3 after cicada-profile login ${name})"
+    elif [[ "${3:-}" == "--encrypt" ]]; then
+      img="$(img_of "${name}")"
+      [[ ${EUID} -eq 0 ]] || { echo "create --encrypt needs sudo" >&2; exit 1; }
+      [[ -f "${img}" ]] && { echo "already encrypted: ${name}" >&2; exit 1; }
+      echo "LUKS passphrase for profile ${name}:"
+      read -r -s p1; echo
+      read -r -s -p "Again: " p2; echo
+      [[ "${p1}" == "${p2}" ]] || { echo "mismatch" >&2; exit 1; }
+      truncate -s 2G "${img}"
+      printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 --pbkdf argon2id --batch-mode "${img}" -
+      printf '%s' "${p1}" | cryptsetup open "${img}" "cicada-${name}" -
+      unset p1 p2
+      mkfs.ext4 -q -L "cicada-${name}" "/dev/mapper/cicada-${name}"
+      mkdir -p "$(home_of "${name}")"
+      mount "/dev/mapper/cicada-${name}" "$(home_of "${name}")"
+      seed_home "$(home_of "${name}")"
+      echo "created encrypted profile ${name}"
+    else
+      seed_home "$(home_of "${name}")"
+      echo "created profile ${name}"
+    fi
     ;;
   switch)
     [[ -n "${name}" ]] || { usage; exit 1; }
-    dest="${BASE}/${name}"
-    [[ -d "${dest}" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
-    echo "stub: would enter profile ${name} (${dest})"
-    echo "next: bubblewrap/nspawn session + net policy"
+    [[ -d "$(dest "${name}")" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
+    [[ -f "$(dest "${name}")/state/FROZEN" ]] && { echo "frozen — unlock first" >&2; exit 1; }
+    if [[ -f "$(dest "${name}")/state/UID" ]]; then
+      echo "Unix-UID profile: run cicada-profile login ${name} (not switch). Same compositor cannot see that UID."
+      exit 0
+    fi
+    write_current "${name}"
+    echo "active profile ${name} (HOME for cicada-run: $(home_of "${name}"))"
+    ;;
+  enter)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    [[ -d "$(home_of "${name}")" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
+    write_current "${name}"
+    export HOME="$(home_of "${name}")"
+    export CICADA_PROFILE="${name}"
+    cd "${HOME}"
+    exec "${SHELL:-/bin/bash}" -l
+    ;;
+  login)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    sudo -n /usr/local/bin/cicada-profile-helper login "${name}"
     ;;
   freeze)
     [[ -n "${name}" ]] || { usage; exit 1; }
-    touch "${BASE}/${name}/state/FROZEN"
-    echo "stub: froze ${name}"
+    mkdir -p "$(dest "${name}")/state"
+    if [[ -f "$(img_of "${name}")" ]]; then
+      umount "$(home_of "${name}")" 2>/dev/null || true
+      cryptsetup close "cicada-${name}" 2>/dev/null || true
+    else
+      chmod 000 "$(home_of "${name}")" 2>/dev/null || true
+    fi
+    touch "$(dest "${name}")/state/FROZEN"
+    if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${name}$" "${CUR}"; then
+      rm -f "${CUR}"
+    fi
+    echo "froze ${name} (keys out of RAM if encrypted)"
+    ;;
+  unlock)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    rm -f "$(dest "${name}")/state/FROZEN"
+    if [[ -f "$(img_of "${name}")" ]]; then
+      [[ ${EUID} -eq 0 ]] || { echo "unlock encrypted profile needs sudo" >&2; exit 1; }
+      cryptsetup open "$(img_of "${name}")" "cicada-${name}"
+      mkdir -p "$(home_of "${name}")"
+      mount "/dev/mapper/cicada-${name}" "$(home_of "${name}")"
+    else
+      chmod 700 "$(home_of "${name}")" 2>/dev/null || true
+    fi
+    echo "unlocked ${name}"
     ;;
   dispose)
     [[ -n "${name}" ]] || { usage; exit 1; }
+    command -v cicada-auth >/dev/null && cicada-auth confirm profile.dispose
+    if [[ -f "$(dest "${name}")/state/UID" ]]; then
+      sudo -n /usr/local/bin/cicada-profile-helper dispose "${name}"
+    fi
+    if [[ -f "$(img_of "${name}")" ]]; then
+      umount "$(home_of "${name}")" 2>/dev/null || true
+      cryptsetup close "cicada-${name}" 2>/dev/null || true
+      cryptsetup luksErase "$(img_of "${name}")" 2>/dev/null || true
+      shred -u "$(img_of "${name}")" 2>/dev/null || rm -f "$(img_of "${name}")"
+    fi
     rm -rf "${BASE:?}/${name}"
+    if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${name}$" "${CUR}"; then
+      rm -f "${CUR}"
+    fi
     echo "disposed ${name}"
     ;;
   *)

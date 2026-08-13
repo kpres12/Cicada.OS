@@ -16,7 +16,7 @@ cicada-seal tip
 
 `verify` checks sequence, prev-hash, payload hash, and the Ed25519 signature. Deleting a line or editing a field fails closed.
 
-Live ISO overlay is RAM: a new key is born each boot. After `cicada-install` the key lives on the LUKS volume.
+After `cicada-tpm-enroll` / `cicada-backup` / `cicada-profile dispose`, those actions are also in the chain.
 
 ## `cicada-auth confirm ACTION`
 

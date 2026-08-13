@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# cicada-run — the only launcher. Reads MAGI-02 scopes and applies bwrap.
-# Weaker than Android UIDs: escape from bwrap is still this user.
+# cicada-run — the only launcher. MAGI scopes + bwrap (not bind-all).
+# Escape from bwrap is still this user. Profiles are the blast-radius layer.
 set -euo pipefail
 
 usage() {
@@ -16,7 +16,22 @@ if [[ "${1:-}" == "--" ]]; then
 fi
 [[ $# -ge 1 ]] || usage
 
+# Terminals must administer the machine. Do not box kitty.
+if [[ "${APP_ID}" == "org.cicada.kitty" ]]; then
+  exec "$@"
+fi
+
 STORE="${CICADA_SCOPES_ROOT:-${HOME}/.local/share/cicada/scopes}"
+CUR="${HOME}/.local/share/cicada/current-profile"
+if [[ -f "${CUR}" ]]; then
+  # shellcheck disable=SC1090
+  source "${CUR}"
+  if [[ -n "${CICADA_PROFILE_HOME:-}" && -d "${CICADA_PROFILE_HOME}" ]]; then
+    export HOME="${CICADA_PROFILE_HOME}"
+    STORE="${HOME}/.local/share/cicada/scopes"
+  fi
+fi
+
 ENVF="${STORE}/${APP_ID}.env"
 NETWORK=allow
 FILES=portal
@@ -34,21 +49,65 @@ if ! command -v bwrap >/dev/null 2>&1; then
   exit 78
 fi
 
-# Identity for portals / future cgroup policy
 export CICADA_APP_ID="${APP_ID}"
+
+bind_opt() {
+  local src="$1" dest="${2:-$1}"
+  [[ -e "${src}" ]] || return 0
+  args+=(--ro-bind "${src}" "${dest}")
+}
+
+bind_rw() {
+  local src="$1" dest="${2:-$1}"
+  [[ -e "${src}" ]] || return 0
+  args+=(--bind "${src}" "${dest}")
+}
+
+mkdir -p "${HOME}/.config" "${HOME}/.cache" "${HOME}/.local/share" "${HOME}/Downloads"
+
+case "${APP_ID}" in
+  org.cicada.helium)
+    mkdir -p "${HOME}/.config/chromium" "${HOME}/.cache/chromium"
+    ;;
+  org.keepassxc.KeePassXC)
+    mkdir -p "${HOME}/.config/keepassxc" "${HOME}/.local/share/keepassxc"
+    ;;
+esac
 
 args=(
   bwrap
   --die-with-parent
   --unshare-pid
-  --bind / /
+  --unshare-uts
+  --unshare-cgroup
   --proc /proc
+  --tmpfs /tmp
+  --dev /dev
+  --ro-bind /usr /usr
+  --ro-bind /etc /etc
 )
 
+[[ -d /opt ]] && args+=(--ro-bind /opt /opt)
+[[ -L /bin ]] && args+=(--symlink usr/bin /bin) || bind_opt /bin
+[[ -L /sbin ]] && args+=(--symlink usr/bin /sbin) || bind_opt /sbin
+[[ -L /lib ]] && args+=(--symlink usr/lib /lib) || bind_opt /lib
+[[ -L /lib64 ]] && args+=(--symlink usr/lib /lib64) || bind_opt /lib64
+
+bind_opt /sys
+bind_rw /dev/dri
+bind_rw /dev/shm
+bind_opt /run/systemd/resolve
+
+if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
+  args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
+fi
+
 if [[ "${CAMERA}" == "allow" ]]; then
-  args+=(--dev-bind /dev /dev)
-else
-  args+=(--dev /dev)
+  bind_rw /dev/video0
+  bind_rw /dev/video1
+fi
+if [[ "${USB}" == "allow" ]]; then
+  bind_rw /dev/bus/usb
 fi
 
 case "${NETWORK}" in
@@ -62,11 +121,68 @@ case "${NETWORK}" in
     ;;
 esac
 
-if [[ "${FILES}" == "deny" ]]; then
-  args+=(--tmpfs "${HOME}")
-  if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
-    args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
+case "${FILES}" in
+  deny)
+    args+=(--tmpfs "${HOME}")
+    ;;
+  portal)
+    args+=(--tmpfs "${HOME}")
+    args+=(--dir "${HOME}/.config" --dir "${HOME}/.cache" --dir "${HOME}/.local/share" --dir "${HOME}/Downloads")
+    args+=(--bind "${HOME}/Downloads" "${HOME}/Downloads")
+    case "${APP_ID}" in
+      org.cicada.helium)
+        args+=(--bind "${HOME}/.config/chromium" "${HOME}/.config/chromium")
+        args+=(--bind "${HOME}/.cache/chromium" "${HOME}/.cache/chromium")
+        ;;
+      org.keepassxc.KeePassXC)
+        args+=(--bind "${HOME}/.config/keepassxc" "${HOME}/.config/keepassxc")
+        args+=(--bind "${HOME}/.local/share/keepassxc" "${HOME}/.local/share/keepassxc")
+        ;;
+      *)
+        mkdir -p "${HOME}/.local/share/${APP_ID}"
+        args+=(--bind "${HOME}/.local/share/${APP_ID}" "${HOME}/.local/share/${APP_ID}")
+        ;;
+    esac
+    ;;
+  *)
+    args+=(--bind "${HOME}" "${HOME}")
+    ;;
+esac
+
+proxy_pid=""
+cleanup() {
+  [[ -n "${proxy_pid}" ]] && kill "${proxy_pid}" 2>/dev/null || true
+}
+
+if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+  sock="${XDG_RUNTIME_DIR}/cicada-${APP_ID}.sock"
+  rm -f "${sock}"
+  xdg-dbus-proxy "${DBUS_SESSION_BUS_ADDRESS}" "${sock}" --filter \
+      --talk=org.freedesktop.portal.Desktop \
+      --talk=org.freedesktop.portal.Documents \
+      --talk=org.freedesktop.portal.FileChooser \
+      --talk=org.freedesktop.portal.OpenURI \
+      --talk=org.freedesktop.portal.Settings \
+      --talk=org.freedesktop.portal.Inhibit \
+      --talk=org.freedesktop.Notifications \
+      --talk=org.freedesktop.ScreenSaver \
+      >/dev/null 2>&1 &
+  proxy_pid=$!
+  sleep 0.15
+  if [[ -S "${sock}" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${sock}"
+  else
+    kill "${proxy_pid}" 2>/dev/null || true
+    proxy_pid=""
   fi
 fi
 
-exec "${args[@]}" "$@"
+# Chromium's inner namespace sandbox fights nested bwrap; outer box is the sandbox.
+if [[ "${APP_ID}" == "org.cicada.helium" ]]; then
+  set -- "$@" --disable-namespace-sandbox --disable-setuid-sandbox
+fi
+
+"${args[@]}" "$@"
+rc=$?
+cleanup
+exit "${rc}"

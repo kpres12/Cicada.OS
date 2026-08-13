@@ -1,0 +1,13 @@
+[Unit]
+Description=Cicada live amnesic (ignore internal disks, USB-yank panic)
+ConditionPathExists=/run/archiso
+After=systemd-udevd.service
+Before=udisks2.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-amnesic
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

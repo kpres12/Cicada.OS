@@ -1,0 +1,21 @@
+#!/bin/bash
+build() {
+  add_module 'dm-crypt'
+  add_binary cryptsetup
+  add_binary sha256sum
+  add_binary awk
+  add_binary date
+  add_binary sleep
+  add_binary dd
+  add_binary mount
+  add_binary umount
+  add_binary poweroff
+  add_runscript
+}
+
+help() {
+  cat <<'EOF'
+Cicada LUKS unlock. Real passphrase boots. Duress passphrase erases all
+keyslots, pads to the same delay as a wrong passphrase, then poweroffs.
+EOF
+}

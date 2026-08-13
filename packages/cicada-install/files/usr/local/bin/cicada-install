@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Install Cicada onto a REMOVABLE disk only (external SSD). Never the internal Apple drive.
-# v0: partition + LUKS2 + btrfs, then pacstrap. Requires network on the live ISO.
+# Install Cicada onto a disk: LUKS2 Argon2id + btrfs + systemd-boot.
+# Refuses Apple internal storage. Other internal disks need --internal.
 set -euo pipefail
 
 MIN_GIB=16
 HOSTNAME_DEFAULT=cicada
+PKGFILE=/etc/cicada/install-packages.txt
+CHROOT=/usr/local/lib/cicada/install-chroot.sh
 
 die() { echo "cicada-install: $*" >&2; exit 1; }
 need_root() { [[ ${EUID} -eq 0 ]] || die "run as root"; }
@@ -20,11 +22,18 @@ is_usb() {
   readlink -f "/sys/block/${name}" 2>/dev/null | grep -q '/usb'
 }
 
+is_apple_machine() {
+  grep -qi apple /sys/class/dmi/id/sys_vendor 2>/dev/null \
+    || grep -qi apple /sys/class/dmi/id/board_vendor 2>/dev/null \
+    || grep -qi macbook /sys/class/dmi/id/product_name 2>/dev/null
+}
+
 is_apple_internal() {
   local dev="$1"
-  # 2015–2017 MBA internal is NVMe or Apple AHCI, never removable USB.
-  [[ "${dev}" == /dev/nvme* ]] && return 0
   lsblk -ndo MODEL "${dev}" 2>/dev/null | grep -qi 'APPLE SSD' && return 0
+  if [[ "${dev}" == /dev/nvme* ]] && is_apple_machine; then
+    return 0
+  fi
   return 1
 }
 
@@ -33,13 +42,11 @@ live_src() {
 }
 
 list_candidates() {
-  local d name
-  echo "CANDIDATES (removable / USB only):"
+  echo "CANDIDATES:"
   echo
-  lsblk -dnp -o NAME,SIZE,MODEL,TRAN,RM | while read -r line; do
-    echo "  ${line}"
-  done
+  lsblk -dnp -o NAME,SIZE,MODEL,TRAN,RM
   echo
+  echo "Apple internal disks are refused. Other internal disks: pass --internal."
 }
 
 confirm_target() {
@@ -48,15 +55,14 @@ confirm_target() {
   name="$(basename "${dev}")"
   [[ -b "${dev}" ]] || die "not a block device: ${dev}"
   is_apple_internal "${dev}" && die "refusing Apple internal disk ${dev}"
-  if ! is_removable "${name}" && ! is_usb "${name}"; then
-    die "refusing ${dev} (not removable USB). Cicada v0 installs to an external SSD only."
-  fi
-  local live
+  local live live_base
   live="$(live_src)"
   if [[ -n "${live}" ]]; then
-    local live_base
     live_base="$(lsblk -no PKNAME "${live}" 2>/dev/null || true)"
     [[ "${live_base}" == "${name}" ]] && die "refusing live USB ${dev}"
+  fi
+  if ! is_removable "${name}" && ! is_usb "${name}"; then
+    [[ "${ALLOW_INTERNAL}" == 1 ]] || die "refusing ${dev} (internal). Pass --internal on non-Apple machines (Framework, etc.)."
   fi
   local bytes gib
   bytes="$(lsblk -nbdo SIZE "${dev}")"
@@ -64,29 +70,104 @@ confirm_target() {
   (( gib >= MIN_GIB )) || die "${dev} is ${gib}G; need >= ${MIN_GIB}G"
 }
 
+copy_product() {
+  local mnt="$1"
+  mkdir -p "${mnt}/usr/local/bin" "${mnt}/usr/local/lib/cicada" "${mnt}/etc/cicada"
+  if [[ -d /usr/local/bin ]]; then
+    find /usr/local/bin -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/usr/local/bin/" \;
+    [[ -x /usr/local/bin/chromium ]] && cp -a /usr/local/bin/chromium "${mnt}/usr/local/bin/"
+    [[ -x /usr/local/bin/keepassxc ]] && cp -a /usr/local/bin/keepassxc "${mnt}/usr/local/bin/"
+  fi
+  [[ -x "${CHROOT}" ]] && cp -a "${CHROOT}" "${mnt}/usr/local/lib/cicada/"
+  if [[ -d /etc/skel ]]; then
+    mkdir -p "${mnt}/etc/skel"
+    rsync -a /etc/skel/ "${mnt}/etc/skel/"
+  fi
+  [[ -d /usr/share/cicada ]] && rsync -a /usr/share/cicada/ "${mnt}/usr/share/cicada/"
+  [[ -d /usr/local/share/applications ]] && rsync -a /usr/local/share/applications/ "${mnt}/usr/local/share/applications/"
+  for d in \
+    /etc/cicada \
+    /etc/nftables.d \
+    /etc/sysctl.d \
+    /etc/modprobe.d \
+    /etc/NetworkManager/conf.d \
+    /etc/systemd/resolved.conf.d \
+    /etc/chromium \
+    /etc/usbguard \
+    /etc/iwd \
+    /etc/tmpfiles.d \
+    /etc/pacman.d/hooks \
+    /etc/wireguard \
+    /etc/profile.d
+  do
+    if [[ -e "${d}" ]]; then
+      mkdir -p "${mnt}$(dirname "${d}")"
+      rsync -a "${d}" "${mnt}$(dirname "${d}")/"
+    fi
+  done
+  [[ -f /etc/nftables.conf ]] && cp -a /etc/nftables.conf "${mnt}/etc/nftables.conf"
+  mkdir -p "${mnt}/etc/systemd/system"
+  find /etc/systemd/system -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/etc/systemd/system/" \;
+  mkdir -p "${mnt}/usr/lib/initcpio/hooks" "${mnt}/usr/lib/initcpio/install" "${mnt}/usr/lib"
+  [[ -f /usr/lib/initcpio/hooks/cicada-crypt ]] && cp -a /usr/lib/initcpio/hooks/cicada-crypt "${mnt}/usr/lib/initcpio/hooks/"
+  [[ -f /usr/lib/initcpio/install/cicada-crypt ]] && cp -a /usr/lib/initcpio/install/cicada-crypt "${mnt}/usr/lib/initcpio/install/"
+  [[ -f /usr/lib/libhardened_malloc.so ]] && cp -a /usr/lib/libhardened_malloc.so "${mnt}/usr/lib/"
+  [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && cp -a /etc/sudoers.d/cicada-profile "${mnt}/etc/sudoers.d/" 2>/dev/null || true
+}
+
+pacstrap_filtered() {
+  local mnt="$1"
+  local -a want=() have=()
+  local line
+  want=(base linux linux-firmware mkinitcpio efibootmgr sudo rsync btrfs-progs cryptsetup)
+  if [[ -f "${PKGFILE}" ]]; then
+    while IFS= read -r line; do
+      line="${line%%#*}"
+      line="$(echo "${line}" | xargs)"
+      [[ -n "${line}" ]] && want+=("${line}")
+    done < "${PKGFILE}"
+  fi
+  local p seen=""
+  for p in "${want[@]}"; do
+    [[ " ${seen} " == *" ${p} "* ]] && continue
+    seen+=" ${p}"
+    if pacman -Si "${p}" >/dev/null 2>&1; then
+      have+=("${p}")
+    else
+      echo "skip missing package: ${p}"
+    fi
+  done
+  echo "==> pacstrap ${#have[@]} packages"
+  pacstrap -K "${mnt}" "${have[@]}"
+}
+
 usage() {
   cat <<'EOF'
-cicada-install — LUKS2 Cicada onto an external SSD
+cicada-install — LUKS2 + btrfs + systemd-boot
 
   cicada-install --list
   cicada-install --target /dev/sdX --hostname cicada
+  cicada-install --target /dev/nvme0n1 --internal   # non-Apple internal disk
 
-Will DESTROY the target. Internal Apple disks are refused.
-Needs network (pacstrap). Connect Wi-Fi first (dock icon / Super+N).
+Destroys the target. Apple internal SSDs are always refused.
+Needs network (pacstrap). Connect Wi-Fi first (dock / Super+N).
 
-Duress keyslot is not enrolled here (timing-safe hook is not done).
+Duress keyslot is not enrolled (timing-safe hook is not done).
+TPM2 enroll is optional after first boot: cicada-tpm-enroll
 EOF
 }
 
 TARGET=""
 HOST="${HOSTNAME_DEFAULT}"
 DRY=0
+ALLOW_INTERNAL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --list) list_candidates; exit 0 ;;
     --target) TARGET="${2:?}"; shift 2 ;;
     --hostname) HOST="${2:?}"; shift 2 ;;
+    --internal) ALLOW_INTERNAL=1; shift ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown arg: $1" ;;
@@ -110,20 +191,27 @@ read -r -s -p "Again: " p2; echo
 [[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
 [[ ${#p1} -ge 8 ]] || die "passphrase too short"
 
+read -r -s -p "User (cicada) password: " u1; echo
+read -r -s -p "Again: " u2; echo
+[[ "${u1}" == "${u2}" ]] || die "user passwords do not match"
+[[ ${#u1} -ge 8 ]] || die "user password too short"
+
 if [[ "${DRY}" == 1 ]]; then
-  echo "dry-run: would LUKS+btrfs+pacstrap ${TARGET} hostname=${HOST}"
+  echo "dry-run: would LUKS+btrfs+pacstrap+bootctl ${TARGET} hostname=${HOST} internal=${ALLOW_INTERNAL}"
   exit 0
 fi
 
 command -v sgdisk >/dev/null || die "sgdisk missing (gptfdisk)"
 command -v cryptsetup >/dev/null || die "cryptsetup missing"
 command -v pacstrap >/dev/null || die "pacstrap missing (arch-install-scripts)"
+command -v bootctl >/dev/null || die "bootctl missing (systemd)"
+[[ -x "${CHROOT}" ]] || die "missing ${CHROOT}"
 
 sgdisk --zap-all "${TARGET}"
 sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "${TARGET}"
 sgdisk -n 2:0:0 -t 2:8309 -c 2:CICADA "${TARGET}"
 sleep 1
-if [[ "${TARGET}" == /dev/nvme* ]]; then
+if [[ "${TARGET}" == /dev/nvme* ]] || [[ "${TARGET}" == /dev/mmcblk* ]]; then
   ESP="${TARGET}p1"
   ROOTP="${TARGET}p2"
 else
@@ -137,46 +225,55 @@ printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 \
   --pbkdf argon2id --pbkdf-memory 262144 --pbkdf-parallel 4 --iter-time 4000 \
   --batch-mode "${ROOTP}" -
 printf '%s' "${p1}" | cryptsetup open "${ROOTP}" cicada -
+unset p1 p2
+
 mkfs.btrfs -L CICADA /dev/mapper/cicada
 mount /dev/mapper/cicada /mnt
-mkdir -p /mnt/boot
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
+umount /mnt
+mount -o subvol=@ /dev/mapper/cicada /mnt
+mkdir -p /mnt/home /mnt/boot
+mount -o subvol=@home /dev/mapper/cicada /mnt/home
 mount "${ESP}" /mnt/boot
 
-echo "==> pacstrap (this needs network and takes a while)"
-pacstrap -K /mnt base linux linux-firmware btrfs-progs cryptsetup sudo networkmanager iwd intel-ucode
+echo "==> pacstrap (needs network)"
+pacstrap_filtered /mnt
 genfstab -U /mnt >> /mnt/etc/fstab
 
-cat > /mnt/etc/hostname <<EOF
-${HOST}
+LUKS_UUID="$(cryptsetup luksUUID "${ROOTP}")"
+ROOT_UUID="$(blkid -s UUID -o value /dev/mapper/cicada)"
+
+echo "${HOST}" > /mnt/etc/hostname
+cat > /mnt/etc/cicada/install.env <<EOF
+CICADA_LUKS_UUID=${LUKS_UUID}
+CICADA_ROOT_UUID=${ROOT_UUID}
+CICADA_BTRFS_SUBVOL=@
+EOF
+chmod 600 /mnt/etc/cicada/install.env
+
+cat > /mnt/etc/crypttab <<EOF
+cicada UUID=${LUKS_UUID} none luks
 EOF
 
-mkdir -p /mnt/etc/cicada
+copy_product /mnt
+printf '%s' "${u1}" > /mnt/root/.cicada-user-pass
+chmod 600 /mnt/root/.cicada-user-pass
+unset u1 u2
+
+arch-chroot /mnt /usr/local/lib/cicada/install-chroot.sh
+
 cat > /mnt/etc/cicada/install-stamp <<EOF
 installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 target=${TARGET}
-note=v0 pacstrap; copy cicada-shell from live with rsync next
+luks_uuid=${LUKS_UUID}
+note=LUKS2 Argon2id + btrfs @/@home + systemd-boot
 EOF
 
-# Carry the live product layer into the install
-if [[ -d /etc/skel ]]; then
-  rsync -a /etc/skel/ /mnt/etc/skel/
-fi
-if [[ -d /usr/share/cicada ]]; then
-  mkdir -p /mnt/usr/share/cicada
-  rsync -a /usr/share/cicada/ /mnt/usr/share/cicada/
-fi
-if [[ -d /usr/local/bin ]]; then
-  rsync -a /usr/local/bin/cicada-* /mnt/usr/local/bin/ 2>/dev/null || true
-fi
+command -v cicada-seal >/dev/null && cicada-seal append install.ok "{\"target\":\"${TARGET}\"}" >/dev/null 2>&1 || true
 
 echo
-echo "Base is on ${TARGET}. Next inside arch-chroot /mnt:"
-echo "  ln -sf /usr/share/zoneinfo/UTC /etc/localtime"
-echo "  hwclock --systohc"
-echo "  passwd"
-echo "  bootctl install   # or grub-install"
-echo "  echo 'cicada UUID=<luks-uuid> none luks' >> /etc/crypttab"
-echo
-echo "cicada-install v0 stops before bootloader on purpose — confirm disk/UUID by hand once."
+echo "Installed. Reboot, pick the SSD in firmware, unlock LUKS."
+echo "Then (on machines with TPM2): sudo cicada-tpm-enroll"
 echo "Unmount: umount -R /mnt && cryptsetup close cicada"
-unset p1 p2
+echo "Apple EFI: Secure Boot/TPM enroll will no-op. Framework-class: sbctl + cicada-tpm-enroll."

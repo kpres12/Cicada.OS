@@ -21,6 +21,8 @@ RUN sed -i \
       python \
       rsync \
       git \
+      gcc \
+      make \
       reflector \
  && reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist \
  && pacman -Sy --noconfirm \

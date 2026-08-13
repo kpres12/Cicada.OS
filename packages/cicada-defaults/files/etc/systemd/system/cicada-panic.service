@@ -1,0 +1,8 @@
+[Unit]
+Description=Cicada emergency reboot (USB yank)
+DefaultDependencies=no
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-panic

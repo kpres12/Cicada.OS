@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Privileged helper: only create/delete cicada-* users or open a TTY session.
+set -euo pipefail
+[[ ${EUID} -eq 0 ]] || { echo "root only" >&2; exit 1; }
+
+valid() {
+  [[ "$1" =~ ^[a-z][a-z0-9]{0,12}$ ]] || return 1
+  [[ "$1" != "root" && "$1" != "cicada" ]]
+}
+
+cmd="${1:-}"
+name="${2:-}"
+user="cicada-${name}"
+
+case "${cmd}" in
+  create)
+    valid "${name}" || { echo "bad profile name" >&2; exit 1; }
+    id "${user}" >/dev/null 2>&1 && { echo "exists: ${user}" >&2; exit 1; }
+    useradd -m -G video,audio,input,storage,rfkill,network,users -s /bin/bash "${user}"
+    if [[ -d /etc/skel ]]; then
+      rsync -a /etc/skel/ "/home/${user}/"
+      chown -R "${user}:${user}" "/home/${user}"
+    fi
+    echo "created Unix user ${user} (not in wheel). Log in as ${user} — different UID, not a folder."
+    ;;
+  login)
+    valid "${name}" || { echo "bad profile name" >&2; exit 1; }
+    id "${user}" >/dev/null 2>&1 || { echo "missing ${user}" >&2; exit 1; }
+    command -v openvt >/dev/null || { echo "openvt missing (kbd)" >&2; exit 1; }
+    openvt -c 3 -s -- su - "${user}" -c 'Hyprland || bash'
+    ;;
+  dispose)
+    valid "${name}" || { echo "bad profile name" >&2; exit 1; }
+    id "${user}" >/dev/null 2>&1 || { echo "missing ${user}" >&2; exit 1; }
+    userdel -r "${user}"
+    echo "deleted ${user}"
+    ;;
+  *)
+    echo "usage: cicada-profile-helper create|login|dispose NAME" >&2
+    exit 1
+    ;;
+esac

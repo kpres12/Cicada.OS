@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Live ISO only: ignore internal disks, arm USB-yank panic.
+# Installed LUKS systems do not run this (no /run/archiso).
+set -euo pipefail
+[[ -d /run/archiso ]] || exit 0
+
+mkdir -p /run/udev/rules.d
+for d in /sys/block/*; do
+  [[ -d "${d}" ]] || continue
+  name="$(basename "${d}")"
+  case "${name}" in
+    loop*|ram*|zram*|dm-*) continue ;;
+  esac
+  rem=0
+  [[ -f "${d}/removable" ]] && rem="$(cat "${d}/removable")"
+  usb=0
+  readlink -f "${d}" 2>/dev/null | grep -q '/usb' && usb=1
+  if [[ "${rem}" == "0" && "${usb}" == "0" ]]; then
+    printf 'KERNEL=="%s", ENV{UDISKS_IGNORE}="1"\n' "${name}" \
+      > "/run/udev/rules.d/61-cicada-ignore-${name}.rules"
+  fi
+done
+
+uuid=""
+if [[ -r /proc/cmdline ]]; then
+  uuid="$(sed -n 's/.*archisosearchuuid=\([^ ]*\).*/\1/p' /proc/cmdline | head -1)"
+fi
+if [[ -n "${uuid}" ]]; then
+  printf 'ACTION=="remove", ENV{ID_FS_UUID}=="%s", RUN+="/usr/bin/systemctl --no-block start cicada-panic.service"\n' \
+    "${uuid}" > /run/udev/rules.d/99-cicada-yank.rules
+fi
+
+udevadm control --reload 2>/dev/null || true
+udevadm trigger 2>/dev/null || true
+
+if grep -qw copytoram /proc/cmdline 2>/dev/null; then
+  logger -t cicada "amnesic: copytoram — overlay+ISO in RAM; yank USB → panic reboot"
+else
+  logger -t cicada "live cow is RAM; squashfs still on USB. Amnesic boot entry adds copytoram."
+fi

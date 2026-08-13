@@ -7,7 +7,7 @@ North star is Graphene *intent*. Claims stay honest about hardware.
 
 | Category | Status |
 |---|---|
-| Kernel/allocator hardening, radios off, VPN kill switch, browser hardening, telemetry-off, encrypted backups | Off-the-shelf — integration |
+| Kernel/allocator hardening, radios off, VPN kill switch, browser hardening, telemetry-off, encrypted backups | Off-the-shelf — integration (`hardened_malloc` from GrapheneOS tag 14) |
 | Duress wipe, auto-reboot-to-rest, fingerprint PAM hardening | Small custom scripts |
 | Per-app network/sensor permission toggles (sandbox model) | Real engineering — largest piece |
 | Hardware attestation (Auditor-equivalent) | Real gap — no Titan M2 ecosystem |
@@ -18,14 +18,14 @@ North star is Graphene *intent*. Claims stay honest about hardware.
 Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel allocators, forced kernel module signing, kernel lockdown, CFI.
 
 **Cicada:**
-- [ ] `hardened_malloc` globally — **AUR**, not extra; wrapper no-op until `docs/aur-audit.md`
+- [x] `hardened_malloc` globally — GrapheneOS **tag 14** built in the ISO Docker builder (`scripts/build-hardened-malloc.sh`). Firstboot `/etc/ld.so.preload`. Opt-out: `/etc/cicada/hardened-malloc-disable`
 - [x] `linux-hardened` as extra boot entry (default `linux` for MBA `broadcom-wl`)
 - [x] `lockdown=confidentiality` on the hardened entry only
+- [x] `ibt=on shstk=on` on live and installed cmdline (no-op on CPUs without CET; **not MTE**)
 - [ ] Forced module signing
-- [ ] Secure Boot chain (sbctl hook shipped; inert until enrolled)
-- [ ] Intel CET / AMD shadow stack + stronger ASLR as the MTE substitute
+- [ ] Secure Boot chain (sbctl hook shipped; enroll with `cicada-sbctl-enroll` in Setup Mode)
 
-**Gap:** MTE has no x86 equivalent. Do not list it as done.
+**Gap:** MTE has no x86 equivalent. CET/shadow stack is the substitute on 11th-gen Intel / Zen 3+. Do not list MTE as done.
 
 ## 2. Attack surface reduction
 
@@ -44,11 +44,13 @@ Graphene: NFC/BT/UWB off by default; USB-C modes including charging-only-when-lo
 Graphene: enhanced verified boot, signed fs-verity for app updates, hardware attestation, Auditor app.
 
 **Cicada:**
+- [x] `cicada-install`: LUKS2 Argon2id + btrfs `@`/`@home` + systemd-boot (`--internal` for non-Apple NVMe)
 - [x] Device Ed25519 key + hash-chained seal log (`cicada-seal`); high-impact actions gated by `cicada-auth` ([docs/SEAL.md](SEAL.md))
-- [x] `cicada-attest`: TPM2 quote if `/dev/tpmrm0` exists; otherwise export pubkey for a Pixel to pin ([docs/ATTEST.md](ATTEST.md))
-- [ ] UEFI Secure Boot + signed UKI where firmware allows
-- [ ] Measured boot / PCR sealing on TPM2 machines
-- [ ] Later: Pixel verifies laptop `tpm2_quote` (not Graphene Auditor)
+- [x] `cicada-attest` / `cicada-quote-verify`: TPM2 quote if `/dev/tpmrm0` exists; otherwise export pubkey for a Pixel to pin ([docs/ATTEST.md](ATTEST.md))
+- [x] `cicada-tpm-enroll`: PCR 0,1,2,3,7 + passphrase fallback (exit 2 if no TPM)
+- [x] `cicada-sbctl-enroll`: Setup Mode only (exit 2 on Apple EFI)
+- [ ] Measured boot as default unlock (enroll is opt-in after first boot)
+- [ ] Later: Pixel verifies laptop `tpm2_quote` in an app (not Graphene Auditor)
 
 **Gap:** Apple EFI on the prototype MBA cannot match Pixel+Titan verified boot. The Pixel pin is an identity for the seal log, not a Titan substitute.
 
@@ -58,8 +60,8 @@ Graphene: auto-reboot after lock (10m–72h, default 18h); memory zeroed on free
 
 **Cicada:**
 - [x] systemd timer: reboot after N seconds locked (default **30 min** — AFU window; `CICADA_LOCK_REBOOT_SEC`)
-- [x] `init_on_free=1 init_on_alloc=1` on live boot cmdline
-- [ ] LUKS duress keyslot + initramfs hook (`luksErase`) with timing parity vs wrong PIN — enroll refuses until tests exist
+- [x] `init_on_free=1 init_on_alloc=1` on live **and** installed cmdline
+- [x] LUKS duress keyslot + `cicada-crypt` initramfs hook: duress and wrong PIN both wait ~12s then print `Invalid passphrase`; duress then `luksErase` + poweroff. Real unlock is not padded. `cicada-duress-enroll` on the installed volume.
 
 ## 5. Fingerprint / PIN hardening
 
@@ -75,12 +77,12 @@ Graphene: PIN scramble, fingerprint+PIN 2FA, 5 fingerprint attempts, 128-char pa
 Graphene: per-app network permission (network-down, not crash), Sensors, Storage Scopes, Contact Scopes.
 
 **Cicada (approximate, not equal):**
-- [x] `cicada-run` + MAGI scopes: Helium `NETWORK=allow` (camera/mic deny); KeePassXC `NETWORK=deny`
-- [ ] Profile compartments (`cicada-profile`) as the UX analog of Graphene users
-- [ ] Flatpak + xdg-desktop-portal for fs/camera/mic scopes
+- [x] `cicada-run`: bwrap is **not** bind-all; Helium `NETWORK=allow` + `FILES=portal` (camera/mic deny); KeePassXC `NETWORK=deny`; D-Bus proxy when `xdg-dbus-proxy` exists
+- [x] `cicada-profile`: Work/Burner homes; `--encrypt` LUKS loop; `--user` real Unix UID + `login` on another TTY
+- [ ] Flatpak + xdg-desktop-portal as the file picker for `FILES=portal`
 - [ ] AppArmor profiles per shipped app
 
-See [docs/SANDBOX.md](docs/SANDBOX.md) for how Cicada Scopes will approximate Graphene per-app permissions (and what we will not claim).
+See [docs/SANDBOX.md](SANDBOX.md) and [docs/AMNESIC.md](AMNESIC.md) (live USB forgets; installed disk persists).
 
 ## 7. VPN leak blocking
 
@@ -110,7 +112,7 @@ Graphene: Seedvault; user-controlled logs; memory-corruption crash detection fro
 
 **Cicada:**
 - [x] Hash-chained signed seal log (user-local, no upload) — [docs/SEAL.md](SEAL.md)
-- [ ] restic or borg to encrypted local/cloud
+- [x] `cicada-backup`: restic to a USB repo; password file is **not** the LUKS passphrase
 - [ ] systemd-coredump + a small hardened_malloc crash correlator
 - [x] No automatic crash upload
 

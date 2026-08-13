@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # KeePassXC through cicada-run so NETWORK=deny is the default (no phish-phone-home).
 set -euo pipefail
+if [[ -f /usr/lib/libhardened_malloc.so && ! -f /etc/cicada/hardened-malloc-disable ]]; then
+  export LD_PRELOAD="/usr/lib/libhardened_malloc.so${LD_PRELOAD:+:${LD_PRELOAD}}"
+fi
 if command -v cicada-run >/dev/null 2>&1; then
   exec cicada-run org.keepassxc.KeePassXC -- /usr/bin/keepassxc "$@"
 fi

@@ -1,14 +1,22 @@
-# Install Cicada (external SSD only)
+# Install Cicada
 
-Live USB is the demo. This is the path to a disk you can reboot into.
+Live USB is the demo. This writes LUKS2 + btrfs + systemd-boot to a disk you can reboot into.
 
-1. Boot the Cicada ISO on the Intel Air (Option).
-2. Click **Wi-Fi** and get an address (`pacstrap` needs network).
-3. Plug the **install** SSD (not JACKSPARROW if that’s the live stick).
-4. `sudo cicada-install --list` then `sudo cicada-install --target /dev/sdX`
+1. Boot the Cicada ISO. Click **Wi-Fi** (`pacstrap` needs network).
+2. Plug the **install** disk (not the live stick).
+3. `sudo cicada-install --list`
+4. External SSD: `sudo cicada-install --target /dev/sdX`
+5. Framework-class internal NVMe: `sudo cicada-install --target /dev/nvme0n1 --internal`
 
-The installer **refuses** `/dev/nvme*` and `APPLE SSD` (internal Mac disk). It **refuses** the live USB.
+Apple internal SSDs (`APPLE SSD` / MacBook NVMe) are **always refused**. The live USB is refused.
 
-v0 stops before bootloader install on purpose. Finish with `arch-chroot /mnt` and `bootctl install` after you confirm LUKS UUID.
+You will set a LUKS passphrase and a `cicada` user password. Root is locked; use `sudo`. There is **no autologin** on the installed system.
 
-Duress slot: `cicada-duress-enroll` exits 1 until the unlock path is timing-safe.
+After reboot:
+
+- Machines with TPM2: `sudo cicada-tpm-enroll` (passphrase slot is kept; PCR 0,1,2,3,7).
+- Firmware Setup Mode: `sudo cicada-sbctl-enroll` (Apple EFI will exit 2).
+- Pin identity: `cicada-attest` then store `device.pub` on a Graphene Pixel. See [ATTEST.md](ATTEST.md).
+- Backups to a **USB**, not this disk: `CICADA_BACKUP_REPO=... cicada-backup init` then `backup` / `restore`.
+
+Duress: after install, `sudo cicada-duress-enroll`. Wrong PIN and duress both wait ~12s and print the same error; duress wipes keyslots and poweroffs.

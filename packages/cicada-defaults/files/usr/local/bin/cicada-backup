@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Encrypted restic backups. Repo must be a USB path or sftp — not the LUKS volume.
+set -euo pipefail
+
+REPO="${CICADA_BACKUP_REPO:-}"
+PASS="${CICADA_BACKUP_PASSWORD_FILE:-${HOME}/.local/share/cicada/backup.pass}"
+
+die() { echo "cicada-backup: $*" >&2; exit 1; }
+
+need_repo() {
+  [[ -n "${REPO}" ]] || die "set CICADA_BACKUP_REPO to a USB directory (not this disk)"
+  local src
+  src="$(df -P "${REPO}" 2>/dev/null | awk 'NR==2{print $1}')"
+  if findmnt -n / >/dev/null 2>&1 && [[ -n "${src}" ]]; then
+    local rootdev
+    rootdev="$(findmnt -n -o SOURCE / | sed 's/\[.*//')"
+    [[ "${src}" == "${rootdev}" ]] && die "repo is on the root volume — plug in a USB"
+  fi
+}
+
+need_restic() { command -v restic >/dev/null || die "restic not installed"; }
+
+export RESTIC_REPOSITORY="${REPO:-}"
+if [[ -f "${PASS}" ]]; then
+  export RESTIC_PASSWORD_FILE="${PASS}"
+fi
+
+cmd="${1:-}"
+case "${cmd}" in
+  init)
+    need_restic
+    [[ -n "${REPO}" ]] || die "CICADA_BACKUP_REPO=/run/media/cicada/USB/cicada-backup"
+    mkdir -p "${REPO}" "$(dirname "${PASS}")"
+    if [[ ! -f "${PASS}" ]]; then
+      umask 077
+      # restic password is not the LUKS passphrase (backup leak ≠ disk unlock)
+      openssl rand -base64 32 > "${PASS}"
+      echo "wrote ${PASS} — copy this file off-machine (age it if you want)."
+    fi
+    export RESTIC_REPOSITORY="${REPO}"
+    export RESTIC_PASSWORD_FILE="${PASS}"
+    restic init
+    command -v cicada-seal >/dev/null && cicada-seal append backup.init "{}" >/dev/null 2>&1 || true
+    ;;
+  backup)
+    need_restic
+    need_repo
+    restic backup \
+      --one-file-system \
+      --exclude "${HOME}/.cache" \
+      --exclude "${HOME}/.local/share/Trash" \
+      "${HOME}" /etc/cicada /var/lib/cicada 2>/dev/null || restic backup --one-file-system "${HOME}"
+    command -v cicada-seal >/dev/null && cicada-seal append backup.ok "{}" >/dev/null 2>&1 || true
+    ;;
+  snapshots)
+    need_restic
+    need_repo
+    restic snapshots
+    ;;
+  check)
+    need_restic
+    need_repo
+    restic check
+    ;;
+  restore)
+    need_restic
+    need_repo
+    dest="${2:-${HOME}/cicada-restore}"
+    mkdir -p "${dest}"
+    restic restore latest --target "${dest}"
+    echo "restored to ${dest} — inspect before copying over live files"
+    command -v cicada-seal >/dev/null && cicada-seal append backup.restore "{\"dest\":\"${dest}\"}" >/dev/null 2>&1 || true
+    ;;
+  *)
+    cat <<'EOF'
+cicada-backup — restic, key separate from LUKS
+
+  export CICADA_BACKUP_REPO=/run/media/cicada/USB/cicada-backup
+  cicada-backup init
+  cicada-backup backup
+  cicada-backup snapshots
+  cicada-backup check
+  cicada-backup restore [dir]
+
+Password file: ~/.local/share/cicada/backup.pass (not the disk passphrase).
+EOF
+    exit 1
+    ;;
+esac

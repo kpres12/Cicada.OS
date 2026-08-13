@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Verify a cicada-attest TPM2 quote bundle. Run on the laptop or another Linux with tpm2-tools.
+set -euo pipefail
+dir="${1:-$HOME/cicada-attest}"
+[[ -d "${dir}" ]] || { echo "usage: cicada-quote-verify DIR" >&2; exit 1; }
+command -v tpm2_checkquote >/dev/null || { echo "tpm2_checkquote missing" >&2; exit 1; }
+[[ -f "${dir}/quote.msg" && -f "${dir}/quote.sig" ]] || {
+  echo "no TPM quote in ${dir} (device.pub pin-only bundle)"
+  [[ -f "${dir}/device.pub" ]] && { echo "device pubkey present — pin that on the Pixel"; exit 0; }
+  exit 1
+}
+ak="${dir}/quote.ak.pub"
+[[ -f "${ak}" ]] || { echo "missing ${ak}" >&2; exit 1; }
+tpm2_checkquote -u "${ak}" -m "${dir}/quote.msg" -s "${dir}/quote.sig" -q cicada
+echo "quote ok"
+command -v cicada-seal >/dev/null && cicada-seal append tpm.quote.ok "{}" >/dev/null 2>&1 || true

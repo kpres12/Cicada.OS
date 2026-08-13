@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Emergency wipe path: boot USB yanked, or user ran cicada-panic.
+# This is not Tails sdmem. init_on_free + force reboot is the honest RAM story.
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+logger -t cicada-panic "emergency reboot (USB yank or explicit)"
+rfkill block all 2>/dev/null || true
+swapoff -a 2>/dev/null || true
+sync || true
+echo 3 >/proc/sys/vm/drop_caches 2>/dev/null || true
+# Do not try to unmount gracefully — that is time an adversary can inhibit.
+systemctl reboot --force || echo b >/proc/sysrq-trigger

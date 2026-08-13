@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Bind LUKS to TPM2 PCRs. Passphrase slot stays. No TPM → exit 2 (not a fake success).
+set -euo pipefail
+
+if [[ ! -c /dev/tpmrm0 ]]; then
+  echo "cicada-tpm-enroll: no /dev/tpmrm0 (Apple EFI MBA: expected)." >&2
+  echo "Passphrase-only LUKS stays. Framework-class: run this after install." >&2
+  exit 2
+fi
+[[ ${EUID} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+command -v systemd-cryptenroll >/dev/null || { echo "systemd-cryptenroll missing" >&2; exit 1; }
+
+dev=""
+if [[ -f /etc/cicada/install.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/install.env
+  if [[ -n "${CICADA_LUKS_UUID:-}" ]]; then
+    dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
+  fi
+fi
+if [[ -z "${dev}" || ! -e "${dev}" ]]; then
+  dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')"
+fi
+[[ -n "${dev}" && -e "${dev}" ]] || { echo "cannot find LUKS device (boot the installed system)" >&2; exit 1; }
+
+echo "Enrolling TPM2 against PCR 0,1,2,3,7 on ${dev}"
+echo "Passphrase slot is kept. Firmware/bootloader change → TPM unwrap fails → type the passphrase."
+systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+1+2+3+7 "${dev}"
+
+if [[ -f /etc/crypttab ]]; then
+  sed -i 's/ none luks$/ none luks,tpm2-device=auto/' /etc/crypttab || true
+fi
+command -v cicada-seal >/dev/null && cicada-seal append tpm.enroll "{}" >/dev/null 2>&1 || true
+echo "enrolled. Rebuild initramfs if unlock at boot ignores TPM: mkinitcpio -P"
+echo "Hook sd-encrypt is required for TPM2 at initramfs; passphrase still works with encrypt."

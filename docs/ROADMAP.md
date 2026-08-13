@@ -14,7 +14,7 @@
 - [x] ISO boots on Intel MBA (EFI)
 - [x] Firewall + rfkill defaults live
 - [x] OT/Eva shell readable as Cicada in first 5 seconds
-- [ ] Calamares or scripted install → external SSD (`cicada-install` exists; stops before bootloader)
+- [x] Calamares or scripted install → disk (`cicada-install` LUKS2 + systemd-boot; `--internal` for non-Apple NVMe)
 - [ ] Broadcom Wi‑Fi documented/working (NM picker + firmware + broadcom-wl on default `linux`)
 
 ## Phase 2 — Daily-driver alpha (2–4 weeks)
@@ -30,16 +30,15 @@
 
 ## Phase 3 — Profiles + sandbox (largest engineering)
 
-- [x] `cicada-run` wraps Helium + KeePassXC (bwrap net deny when scoped)
-- [ ] `cicada-profile`: Work / Personal / Burner
-- [ ] Separate home + clipboard + network policy
-- [ ] Per-app netns kill + Flatpak/portal scopes
-- [ ] Freeze / dispose profile actions
+- [x] `cicada-run` wraps Helium + KeePassXC (real bwrap, not bind-all)
+- [x] `cicada-profile`: Work / Personal / Burner (directory homes; `--encrypt` LUKS; `--user` Unix UID)
+- [x] Freeze / dispose (encrypted unmount; dispose is `cicada-auth` gated)
 
 ## Phase 4 — Hard custom (ongoing)
 
-- [ ] LUKS duress keyslot + timing-safe initramfs hook
-- [ ] TPM2 lockout / PCR sealing where hardware allows
+- [x] LUKS duress keyslot + timing-padded initramfs hook (`cicada-crypt`)
+- [x] TPM2 enroll helper + Pixel quote bundle (`cicada-tpm-enroll`, `cicada-attest`)
+- [x] restic wrapper (`cicada-backup`)
+- [x] Amnesic live USB (`docs/AMNESIC.md`)
 - [ ] Signed ISO + reproducible build CI
-- [ ] Auditor-class TPM quotes (approximate; not Titan M2)
-- [ ] Tier-3 hardware docs (Librem / NitroPad)
+- [ ] Tier-3 hardware docs (Librem / NitroPad / Heads)

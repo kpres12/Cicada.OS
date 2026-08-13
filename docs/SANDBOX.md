@@ -80,7 +80,7 @@ Graphene's trick is the **settings page**, not the kernel. Cicada Scopes is that
 - Deny looks like "network down", not a crash — wrappers return ENETUNREACH / empty portal
 - Changing a scope restarts that sandbox only
 
-v0 ships the panel, the store (`~/.local/share/cicada/scopes/`), and enforcement on Helium (`chromium` wrapper) and KeePassXC. Helium defaults `NETWORK=allow` so the browser still works; camera/mic stay deny. KeePassXC defaults `NETWORK=deny`.
+v0 ships the panel, the store, and enforcement on Helium and KeePassXC. `cicada-run` uses a real bwrap (ro `/usr` `/etc`, tmpfs home + binds) — not `--bind / /`. Dock/desktop `.desktop` files call `/usr/local/bin/chromium` and `/usr/local/bin/keepassxc`. Kitty stays unsandboxed so you can still administer the machine. Helium defaults `NETWORK=allow` and `FILES=portal` (Downloads + profile only). KeePassXC defaults `NETWORK=deny`. `cicada-profile switch` points the next launches at another home.
 
 ## What we will not do
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Chromium wrapper. Loads Graphene's hardened_malloc when present (AUR — not on the ISO).
-# Official-repo ISO uses stock glibc malloc until docs/aur-audit.md clears the PKGBUILD.
+# Browser wrapper: Helium if the user installed it, else Arch chromium.
+# Preloads GrapheneOS hardened_malloc when the library is on disk.
 set -euo pipefail
+
 HM=""
 for cand in /usr/lib/libhardened_malloc.so /usr/lib/hardened_malloc/libhardened_malloc.so; do
   if [[ -f "${cand}" ]]; then
@@ -9,10 +10,19 @@ for cand in /usr/lib/libhardened_malloc.so /usr/lib/hardened_malloc/libhardened_
     break
   fi
 done
-if [[ -n "${HM}" ]]; then
+if [[ -n "${HM}" && ! -f /etc/cicada/hardened-malloc-disable ]]; then
   export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
 fi
+
+BIN=/usr/bin/chromium
+for cand in /usr/bin/helium /usr/bin/helium-browser /usr/lib/helium/helium; do
+  if [[ -x "${cand}" ]]; then
+    BIN="${cand}"
+    break
+  fi
+done
+
 if command -v cicada-run >/dev/null 2>&1; then
-  exec cicada-run org.cicada.helium -- /usr/bin/chromium "$@"
+  exec cicada-run org.cicada.helium -- "${BIN}" "$@"
 fi
-exec /usr/bin/chromium "$@"
+exec "${BIN}" "$@"

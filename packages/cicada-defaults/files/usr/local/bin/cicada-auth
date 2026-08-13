@@ -5,13 +5,13 @@ set -euo pipefail
 
 usage() {
   echo "usage: cicada-auth confirm ACTION" >&2
-  echo "gated: install  vpn.off  duress.enroll" >&2
+  echo "gated: install  vpn.off  duress.enroll  profile.dispose" >&2
   exit 1
 }
 
 gated() {
   case "$1" in
-    install|vpn.off|duress.enroll) return 0 ;;
+    install|vpn.off|duress.enroll|profile.dispose) return 0 ;;
     *) return 1 ;;
   esac
 }

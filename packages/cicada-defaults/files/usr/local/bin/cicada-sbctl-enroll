@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Create and enroll sbctl keys. Requires firmware in Setup Mode. No-op otherwise.
+set -euo pipefail
+if ! command -v sbctl >/dev/null 2>&1; then
+  echo "sbctl not installed"
+  exit 2
+fi
+[[ ${EUID} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+sbctl status || true
+if ! sbctl status 2>/dev/null | grep -qi 'setup mode.*enabled\|setup mode:.*yes'; then
+  echo "firmware is not in Setup Mode. Enter firmware, enable Setup Mode / clear keys, then retry."
+  echo "Apple EFI: this will not work. Framework / Heads machines: yes."
+  exit 2
+fi
+sbctl create-keys
+sbctl enroll-keys --microsoft || sbctl enroll-keys
+sbctl sign-all -g || true
+command -v cicada-seal >/dev/null && cicada-seal append sbctl.enroll "{}" >/dev/null 2>&1 || true
+echo "sbctl enrolled. Kernel updates re-sign via /etc/pacman.d/hooks/zz-cicada-sbctl.hook"

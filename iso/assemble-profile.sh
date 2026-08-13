@@ -96,6 +96,7 @@ wants="${PROFILE}/airootfs/etc/systemd/system/multi-user.target.wants"
 mkdir -p "${wants}"
 ln -sfn /etc/systemd/system/cicada-radios-off.service "${wants}/cicada-radios-off.service"
 ln -sfn /etc/systemd/system/cicada-firstboot.service "${wants}/cicada-firstboot.service"
+ln -sfn /etc/systemd/system/cicada-amnesic.service "${wants}/cicada-amnesic.service"
 ln -sfn /usr/lib/systemd/system/nftables.service "${wants}/nftables.service"
 
 # Desktop Wi-Fi: NetworkManager owns the stack. networkd+iwd-standalone fight NM.
@@ -149,8 +150,17 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-attest"]="0:0:755"
   ["/usr/local/bin/cicada-beacon"]="0:0:755"
   ["/usr/local/bin/cicada-auth"]="0:0:755"
+  ["/usr/local/bin/cicada-tpm-enroll"]="0:0:755"
+  ["/usr/local/bin/cicada-sbctl-enroll"]="0:0:755"
+  ["/usr/local/bin/cicada-backup"]="0:0:755"
+  ["/usr/local/bin/cicada-quote-verify"]="0:0:755"
+  ["/usr/local/lib/cicada/install-chroot.sh"]="0:0:755"
   ["/usr/local/bin/chromium"]="0:0:755"
   ["/usr/local/bin/keepassxc"]="0:0:755"
+  ["/usr/local/bin/cicada-panic"]="0:0:755"
+  ["/usr/local/bin/cicada-amnesic"]="0:0:755"
+  ["/usr/local/bin/cicada-profile-helper"]="0:0:755"
+  ["/etc/sudoers.d/cicada-profile"]="0:0:440"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"
 )'''
@@ -193,7 +203,7 @@ python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-extra = " intel_iommu=on iommu.passthrough=0 init_on_alloc=1 init_on_free=1"
+extra = " intel_iommu=on iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 count = 0
 for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
     text = path.read_text()
@@ -233,9 +243,26 @@ else:
     dest = entries / "03-cicada-hardened.conf"
     dest.write_text(text)
     print(f"==> hardened boot entry {dest.name}")
+
+# Tails-shaped live: copy ISO into RAM so the stick can leave; yank still panic-reboots.
+src = next(entries.glob("01-*.conf"), None) if entries.exists() else None
+if src is not None:
+    text = src.read_text()
+    text = text.replace("sort-key 01", "sort-key 04")
+    text = text.replace("Cicada.OS live", "Cicada.OS live (amnesic — copy to RAM)")
+    if "copytoram" not in text:
+        text = text.replace(
+            "archisosearchuuid=%ARCHISO_UUID%",
+            "archisosearchuuid=%ARCHISO_UUID% copytoram cow_spacesize=2G",
+        )
+    dest = entries / "00-cicada-amnesic.conf"
+    dest.write_text(text)
+    print(f"==> amnesic copytoram boot entry {dest.name}")
 PY
 
 chmod 755 "${PROFILE}/airootfs/usr/local/bin/"* 2>/dev/null || true
+chmod 755 "${PROFILE}/airootfs/usr/local/lib/cicada/"* 2>/dev/null || true
+chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-profile" 2>/dev/null || true
 chmod 400 "${PROFILE}/airootfs/etc/shadow"
 
 echo "==> assembled ${PROFILE}"

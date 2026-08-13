@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=Web
-Exec=chromium
+Exec=/usr/local/bin/chromium
 Icon=web-browser
 Terminal=false
