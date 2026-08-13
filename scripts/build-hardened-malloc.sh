@@ -15,8 +15,36 @@ rm -rf "${WORK}"
 mkdir -p "${WORK}"
 echo "==> hardened_malloc tag ${TAG}"
 git clone --depth 1 --branch "${TAG}" https://github.com/GrapheneOS/hardened_malloc.git "${WORK}"
+
+# GCC 16 / libstdc++ dropped std::__throw_bad_alloc. Tag 14 still uses it.
+python3 - "${WORK}/new.cc" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+text = p.read_text()
+text = text.replace("std::__throw_bad_alloc();", "throw std::bad_alloc();")
+p.write_text(text)
+PY
+
+# ISO is built in QEMU amd64; -march=native would follow the emulator, not the Air.
+# x86-64-v3 = AVX2/BMI (Broadwell MBA 2015–2017 and typical daily-driver PCs).
+python3 - "${WORK}/Makefile" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+text = p.read_text()
+if "-march=native" not in text:
+    raise SystemExit("Makefile missing -march=native")
+p.write_text(text.replace("-march=native", "-march=x86-64-v3"))
+PY
 make -C "${WORK}" -j"$(nproc)"
+
+so="$(find "${WORK}" -name 'libhardened_malloc.so' -print | head -n 1)"
+if [[ -z "${so}" ]]; then
+  echo "==> hardened_malloc: make produced no .so" >&2
+  exit 1
+fi
 mkdir -p "${DEST}/usr/lib" "${DEST}/etc/cicada"
-cp -a "${WORK}/libhardened_malloc.so" "${DEST}/usr/lib/libhardened_malloc.so"
+cp -a "${so}" "${DEST}/usr/lib/libhardened_malloc.so"
 echo "${TAG}" > "${DEST}/etc/cicada/hardened_malloc.version"
-echo "==> installed libhardened_malloc.so (${TAG})"
+echo "==> installed libhardened_malloc.so (${TAG}) from ${so}"
