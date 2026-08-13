@@ -1,0 +1,7 @@
+.git
+out
+work
+*.iso
+vendor/Hyprland
+vendor/archiso/.git
+**/.DS_Store

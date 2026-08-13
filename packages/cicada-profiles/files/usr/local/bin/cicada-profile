@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# v0 stub — layout for Graphene-like profiles.
+# Future: separate homes, net ns, clipboard policy, freeze/dispose.
+
+BASE="${CICADA_PROFILE_ROOT:-$HOME/.local/share/cicada/profiles}"
+mkdir -p "${BASE}"
+
+usage() {
+  cat <<'EOF'
+cicada-profile — Cicada compartment profiles (stub)
+
+Usage:
+  cicada-profile list
+  cicada-profile create <name>
+  cicada-profile switch <name>     # stub: prints path only
+  cicada-profile freeze <name>     # stub
+  cicada-profile dispose <name>    # deletes profile dir
+
+Profiles are the north-star isolation UX (lighter than Qubes).
+EOF
+}
+
+cmd="${1:-}"
+name="${2:-}"
+
+case "${cmd}" in
+  list)
+    if compgen -G "${BASE}/*" >/dev/null; then
+      for d in "${BASE}"/*; do
+        [[ -d "${d}" ]] && printf '%s\n' "$(basename "${d}")"
+      done
+    else
+      echo "(no profiles yet — try: cicada-profile create personal)"
+    fi
+    ;;
+  create)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    dest="${BASE}/${name}"
+    mkdir -p "${dest}"/{home,apps,state}
+    printf 'created profile %s at %s\n' "${name}" "${dest}"
+    ;;
+  switch)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    dest="${BASE}/${name}"
+    [[ -d "${dest}" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
+    echo "stub: would enter profile ${name} (${dest})"
+    echo "next: bubblewrap/nspawn session + net policy"
+    ;;
+  freeze)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    touch "${BASE}/${name}/state/FROZEN"
+    echo "stub: froze ${name}"
+    ;;
+  dispose)
+    [[ -n "${name}" ]] || { usage; exit 1; }
+    rm -rf "${BASE:?}/${name}"
+    echo "disposed ${name}"
+    ;;
+  *)
+    usage
+    ;;
+esac

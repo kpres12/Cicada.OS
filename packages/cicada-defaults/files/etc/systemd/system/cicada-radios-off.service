@@ -1,0 +1,14 @@
+[Unit]
+Description=Cicada: soft-block Wi-Fi and Bluetooth at boot
+After=multi-user.target
+ConditionPathExists=/etc/cicada/defaults.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/cicada/defaults.env
+ExecStart=/usr/local/bin/cicada-radios-off
+ExecStop=/usr/bin/rfkill unblock wifi bluetooth
+
+[Install]
+WantedBy=multi-user.target

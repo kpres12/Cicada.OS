@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Soft-block radios — mirrors secureblue-style hardening default.
+if [[ "${CICADA_RADIOS_OFF_DEFAULT:-1}" != "1" ]]; then
+  exit 0
+fi
+rfkill block wifi || true
+rfkill block bluetooth || true
+logger -t cicada "Wi-Fi and Bluetooth soft-blocked (defaults)"

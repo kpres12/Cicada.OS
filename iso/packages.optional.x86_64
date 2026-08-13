@@ -1,0 +1,3 @@
+# Pulled in when CICADA_FULL=1 (slower ISO, closer to daily-driver).
+chromium
+firefox

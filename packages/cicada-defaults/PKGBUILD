@@ -1,0 +1,20 @@
+# Maintainer: Cicada.OS
+pkgname=cicada-defaults
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cicada.OS hostile privacy/security defaults"
+arch=('any')
+url="https://github.com/cicada-os/Cicada.OS"
+license=('GPL-3.0-or-later')
+depends=(
+  'nftables'
+  'wireless_tools'
+  'usbguard'
+  'systemd'
+)
+source=()
+sha256sums=()
+
+package() {
+  cp -a "${startdir}/files/." "${pkgdir}/"
+}

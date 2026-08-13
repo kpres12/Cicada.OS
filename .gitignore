@@ -1,0 +1,10 @@
+out/
+work/
+*.iso
+*.tar.zst
+*.pkg.tar*
+src/
+pkg/
+.DS_Store
+*.log
+.archiso/

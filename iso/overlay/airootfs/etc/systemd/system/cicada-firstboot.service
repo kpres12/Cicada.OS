@@ -1,0 +1,11 @@
+[Unit]
+Description=Cicada first boot hooks
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

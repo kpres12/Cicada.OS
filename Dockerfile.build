@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# Build with: docker build --platform linux/amd64 -f Dockerfile.build ...
+FROM archlinux:latest
+
+# QEMU/Rosetta amd64 emulation cannot satisfy pacman's seccomp sandbox.
+RUN sed -i \
+      -e 's/^#DisableSandbox/DisableSandbox/' \
+      -e 's/^DownloadUser/#DownloadUser/' \
+      /etc/pacman.conf \
+ && grep -q '^DisableSandbox' /etc/pacman.conf || printf '\nDisableSandbox\n' >> /etc/pacman.conf \
+ && pacman-key --init \
+ && pacman-key --populate archlinux \
+ && pacman -Syu --noconfirm \
+ && pacman -S --noconfirm --needed \
+      archiso \
+      squashfs-tools \
+      dosfstools \
+      e2fsprogs \
+      libisoburn \
+      mtools \
+      python \
+      rsync \
+      git \
+      reflector \
+ && reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist \
+ && pacman -Sy --noconfirm \
+ && rm -rf /var/cache/pacman/pkg/*
+
+WORKDIR /src
+ENTRYPOINT ["/src/iso/build.sh"]

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Toggle soft-block for wifi + bluetooth
+wifi_soft=$(rfkill list wifi | grep -c "Soft blocked: yes" || true)
+if [[ "${wifi_soft}" -gt 0 ]]; then
+  rfkill unblock wifi
+  rfkill unblock bluetooth
+  notify-send "Cicada RF" "Radios UNBLOCKED" 2>/dev/null || echo "Radios UNBLOCKED"
+else
+  rfkill block wifi
+  rfkill block bluetooth
+  notify-send "Cicada RF" "Radios BLOCKED" 2>/dev/null || echo "Radios BLOCKED"
+fi

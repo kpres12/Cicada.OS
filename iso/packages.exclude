@@ -1,0 +1,4 @@
+# Strip from releng for a privacy-first live image.
+cloud-init
+# conflicts with systemd-resolvconf from releng
+openresolv

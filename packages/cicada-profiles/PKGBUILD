@@ -1,0 +1,15 @@
+# Maintainer: Cicada.OS
+pkgname=cicada-profiles
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cicada.OS Graphene-like user profiles (stub)"
+arch=('any')
+url="https://github.com/cicada-os/Cicada.OS"
+license=('GPL-3.0-or-later')
+depends=('bash' 'util-linux')
+source=()
+sha256sums=()
+
+package() {
+  cp -a "${startdir}/files/." "${pkgdir}/"
+}

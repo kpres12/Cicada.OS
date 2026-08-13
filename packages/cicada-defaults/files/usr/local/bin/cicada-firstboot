@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# First-boot banner / hooks. Expand into a TUI wizard later.
+MARKER=/var/lib/cicada/firstboot-done
+mkdir -p /var/lib/cicada
+if [[ -f "${MARKER}" ]]; then
+  exit 0
+fi
+
+cat <<'EOF'
+╔══════════════════════════════════════════════╗
+║             C I C A D A . O S                ║
+║         nimbus // channel:dev                ║
+║  radios soft-blocked · firewall baseline on  ║
+║  profiles: run `cicada-profile`              ║
+╚══════════════════════════════════════════════╝
+EOF
+
+systemctl enable --now nftables.service 2>/dev/null || true
+systemctl enable --now cicada-radios-off.service 2>/dev/null || true
+touch "${MARKER}"

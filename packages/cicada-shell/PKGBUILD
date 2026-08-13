@@ -1,0 +1,22 @@
+# Maintainer: Cicada.OS
+pkgname=cicada-shell
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cicada.OS Hyprland shell — OT / Evangelion visual language"
+arch=('any')
+url="https://github.com/cicada-os/Cicada.OS"
+license=('GPL-3.0-or-later')
+depends=(
+  'hyprland'
+  'waybar'
+  'wofi'
+  'kitty'
+  'ttf-jetbrains-mono-nerd'
+)
+provides=('cicada-desktop')
+source=()
+sha256sums=()
+
+package() {
+  cp -a "${startdir}/files/." "${pkgdir}/"
+}

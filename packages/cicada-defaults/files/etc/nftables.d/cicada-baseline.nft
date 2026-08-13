@@ -1,0 +1,22 @@
+#!/usr/sbin/nft -f
+# Cicada baseline firewall — default deny inbound, allow established/out
+flush ruleset
+
+table inet cicada {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    ct state established,related accept
+    iif "lo" accept
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+    # SSH closed by default on laptop images
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}

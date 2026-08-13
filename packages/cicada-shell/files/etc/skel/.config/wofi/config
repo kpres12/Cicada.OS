@@ -1,0 +1,9 @@
+style=default
+show=drun
+width=42%
+lines=12
+prompt=CICADA // LAUNCH
+insensitive=true
+allow_images=false
+hide_scroll=true
+no_actions=true

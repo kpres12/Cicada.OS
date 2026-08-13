@@ -1,0 +1,9 @@
+
+  CICADA.OS  //  nimbus  //  channel:dev
+  radios soft-blocked · nftables inbound-deny · sshd masked
+
+  GUI:        Hyprland
+  radios:     cicada-radios-toggle
+  profiles:   cicada-profile
+  install:    archinstall   (use an external disk)
+
