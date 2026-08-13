@@ -7,7 +7,7 @@ North star is Graphene *intent*. Claims stay honest about hardware.
 
 | Category | Status |
 |---|---|
-| Kernel/allocator hardening, radios off, VPN kill switch, browser hardening, telemetry-off, encrypted backups | Off-the-shelf — integration (`hardened_malloc` from GrapheneOS tag 14) |
+| Kernel/allocator hardening, VPN kill switch, browser hardening, telemetry-off, encrypted backups | Off-the-shelf — integration (`hardened_malloc` from GrapheneOS tag 14; Helium official tarball) |
 | Duress wipe, auto-reboot-to-rest, fingerprint PAM hardening | Small custom scripts |
 | Per-app network/sensor permission toggles (sandbox model) | Real engineering — largest piece |
 | Hardware attestation (Auditor-equivalent) | Real gap — no Titan M2 ecosystem |
@@ -32,12 +32,12 @@ Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel 
 Graphene: NFC/BT/UWB off by default; USB-C modes including charging-only-when-locked; new USB blocked at hardware+kernel when locked.
 
 **Cicada:**
-- [x] Wi-Fi / Bluetooth soft-blocked at boot (`cicada-radios-off`)
-- [x] USBGuard; new inserts blocked while `cicada-lock` / hyprlock runs
-- [x] Randomized MAC (NetworkManager cloned-mac + iwd AddressRandomization); LLMNR/mDNS off
+- [ ] Wi-Fi / Bluetooth soft-blocked at boot — **dropped**. This is a laptop. `CICADA_RADIOS_OFF_DEFAULT=0`. WIFI still picks the network; telemetry stays off.
+- [x] USBGuard; HID allowed (MBA keyboard/trackpad); new non-HID inserts blocked. Enabled on live + install.
+- [x] Randomized MAC (NetworkManager cloned-mac); LLMNR/mDNS off
 - [ ] Optional rfkill NFC where hardware exposes it
 
-**Gap:** almost no laptop vendor exposes Graphene-style hardware USB controller lockout. USBGuard is policy-level.
+**Gap:** almost no laptop vendor exposes Graphene-style hardware USB controller lockout. USBGuard is policy-level. Live previously disabled USBGuard entirely; HID-allow rules make it safe on the Air.
 
 ## 3. Verified boot / anti-persistence
 
@@ -99,12 +99,11 @@ Graphene: DNS leak on VPN crash, multicast bypass block, no cross-profile tunnel
 Graphene Vanadium: JIT off by default with per-site toggle, strict site isolation, 3P cookies off, DRM off, WebGPU off, remote services stripped.
 
 **Cicada:**
-- [ ] Helium (ungoogled-Chromium) as default when packaged
-- [x] Managed policy: 3P cookies session-only, WebRTC non-proxied UDP off, DoH off (use resolved), Privacy Sandbox off, HTTPS-Only, DDG search
-- [x] Recommended policy: JIT off, WebGPU off (user-overridable — daily-driver escape hatch)
+- [x] Helium as default browser — official `helium-linux` **0.15.4.1** tarball, sha256 in `channel/helium.lock`. Not AUR.
+- [x] Managed policy: JIT off, WebGPU off, 3P cookies, WebRTC non-proxied UDP off, DoH off, Privacy Sandbox off, HTTPS-Only, DDG search (not recommended — not user-overridable via chrome://flags)
 - [ ] Per-site JIT toggle is custom policy work, not inherited
 
-v0 ISO ships no browser extras unless `CICADA_FULL=1` (Chromium/Firefox fallback).
+See [docs/PRODUCT.md](PRODUCT.md) for launcher monopoly + default-deny.
 
 ## 9. Encrypted backups, logging, crash reporting
 

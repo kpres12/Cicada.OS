@@ -92,13 +92,18 @@ copy_product() {
     /etc/modprobe.d \
     /etc/NetworkManager/conf.d \
     /etc/systemd/resolved.conf.d \
+    /etc/systemd/journald.conf.d \
+    /etc/systemd/sleep.conf.d \
+    /etc/systemd/logind.conf.d \
     /etc/chromium \
+    /etc/helium \
     /etc/usbguard \
     /etc/iwd \
     /etc/tmpfiles.d \
     /etc/pacman.d/hooks \
     /etc/wireguard \
-    /etc/profile.d
+    /etc/profile.d \
+    /etc/pam.d
   do
     if [[ -e "${d}" ]]; then
       mkdir -p "${mnt}$(dirname "${d}")"
@@ -112,6 +117,18 @@ copy_product() {
   [[ -f /usr/lib/initcpio/hooks/cicada-crypt ]] && cp -a /usr/lib/initcpio/hooks/cicada-crypt "${mnt}/usr/lib/initcpio/hooks/"
   [[ -f /usr/lib/initcpio/install/cicada-crypt ]] && cp -a /usr/lib/initcpio/install/cicada-crypt "${mnt}/usr/lib/initcpio/install/"
   [[ -f /usr/lib/libhardened_malloc.so ]] && cp -a /usr/lib/libhardened_malloc.so "${mnt}/usr/lib/"
+  if [[ -d /opt/helium ]]; then
+    mkdir -p "${mnt}/opt"
+    rsync -a /opt/helium "${mnt}/opt/"
+  fi
+  if [[ -e /usr/bin/helium ]]; then
+    mkdir -p "${mnt}/usr/bin"
+    cp -a /usr/bin/helium "${mnt}/usr/bin/"
+  fi
+  if [[ -e /usr/bin/helium-browser ]]; then
+    mkdir -p "${mnt}/usr/bin"
+    cp -a /usr/bin/helium-browser "${mnt}/usr/bin/"
+  fi
   [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && cp -a /etc/sudoers.d/cicada-profile "${mnt}/etc/sudoers.d/" 2>/dev/null || true
 }
 
@@ -186,10 +203,69 @@ read -r -p "Type the device path to continue: " typed
 [[ "${typed}" == "${TARGET}" ]] || die "aborted"
 command -v cicada-auth >/dev/null && cicada-auth confirm install
 
-read -r -s -p "LUKS passphrase: " p1; echo
-read -r -s -p "Again: " p2; echo
-[[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
-[[ ${#p1} -ge 8 ]] || die "passphrase too short"
+# ---------------------------------------------------------------------------
+# LUKS passphrase.
+#
+# On hardware with a secure element (GrapheneOS/Titan M2) a 6-digit PIN is safe
+# because the SE rate-limits guessing. Nothing here rate-limits anything: an
+# adversary images the disk once and grinds offline forever. The passphrase is
+# therefore the entire security boundary, and its entropy is the whole story.
+# An 8-character human-chosen password is ~30 bits and falls in days.
+# ---------------------------------------------------------------------------
+# Crockford base32 minus I/L/O/U — unambiguous when transcribed by hand.
+CICADA_PW_ALPHABET='0123456789abcdefghjkmnpqrstvwxyz'
+
+gen_passphrase() {
+  # $1 = number of characters. 5 bits each: 16 chars = 80 bits, 20 = 100 bits.
+  local n="$1" out="" i byte
+  for ((i = 0; i < n; i++)); do
+    # Rejection-free: 32-char alphabet divides 256 evenly, so masking is unbiased.
+    byte=$(od -An -N1 -tu1 < /dev/urandom | tr -d ' ')
+    out+="${CICADA_PW_ALPHABET:$((byte % 32)):1}"
+    if (( (i + 1) % 4 == 0 && i + 1 < n )); then out+="-"; fi
+  done
+  printf '%s' "${out}"
+}
+
+# Conservative check for a passphrase the user typed themselves. Charset maths
+# wildly overstates human-chosen strength, so gate on structure instead: either
+# a real multi-word passphrase, or long enough that it cannot be a single word.
+passphrase_ok() {
+  local p="$1" words
+  words="$(printf '%s' "${p}" | tr -s '[:space:]' '\n' | grep -c . || true)"
+  [[ "${words}" -ge 6 ]] && return 0
+  [[ ${#p} -ge 24 ]] && return 0
+  return 1
+}
+
+echo
+echo "LUKS passphrase. This is the only thing protecting the disk once it is"
+echo "seized — there is no hardware rate-limiting on this or any x86 laptop."
+echo "  1) Generate one for me (recommended, 80 bits — write it down NOW)"
+echo "  2) Generate a longer one (100 bits)"
+echo "  3) I will type my own (needs 6+ words or 24+ characters)"
+read -r -p "Choice [1]: " pwchoice
+case "${pwchoice:-1}" in
+  1|2)
+    [[ "${pwchoice:-1}" == 2 ]] && p1="$(gen_passphrase 20)" || p1="$(gen_passphrase 16)"
+    echo
+    echo "  ┌────────────────────────────────────────────────┐"
+    printf '  │  %-44s  │\n' "${p1}"
+    echo "  └────────────────────────────────────────────────┘"
+    echo
+    echo "Write this on paper before continuing. It is not stored anywhere and"
+    echo "cannot be recovered. Losing it means the disk is gone."
+    read -r -p "Type it back to confirm you copied it: " p2
+    [[ "${p1}" == "${p2}" ]] || die "passphrase not confirmed — nothing was written"
+    ;;
+  3)
+    read -r -s -p "LUKS passphrase: " p1; echo
+    read -r -s -p "Again: " p2; echo
+    [[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
+    passphrase_ok "${p1}" || die "passphrase too weak: use 6+ words or 24+ characters (option 1 generates one)"
+    ;;
+  *) die "invalid choice" ;;
+esac
 
 read -r -s -p "User (cicada) password: " u1; echo
 read -r -s -p "Again: " u2; echo
@@ -221,8 +297,22 @@ fi
 [[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
 
 mkfs.fat -F32 -n CICADAESP "${ESP}"
+# Argon2id memory cost is what actually defeats GPU and ASIC attacks — it is
+# memory-bandwidth bound, so each doubling roughly doubles attacker cost. But
+# the initramfs must have this much RAM free at unlock time or the disk becomes
+# unbootable, so scale to the machine rather than hardcoding: a quarter of RAM,
+# capped at 1 GiB, floored at the cryptsetup default so tiny machines still work.
+mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+if [[ "${mem_kb}" -gt 0 ]]; then
+  PBKDF_MEM=$(( mem_kb / 4 ))
+  (( PBKDF_MEM > 1048576 )) && PBKDF_MEM=1048576
+  (( PBKDF_MEM < 262144 )) && PBKDF_MEM=262144
+else
+  PBKDF_MEM=262144
+fi
+echo "==> Argon2id memory cost: $(( PBKDF_MEM / 1024 )) MiB (RAM $(( mem_kb / 1024 )) MiB)"
 printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 \
-  --pbkdf argon2id --pbkdf-memory 262144 --pbkdf-parallel 4 --iter-time 4000 \
+  --pbkdf argon2id --pbkdf-memory "${PBKDF_MEM}" --pbkdf-parallel 4 --iter-time 5000 \
   --batch-mode "${ROOTP}" -
 printf '%s' "${p1}" | cryptsetup open "${ROOTP}" cicada -
 unset p1 p2

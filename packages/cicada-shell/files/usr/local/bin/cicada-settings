@@ -169,25 +169,65 @@ screenshot() {
   fi
 }
 
+profiles() {
+  local pick name
+  pick="$(zenity --list --title="Profiles" \
+    --text="Work is a real Unix user (different UID). Directory profiles only re-point cicada-run HOME." \
+    --column=Action --column=Does --print-column=1 --hide-header \
+    --width=560 --height=360 \
+    "List" "Show profiles on this machine" \
+    "Create Work (UID)" "cicada-work — separate user, login on tty3" \
+    "Login Work" "Open Hyprland as cicada-work (Ctrl+Alt+F3)" \
+    "Create Burner" "Folder home for throwaway sessions" \
+    "Switch Burner" "Next sandboxed apps use Burner HOME" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    List)
+      cicada-profile list 2>/dev/null | zenity --text-info --title="Profiles" --width=480 --height=320 || true
+      ;;
+    "Create Work (UID)")
+      if zenity --question --title="Create Work" \
+        --text="Creates Unix user cicada-work (no sudo). You will set its login password."; then
+        kitty --title CICADA-PROFILE -e bash -lc 'cicada-profile create work --user; read -r -p "Enter…"'
+      fi
+      ;;
+    "Login Work")
+      cicada-profile login work || zenity --error --text="Create Work first, or see terminal output."
+      ;;
+    "Create Burner")
+      cicada-profile create burner
+      notify-send "Cicada" "Burner profile created" 2>/dev/null || true
+      ;;
+    "Switch Burner")
+      cicada-profile switch burner
+      notify-send "Cicada" "Active profile: burner" 2>/dev/null || true
+      ;;
+  esac
+}
+
 case "${1:-}" in
   wifi|Wi-Fi) exec cicada-wifi ;;
   sound|Sound) sound; exit 0 ;;
   brightness|Brightness) brightness; exit 0 ;;
   displays|Displays) displays; exit 0 ;;
   appearance|Appearance) appearance; exit 0 ;;
+  scopes|Scopes) exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
+  profiles|Profiles) profiles; exit 0 ;;
   lock|Lock) exec cicada-lock ;;
 esac
 
 pick="$(zenity --list --title="Settings" \
-  --text="Click a row. Wi-Fi stays off until you turn it on." \
+  --text="Click a row. Telemetry stays off. Unknown apps are default-deny." \
   --column=Setting --column=Does \
   --print-column=1 --hide-header \
-  --width=520 --height=480 \
-  "Wi-Fi" "On/off, then pick a network from a scan" \
+  --width=560 --height=560 \
+  "Wi-Fi" "Pick a network from a scan" \
   "Sound" "Volume, mute, headphones" \
   "Brightness" "Screen brightness" \
   "Displays" "How large the UI is" \
   "Appearance" "Dark/light and desktop icon size" \
+  "App permissions" "Scopes — network/files/camera per app" \
+  "Profiles" "Work (UID) / Burner compartments" \
   "Notifications" "Notification center" \
   "Dock left" "Keep the dock on the left" \
   "Dock bottom" "Move the dock to the bottom" \
@@ -203,11 +243,13 @@ case "${pick}" in
   Brightness) brightness ;;
   Displays) displays ;;
   Appearance) appearance ;;
+  "App permissions") exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
+  Profiles) profiles ;;
   Notifications) exec swaync-client -t -sw ;;
   "Dock left") restart_dock left ;;
   "Dock bottom") restart_dock bottom ;;
   "Dock right") restart_dock right ;;
   Lock) exec cicada-lock ;;
   Screenshot) screenshot ;;
-  "Start here") exec kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt ;;
+  "Start here") exec cicada-run org.cicada.start -- kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt ;;
 esac

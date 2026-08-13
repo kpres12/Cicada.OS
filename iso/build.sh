@@ -28,6 +28,10 @@ if [[ -x "${ROOT}/scripts/build-hardened-malloc.sh" ]]; then
     echo "==> hardened_malloc build skipped (ISO still boots; preload is a no-op)"
 fi
 
+# Official Helium tarball (hash-pinned). Fail the ISO if this cannot land —
+# Chromium is no longer the product browser.
+"${ROOT}/scripts/install-helium.sh" "${PROFILE}/airootfs"
+
 echo "==> mkarchiso  work=${WORK}/mkarchiso  out=${OUT}"
 rm -rf "${WORK}/mkarchiso"
 mkdir -p "${WORK}/mkarchiso"

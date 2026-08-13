@@ -81,8 +81,27 @@ systemctl enable NetworkManager.service
 systemctl enable nftables.service
 systemctl enable usbguard.service || true
 systemctl enable apparmor.service || true
-systemctl enable cicada-radios-off.service || true
 systemctl enable cicada-locked-reboot.timer || true
+# The installed system needs firstboot too: it is what initialises the seal log
+# and the device attestation key. Previously the unit lived only in the live
+# overlay, so on a real install the binary shipped but nothing ever ran it.
+systemctl enable cicada-firstboot.service || true
+# Hardware AFU ceiling; exits 2 and stays inactive on boards with no watchdog.
+systemctl enable cicada-watchdog.service || true
+systemctl enable cicada-memwipe.service || true
+
+# Use the strongest root of trust this machine actually has. On a TPM2 laptop
+# (Framework, ThinkPad, most modern x86) sealing the key to PCRs gives the
+# hardware-enforced ceiling that an Apple-EFI MacBook can never have. The
+# passphrase keyslot is always kept, so a firmware update that changes the PCRs
+# degrades to "type your passphrase" rather than "your disk is gone".
+if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+  echo "==> TPM2 present: sealing LUKS key to PCRs"
+  cicada-tpm-enroll || echo "==> TPM enrol failed; passphrase-only (still fine)"
+else
+  echo "==> no TPM2: passphrase is the sole root of trust on this machine"
+  echo "    consider a USB token: cicada-keyfile-enroll --and --device /dev/sdX1"
+fi
 systemctl mask sshd.service || true
 
 # Installed system is not the live ISO — no getty autologin.

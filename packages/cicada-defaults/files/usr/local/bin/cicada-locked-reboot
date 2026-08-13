@@ -8,8 +8,21 @@ if [[ -f /etc/cicada/defaults.env ]]; then
   source /etc/cicada/defaults.env
   MAX="${CICADA_LOCK_REBOOT_SEC:-1800}"
 fi
+LID_MAX="${CICADA_LID_REBOOT_SEC:-120}"
 STAMP=/run/cicada/locked-since
 mkdir -p /run/cicada
+
+# A shut lid means the machine is in a bag or in someone else's hands. Collapse
+# the window to BFU accordingly — an AFU machine is one where the volume key is
+# still in RAM and recoverable by anyone who has the hardware.
+lid_closed() {
+  local f
+  for f in /proc/acpi/button/lid/*/state; do
+    [[ -r "${f}" ]] || continue
+    grep -qi closed "${f}" && return 0
+  done
+  return 1
+}
 
 if pgrep -x hyprlock >/dev/null 2>&1; then
   if [[ ! -f "${STAMP}" ]]; then
@@ -17,6 +30,9 @@ if pgrep -x hyprlock >/dev/null 2>&1; then
   fi
   start="$(cat "${STAMP}")"
   now="$(date +%s)"
+  if lid_closed; then
+    MAX="${LID_MAX}"
+  fi
   if (( now - start >= MAX )); then
     logger -t cicada "locked ${MAX}s — forcing reboot to rest (LUKS / BFU)"
     systemctl reboot --force || echo b > /proc/sysrq-trigger

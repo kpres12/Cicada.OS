@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Exec=/usr/local/bin/cicada-files
+Icon=system-file-manager
+Terminal=false
+StartupNotify=false
+Categories=System;FileManager;
+MimeType=inode/directory;

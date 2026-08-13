@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Exec=cicada-run org.cicada.settings -- cicada-settings
+Icon=preferences-system
+Terminal=false
+StartupNotify=false
+Categories=Settings;DesktopSettings;

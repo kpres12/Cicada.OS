@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Terminal
-Exec=kitty
+Exec=cicada-run org.cicada.kitty -- kitty
 Icon=utilities-terminal
 StartupNotify=false
 Terminal=false

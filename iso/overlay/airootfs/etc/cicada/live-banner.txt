@@ -1,8 +1,9 @@
 
   CICADA.OS  //  nimbus  //  channel:dev
-  radios off until you click WIFI · inbound deny · sshd masked
+  wifi ready · telemetry off · inbound deny · sshd masked
 
   click:      SETTINGS · WIFI · CLOSE · dock · desktop icons
-  wifi:       on/off, then pick a scanned network
+  wifi:       pick a scanned network
+  browser:    Helium (dock Web)
   install:    sudo cicada-install --target /dev/sdX   (external disk; Apple internal refused)
 

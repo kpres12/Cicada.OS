@@ -36,7 +36,7 @@ Yes. Nobody has finished it as a daily-driver OS.
 | **macOS TCC / Windows AppContainer** | OS-mediated permission prompts | Closest *UX*. Requires apps to call OS APIs; Linux apps mostly do not. |
 | **secureblue** | Hardening + Flatpak recommendation | Does not add a new permission model. |
 
-The honest read: **the plumbing exists (bwrap, netns, portals, USB portal). The missing product is: the OS is the only launcher, default-deny, and a Graphene-like scopes panel.**
+The honest read: **the plumbing exists (bwrap, netns, portals, USB portal). Cicada owns the launcher and default-deny scopes.** Remaining work is the signed channel and broader app catalog — not inventing a new kernel MAC.
 
 ## Cicada model — three layers
 
@@ -80,7 +80,7 @@ Graphene's trick is the **settings page**, not the kernel. Cicada Scopes is that
 - Deny looks like "network down", not a crash — wrappers return ENETUNREACH / empty portal
 - Changing a scope restarts that sandbox only
 
-v0 ships the panel, the store, and enforcement on Helium and KeePassXC. `cicada-run` uses a real bwrap (ro `/usr` `/etc`, tmpfs home + binds) — not `--bind / /`. Dock/desktop `.desktop` files call `/usr/local/bin/chromium` and `/usr/local/bin/keepassxc`. Kitty stays unsandboxed so you can still administer the machine. Helium defaults `NETWORK=allow` and `FILES=portal` (Downloads + profile only). KeePassXC defaults `NETWORK=deny`. `cicada-profile switch` points the next launches at another home.
+v0 ships the panel (Settings → App permissions / Super+I), the launcher catalog, and enforcement on Helium, Files, and KeePassXC. `cicada-run` defaults are **deny/deny**. Known apps ship `.env` overrides. Dock / Wofi / MIME only start Cicada wrappers — see [docs/PRODUCT.md](PRODUCT.md). Kitty / Settings / Wi-Fi stay host-admin (identity via app-id, no bwrap).
 
 ## What we will not do
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=Cicada free-RAM scrub before power off
+DefaultDependencies=no
+# Late: after filesystems are read-only and services are down, so the memory
+# being scrubbed is genuinely free rather than about to be reused.
+After=umount.target final.target
+Before=poweroff.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-memwipe
+# A slow disk or an odd tmpfs must never wedge shutdown — a machine that will
+# not power off is worse than one with unscrubbed free pages.
+TimeoutStartSec=45
+RemainAfterExit=no
+
+[Install]
+WantedBy=poweroff.target reboot.target halt.target

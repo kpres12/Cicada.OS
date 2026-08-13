@@ -9,14 +9,26 @@ mkdir -p "${STORE}"
 APPS=(
   "org.cicada.helium|HELIUM|browser"
   "org.keepassxc.KeePassXC|KEEPASSXC|secrets"
+  "org.cicada.files|FILES|files"
   "org.cicada.kitty|KITTY|terminal"
 )
 
-# Browser/terminal need the net; secrets default-deny. Camera/mic stay off until toggled.
+# Browser/terminal need the net; files need the home; secrets default-deny.
 defaults_for() {
-  local net=allow
-  [[ "$1" == "org.keepassxc.KeePassXC" ]] && net=deny
-  printf 'NETWORK=%s\nFILES=portal\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n' "${net}"
+  case "$1" in
+    org.keepassxc.KeePassXC)
+      printf 'NETWORK=deny\nFILES=portal\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
+      ;;
+    org.cicada.files)
+      printf 'NETWORK=deny\nFILES=allow\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
+      ;;
+    org.cicada.helium|org.cicada.kitty)
+      printf 'NETWORK=allow\nFILES=portal\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
+      ;;
+    *)
+      printf 'NETWORK=deny\nFILES=deny\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
+      ;;
+  esac
 }
 
 ensure_app() {
@@ -81,7 +93,7 @@ HDR
   done
   cat <<'FTR'
 
-  [1] HELIUM   [2] KEEPASSXC   [3] KITTY
+  [1] HELIUM   [2] KEEPASSXC   [3] FILES   [4] KITTY
   toggle:  n net   f files   c camera   m mic   u usb   s sensors
   q quit   (enforced by cicada-run on launch)
 
@@ -106,6 +118,7 @@ cycle() {
 selected=0
 ensure_app org.cicada.helium
 ensure_app org.keepassxc.KeePassXC
+ensure_app org.cicada.files
 ensure_app org.cicada.kitty
 
 while true; do
@@ -119,6 +132,7 @@ while true; do
     1) selected=0 ;;
     2) selected=1 ;;
     3) selected=2 ;;
+    4) selected=3 ;;
     n) NETWORK="$(cycle "${NETWORK}" NETWORK)"; save "${id}" ;;
     f) FILES="$(cycle "${FILES}" FILES)"; save "${id}" ;;
     c) CAMERA="$(cycle "${CAMERA}" OTHER)"; save "${id}" ;;

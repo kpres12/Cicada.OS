@@ -1,0 +1,24 @@
+[Unit]
+Description=Cicada hardware watchdog (AFU ceiling that survives userspace compromise)
+DefaultDependencies=no
+After=local-fs.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cicada-watchdog
+# If this daemon dies the watchdog stays armed and the box resets, which is the
+# intended failure mode. Restart anyway so a transient crash does not turn into
+# a surprise reboot on an unlocked desktop.
+Restart=always
+RestartSec=2
+# systemd must not reap us at shutdown before we send the magic-close, or every
+# clean poweroff looks like a watchdog hang on the next boot.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# No TPM/watchdog on this board is a legitimate state, not a failure.
+SuccessExitStatus=2
+
+[Install]
+WantedBy=multi-user.target

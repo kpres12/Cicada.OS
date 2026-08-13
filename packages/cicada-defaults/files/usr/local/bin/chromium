@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Browser wrapper: Helium if the user installed it, else Arch chromium.
+# Default browser: Helium (official tarball at /opt/helium), else Arch chromium.
 # Preloads GrapheneOS hardened_malloc when the library is on disk.
 set -euo pipefail
 
@@ -14,13 +14,17 @@ if [[ -n "${HM}" && ! -f /etc/cicada/hardened-malloc-disable ]]; then
   export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
 fi
 
-BIN=/usr/bin/chromium
-for cand in /usr/bin/helium /usr/bin/helium-browser /usr/lib/helium/helium; do
+BIN=""
+for cand in /opt/helium/chrome /opt/helium/helium /usr/bin/helium /usr/bin/helium-browser /usr/bin/chromium; do
   if [[ -x "${cand}" ]]; then
     BIN="${cand}"
     break
   fi
 done
+if [[ -z "${BIN}" ]]; then
+  echo "cicada: no browser found (Helium / Chromium)" >&2
+  exit 1
+fi
 
 if command -v cicada-run >/dev/null 2>&1; then
   exec cicada-run org.cicada.helium -- "${BIN}" "$@"

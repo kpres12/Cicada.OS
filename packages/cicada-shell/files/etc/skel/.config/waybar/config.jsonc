@@ -8,33 +8,33 @@
   "modules-right": ["custom/close", "custom/swaync", "network", "pulseaudio", "backlight", "battery", "clock"],
   "custom/cicada": {
     "format": "CICADA",
-    "tooltip": "click: launcher",
+    "tooltip": "click: launcher (Cicada apps only)",
     "interval": "once",
-    "on-click": "wofi --show drun"
+    "on-click": "cicada-wofi"
   },
   "custom/term": {
     "format": "TERM",
-    "tooltip": "Kitty",
+    "tooltip": "Kitty (owner shell)",
     "interval": "once",
-    "on-click": "kitty"
+    "on-click": "cicada-run org.cicada.kitty -- kitty"
   },
   "custom/web": {
     "format": "WEB",
-    "tooltip": "Browser",
+    "tooltip": "Helium",
     "interval": "once",
     "on-click": "/usr/local/bin/chromium"
   },
   "custom/files": {
     "format": "FILES",
-    "tooltip": "Files",
+    "tooltip": "Files (sandboxed)",
     "interval": "once",
-    "on-click": "pcmanfm-qt"
+    "on-click": "cicada-files"
   },
   "custom/settings": {
     "format": "SETTINGS",
-    "tooltip": "Wi-Fi, sound, brightness, dock, lock",
+    "tooltip": "Wi-Fi, sound, scopes, profiles, dock, lock",
     "interval": "once",
-    "on-click": "cicada-settings"
+    "on-click": "cicada-run org.cicada.settings -- cicada-settings"
   },
   "custom/close": {
     "format": "CLOSE",
@@ -76,8 +76,8 @@
     "format-wifi": "WIFI {essid}",
     "format-ethernet": "WIRED",
     "format-disconnected": "WIFI OFF",
-    "tooltip": "click: turn Wi-Fi on and pick a network",
-    "on-click": "cicada-wifi"
+    "tooltip": "click: pick a network",
+    "on-click": "cicada-run org.cicada.wifi -- cicada-wifi"
   },
   "pulseaudio": {
     "format": "VOL {volume}",

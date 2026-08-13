@@ -9,11 +9,11 @@ Every hardening feature must **degrade gracefully**. If it breaks browser, VPN, 
 
 ## Ship order (do not skip ahead)
 
-**Now (desktop):** left dock, Waybar with glanceable RF state, Wofi, pcmanfm-qt (desktop + files), one-click Wi-Fi, wallpaper, Hyprland 0.56-valid config. Radios stay rfkill-blocked at boot; enabling them is a deliberate click.
+**Now (desktop):** launcher monopoly (`cicada-wofi`), left dock, Waybar, pcmanfm-qt via `cicada-files`, Helium, default-deny scopes, Work-as-UID in Settings, HID-allow USBGuard on live, telemetry off. Wi-Fi available at boot.
 
 **Tier 1 (before "daily driver ready"):** LUKS2 + TPM2-with-passphrase-fallback; sbctl Secure Boot + pacman re-sign hook; WireGuard nftables kill switch (tcpdump-tested); `linux-hardened` + `hardened_malloc` actually preloaded; duress LUKS slot with no timing tell; auto-reboot-when-locked; `docs/network-calls.md` telemetry audit.
 
-**Tier 2:** USBGuard while locked; Helium (AUR review required) + JIT-off policy; Flatpak portals with honest docs; Firejail/netns for a short untrusted-app list; restic/borg with a tested restore.
+**Tier 2:** USBGuard while locked; Helium JIT-off policy (managed/recommended Chromium policy); Flatpak portals with honest docs; Firejail/netns for a short untrusted-app list; restic/borg with a tested restore.
 
 **Tier 3 — do not build:** hardware attestation, MTE, kernel per-app sandbox matching Android.
 

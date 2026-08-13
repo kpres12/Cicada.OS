@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Files
-Exec=pcmanfm-qt
+Exec=/usr/local/bin/cicada-files
 Icon=system-file-manager
 StartupNotify=false
 Terminal=false

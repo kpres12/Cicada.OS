@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# PAM hook: duress password entered at a session prompt (hyprlock, sudo, polkit).
+#
+# The LUKS duress slot only exists at power-on. If you are coerced into unlocking
+# a *running* session — the far more likely scenario, and the one an abusive
+# partner or a campus office actually produces — it never fires. This closes
+# that gap: the same wipe, reachable from the lock screen.
+#
+# Invoked by pam_exec with expose_authtok, so the typed secret arrives on stdin.
+# Never echo it, never log it, never write it anywhere.
+#
+# Exits 0 unconditionally. A non-zero exit from an `optional` pam_exec module is
+# ignored, but returning 0 also means a wrong guess here is indistinguishable
+# from this module not existing.
+set -uo pipefail
+
+HASHFILE=/etc/cicada/duress-session.sha256
+[[ -r "${HASHFILE}" ]] || exit 0
+
+read -r -s token || exit 0
+[[ -n "${token}" ]] || exit 0
+
+got="$(printf '%s' "${token}" | sha256sum | awk '{print $1}')"
+token=""
+want="$(tr -d '[:space:]' < "${HASHFILE}")"
+[[ -n "${want}" ]] || exit 0
+
+# Constant-ish comparison: both sides are fixed-length hex from sha256, so a
+# plain string compare leaks nothing useful about the secret itself.
+[[ "${got}" == "${want}" ]] || exit 0
+
+# Match. From here on, do not stop for errors and do not let anything block.
+logger -t cicada "duress credential entered at session prompt — wiping" 2>/dev/null || true
+
+dev=""
+if [[ -f /etc/cicada/install.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/install.env
+  [[ -n "${CICADA_LUKS_UUID:-}" ]] && dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
+fi
+[[ -n "${dev}" && -e "${dev}" ]] \
+  || dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')" || true
+
+if [[ -n "${dev}" && -e "${dev}" ]]; then
+  # Erase every keyslot, then smash the header. After this the volume key that
+  # is still live in RAM is the only copy, and the reset below takes that too.
+  cryptsetup luksErase --batch-mode "${dev}" >/dev/null 2>&1 \
+    || cryptsetup erase --batch-mode "${dev}" >/dev/null 2>&1 || true
+  dd if=/dev/zero of="${dev}" bs=1M count=4 conv=notrunc >/dev/null 2>&1 || true
+  sync || true
+fi
+
+# Hard reset rather than a clean shutdown: a clean shutdown can be inhibited,
+# and every second of delay is a second the key is still in DRAM.
+echo b > /proc/sysrq-trigger 2>/dev/null || systemctl reboot --force || true
+exit 0

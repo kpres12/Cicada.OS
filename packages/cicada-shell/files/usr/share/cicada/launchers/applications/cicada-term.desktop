@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Comment=Kitty (owner shell — not sandboxed)
+Exec=cicada-run org.cicada.kitty -- kitty
+Icon=utilities-terminal
+Terminal=false
+StartupNotify=false
+Categories=System;TerminalEmulator;

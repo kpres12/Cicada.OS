@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# What this machine recorded about itself.
+#
+# Cicada has no telemetry and no crash reporting, which means the only person
+# who can look at a problem is you. This is the viewer for that: the seal log
+# (Cicada's own tamper-evident event chain) and the journal, in one place.
+#
+# The seal log is the honest version of "attestation" on hardware that cannot
+# attest. It cannot prove anything to a third party — no TPM, no measured boot,
+# so nothing signs the boot chain. What it can tell you is whether the machine
+# recorded events you did not cause: a boot while you were away, a lock/unlock
+# you did not perform, a VPN toggle. Tamper-evidence for the owner, not proof
+# for anyone else.
+set -uo pipefail
+
+SEAL_DIR="${CICADA_SEAL_DIR:-/var/lib/cicada/seal}"
+
+usage() {
+  cat <<'EOF'
+cicada-logs — what this machine recorded
+
+  cicada-logs                 recent Cicada events (seal log)
+  cicada-logs --verify        check the seal chain for tampering
+  cicada-logs --boots         boot history
+  cicada-logs --system [N]    last N journal lines (default 200)
+  cicada-logs --errors        warnings and above, this boot
+  cicada-logs --save FILE     write a report you can share deliberately
+
+Nothing here is sent anywhere. There is no automatic crash reporting.
+EOF
+}
+
+seal_events() {
+  if command -v cicada-seal >/dev/null 2>&1 && [[ -r "${SEAL_DIR}/seal.jsonl" ]]; then
+    echo "== Cicada events (${SEAL_DIR}) =="
+    # One event per line as {"ts":..,"event":..}; render without needing jq.
+    python3 - "${SEAL_DIR}/seal.jsonl" <<'PY' 2>/dev/null || tail -50 "${SEAL_DIR}/seal.jsonl"
+import json, sys, pathlib
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines()[-50:]:
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    print(f"  {d.get('ts','?'):<22} {d.get('event','?')}")
+PY
+  else
+    echo "== Cicada events =="
+    echo "  no seal log yet (cicada-firstboot initialises it)"
+  fi
+}
+
+case "${1:-}" in
+  -h|--help) usage ;;
+  --verify)
+    if command -v cicada-seal >/dev/null 2>&1; then
+      cicada-seal verify && echo "seal chain intact" || {
+        echo "SEAL CHAIN BROKEN — events were altered or removed" >&2; exit 1; }
+    else
+      echo "cicada-seal not installed" >&2; exit 1
+    fi
+    ;;
+  --boots) journalctl --list-boots 2>/dev/null || echo "journal is volatile; only this boot exists" ;;
+  --system) journalctl -n "${2:-200}" --no-pager 2>/dev/null || echo "no journal access (try sudo)" ;;
+  --errors) journalctl -b -p warning --no-pager 2>/dev/null || echo "no journal access (try sudo)" ;;
+  --save)
+    out="${2:?usage: cicada-logs --save FILE}"
+    {
+      echo "Cicada log report — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      [[ -r /usr/share/cicada/BUILD-ID ]] && cat /usr/share/cicada/BUILD-ID
+      echo
+      seal_events
+      echo
+      echo "== warnings and above, this boot =="
+      journalctl -b -p warning --no-pager 2>/dev/null | tail -200
+    } > "${out}"
+    chmod 600 "${out}"
+    echo "wrote ${out} — read it before you send it to anyone"
+    ;;
+  "") seal_events ;;
+  *) usage; exit 1 ;;
+esac

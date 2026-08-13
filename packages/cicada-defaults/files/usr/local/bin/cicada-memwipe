@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Best-effort RAM scrub at shutdown.
+#
+# What this does and does not do, precisely, because the difference matters:
+#
+#   init_on_free=1 zeroes pages as they are freed, which covers memory released
+#   during normal operation. It does NOT cover pages still allocated when the
+#   machine goes down, and it does not help if power is cut.
+#
+#   This walks free memory and overwrites it, so that anything freed without
+#   zeroing — or left by a previous boot — is gone before the DRAM is handed to
+#   whoever powers the machine back on. Broadwell has no TME, so unpowered DRAM
+#   retains contents for seconds to minutes; this shrinks what is there to find.
+#
+#   It does NOT wipe pages still in use by the running kernel at the moment of
+#   reset. Nothing in userspace can. The answer to that is reboot-to-BFU, which
+#   is what cicada-locked-reboot and cicada-watchdog are for.
+#
+# Writing through tmpfs rather than raw memory keeps this within the kernel's
+# own accounting so the OOM killer stays out of it.
+set -uo pipefail
+
+# shellcheck disable=SC1091
+[[ -f /etc/cicada/defaults.env ]] && source /etc/cicada/defaults.env
+[[ "${CICADA_MEMWIPE:-1}" == 1 ]] || exit 0
+
+SCRATCH=/run/cicada-memwipe
+MARGIN_KB=$(( 256 * 1024 ))   # leave this much so the shutdown path can finish
+
+cleanup() { umount "${SCRATCH}" 2>/dev/null || true; rmdir "${SCRATCH}" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+avail_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+[[ "${avail_kb}" -gt "${MARGIN_KB}" ]] || exit 0
+wipe_kb=$(( avail_kb - MARGIN_KB ))
+
+mkdir -p "${SCRATCH}"
+mount -t tmpfs -o "size=${wipe_kb}k,mode=700" tmpfs "${SCRATCH}" 2>/dev/null || exit 0
+
+logger -t cicada-memwipe "scrubbing ~$(( wipe_kb / 1024 )) MiB of free RAM" 2>/dev/null || true
+# ENOSPC is the expected terminating condition, not an error.
+dd if=/dev/zero of="${SCRATCH}/z" bs=1M status=none 2>/dev/null || true
+sync 2>/dev/null || true
+rm -f "${SCRATCH}/z" 2>/dev/null || true
+cleanup
+logger -t cicada-memwipe "done" 2>/dev/null || true
+exit 0

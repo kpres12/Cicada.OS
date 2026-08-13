@@ -19,7 +19,7 @@ Arch-based privacy/security laptop OS. GrapheneOS intent, Hyprland daily-driver 
 ```
 iso/                  assemble releng + Cicada overlay, build helper
 packages/
-  cicada-defaults/    sysctl, firewall, rfkill, VPN hooks
+  cicada-defaults/    sysctl, firewall, VPN hooks
   cicada-shell/       Hyprland rice + session
   cicada-profiles/    profile isolation stubs
 vendor/
@@ -33,8 +33,8 @@ docs/                 threat model + roadmap
 1. Bootable Cicada ISO (Arch remix)
 2. Install to **external SSD** on Intel MacBook Air (2015–2017)
 3. Hyprland session with Cicada look
-4. Privacy defaults: no telemetry, Wi‑Fi/BT off at first boot, firewall on
-5. Hardened browser path (Helium/Trivalent when packaged; Chromium fallback in v0)
+4. Privacy defaults: no telemetry, firewall on, Wi-Fi available (pick a network)
+5. Helium as the default browser (official tarball, hash-pinned)
 
 ## Build the ISO
 

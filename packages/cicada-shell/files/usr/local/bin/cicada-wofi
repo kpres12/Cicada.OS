@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# The only app picker. drun sees Cicada launchers, not Arch's /usr/share/applications.
+set -euo pipefail
+export XDG_DATA_HOME=/usr/share/cicada/launchers
+export XDG_DATA_DIRS=/usr/share/cicada/launchers:/usr/share/cicada/icon-root
+exec wofi --show drun "$@"

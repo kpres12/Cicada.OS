@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# What root of trust does this machine actually support?
+#
+# Cicada runs on hardware ranging from a 2015 MacBook Air (closed Apple EFI, no
+# TPM, no measured boot — the passphrase is everything) to a Framework or
+# ThinkPad with TPM2 and user-controlled Secure Boot, where the disk key can be
+# sealed to firmware measurements and brute forcing gets a hardware ceiling.
+#
+# The point of this is to be honest per-machine rather than shipping one
+# marketing claim. Exit 0 always; the report is the product.
+set -uo pipefail
+
+pass=0; miss=0
+ok()   { printf '  \033[32m[yes]\033[0m %-22s %s\n' "$1" "$2"; pass=$((pass+1)); }
+no()   { printf '  \033[31m[ no]\033[0m %-22s %s\n' "$1" "$2"; miss=$((miss+1)); }
+note() { printf '        %-22s %s\n' "" "$1"; }
+
+echo "Cicada hardware trust report"
+echo "============================"
+echo
+
+echo "Key protection"
+if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+  ver="$(cat /sys/class/tpm/tpm0/tpm_version_major 2>/dev/null || echo '?')"
+  if [[ "${ver}" == 2 ]]; then
+    ok "TPM 2.0" "disk key can be sealed to PCRs"
+    note "enrol with: cicada-tpm-enroll"
+  else
+    no "TPM 2.0" "TPM present but v${ver}; systemd-cryptenroll needs v2"
+  fi
+else
+  no "TPM 2.0" "no TPM — passphrase entropy is the only defence"
+  note "an imaged disk can be attacked offline, forever, with no rate limit"
+  note "use a generated passphrase and a USB token: cicada-keyfile-enroll"
+fi
+
+# A removable second factor is the closest thing to a secure element here.
+if [[ -f /etc/cicada/keyfile.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/keyfile.env
+  ok "USB key token" "enrolled in ${CICADA_KEYFILE_MODE:-?} mode"
+  [[ "${CICADA_KEYFILE_MODE:-}" == and ]] \
+    && note "two-factor: token AND passphrase required" \
+    || note "token OR passphrase; --and is stronger"
+else
+  no "USB key token" "not enrolled (cicada-keyfile-enroll --and --device /dev/sdX1)"
+fi
+
+echo
+echo "Boot integrity"
+if [[ -d /sys/firmware/efi ]]; then
+  ok "UEFI" "firmware is EFI, not legacy BIOS"
+  sb="$(od -An -t u1 -j4 /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | tr -d ' ' || true)"
+  case "${sb}" in
+    1) ok "Secure Boot" "enabled" ;;
+    0) no "Secure Boot" "supported but disabled — enable in firmware, then cicada-sbctl-enroll" ;;
+    *) no "Secure Boot" "state unreadable (Apple EFI reports nothing useful)" ;;
+  esac
+else
+  no "UEFI" "legacy boot — no measured boot story at all"
+fi
+if [[ -d /sys/kernel/security/tpm0 ]]; then
+  ok "measured boot" "event log present; PCR policy is meaningful"
+else
+  no "measured boot" "no TPM event log — evil-maid tampering is undetectable"
+fi
+
+echo
+echo "Memory / DMA"
+if [[ -d /sys/class/iommu ]] && compgen -G '/sys/class/iommu/*' >/dev/null; then
+  ok "IOMMU" "active — DMA from plugged-in devices is constrained"
+else
+  no "IOMMU" "inactive — a hostile port can read RAM directly"
+  note "Cicada blacklists thunderbolt/firewire to close the hotplug path"
+fi
+if grep -qw 'init_on_free=1' /proc/cmdline 2>/dev/null; then
+  ok "init_on_free" "freed pages zeroed"
+else
+  no "init_on_free" "freed memory retains secrets until reused"
+fi
+if [[ "$(cat /sys/power/mem_sleep 2>/dev/null || true)" == *"[deep]"* ]]; then
+  no "suspend disabled" "deep sleep selected — keys would persist in RAM"
+else
+  ok "suspend disabled" "no suspend-to-RAM; lid close locks and drops to BFU"
+fi
+
+echo
+echo "Summary: ${pass} present, ${miss} absent"
+if [[ "${miss}" -gt 0 ]]; then
+  cat <<'EOF'
+
+Every [no] above is a real limit, not a to-do that Cicada will paper over in
+software. On hardware without a TPM the honest statement is: the disk is as
+strong as the passphrase and nothing else, so generate it, do not choose it.
+EOF
+fi

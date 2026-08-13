@@ -29,20 +29,73 @@ _parse_cryptdevice() {
   done
 }
 
+# A USB key token, if one was enrolled. Mounted read-only, unmounted before we
+# do anything else, and never copied anywhere.
+KEYMNT=/cicada-token
+_find_token() {
+  local label="$1" dev=""
+  [ -e "/dev/disk/by-label/${label}" ] && dev="/dev/disk/by-label/${label}"
+  if [ -z "${dev}" ] && command -v blkid >/dev/null 2>&1; then
+    dev="$(blkid -L "${label}" 2>/dev/null)"
+  fi
+  [ -n "${dev}" ] || return 1
+  mkdir -p "${KEYMNT}"
+  mount -o ro "${dev}" "${KEYMNT}" 2>/dev/null || return 1
+  return 0
+}
+
 run_hook() {
   _parse_cryptdevice
   [ -n "${CRYPTDEV}" ] && [ -n "${CRYPTNAME}" ] || return 0
   [ "${CRYPTDEV#UUID=}" != "${CRYPTDEV}" ] && CRYPTDEV="/dev/disk/by-uuid/${CRYPTDEV#UUID=}"
 
   local pass rc start got want
+  local kf_mode="" kf_label="CICADA-KEY" kf_name="cicada.key" kf=""
+
+  # /etc/cicada/keyfile.env lives on the encrypted root, so it cannot be read
+  # before unlock. cicada-keyfile-enroll therefore also stamps the mode into the
+  # initramfs at build time (see install/cicada-crypt).
+  if [ -f /cicada-keyfile.env ]; then
+    # shellcheck disable=SC1091
+    . /cicada-keyfile.env
+    kf_mode="${CICADA_KEYFILE_MODE:-}"
+    kf_label="${CICADA_KEYFILE_LABEL:-CICADA-KEY}"
+    kf_name="${CICADA_KEYFILE_NAME:-cicada.key}"
+  fi
+
+  if [ -n "${kf_mode}" ] && _find_token "${kf_label}"; then
+    kf="${KEYMNT}/${kf_name}"
+    [ -f "${kf}" ] || kf=""
+  fi
+
+  if [ -n "${kf}" ] && [ "${kf_mode}" = "or" ]; then
+    # Token alone is a full factor in --or mode: no prompt at all.
+    if cryptsetup open --type luks --key-file "${kf}" "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1; then
+      umount "${KEYMNT}" 2>/dev/null
+      echo "Unlocked with Cicada key token."
+      return 0
+    fi
+    echo "Key token present but rejected; falling back to passphrase."
+  fi
 
   while true; do
-    echo -n "Enter passphrase for ${CRYPTNAME}: "
+    if [ -n "${kf}" ] && [ "${kf_mode}" = "and" ]; then
+      echo -n "Passphrase for ${CRYPTNAME} (token detected): "
+    else
+      echo -n "Enter passphrase for ${CRYPTNAME}: "
+    fi
     read -r -s pass
     echo
     start="$(date +%s)"
 
-    printf '%s' "${pass}" | cryptsetup open --type luks "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1
+    if [ -n "${kf}" ] && [ "${kf_mode}" = "and" ]; then
+      # Secret is passphrase||keyfile — matches how the slot was created, and
+      # means neither the stick nor the phrase is worth anything on its own.
+      { printf '%s' "${pass}"; cat "${kf}"; } \
+        | cryptsetup open --type luks "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1
+    else
+      printf '%s' "${pass}" | cryptsetup open --type luks "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1
+    fi
     rc=$?
 
     if [ "${rc}" -eq 0 ]; then
@@ -67,6 +120,7 @@ run_hook() {
         umount /cicada-check 2>/dev/null
       fi
       pass=""
+      umount "${KEYMNT}" 2>/dev/null
       return 0
     fi
 

@@ -60,7 +60,11 @@ ttf-jetbrains-mono-nerd
 ttf-font-awesome
 noto-fonts
 noto-fonts-emoji
-chromium
+nss
+nspr
+gtk3
+libxss
+libcups
 xdg-utils
 file-roller
 layer-shell-qt

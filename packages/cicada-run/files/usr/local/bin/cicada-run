@@ -16,10 +16,14 @@ if [[ "${1:-}" == "--" ]]; then
 fi
 [[ $# -ge 1 ]] || usage
 
-# Terminals must administer the machine. Do not box kitty.
-if [[ "${APP_ID}" == "org.cicada.kitty" ]]; then
-  exec "$@"
-fi
+# Owner/admin UI talks to host services (NM, polkit, tty). Still an app-id —
+# just not boxed. Everything else is default-deny until its scopes file says so.
+case "${APP_ID}" in
+  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start)
+    export CICADA_APP_ID="${APP_ID}"
+    exec "$@"
+    ;;
+esac
 
 STORE="${CICADA_SCOPES_ROOT:-${HOME}/.local/share/cicada/scopes}"
 CUR="${HOME}/.local/share/cicada/current-profile"
@@ -33,8 +37,9 @@ if [[ -f "${CUR}" ]]; then
 fi
 
 ENVF="${STORE}/${APP_ID}.env"
-NETWORK=allow
-FILES=portal
+# Default-deny: unknown apps get no net and no home. Known apps ship a .env.
+NETWORK=deny
+FILES=deny
 CAMERA=deny
 MIC=deny
 USB=deny
@@ -67,7 +72,8 @@ mkdir -p "${HOME}/.config" "${HOME}/.cache" "${HOME}/.local/share" "${HOME}/Down
 
 case "${APP_ID}" in
   org.cicada.helium)
-    mkdir -p "${HOME}/.config/chromium" "${HOME}/.cache/chromium"
+    mkdir -p "${HOME}/.config/helium" "${HOME}/.cache/helium" \
+             "${HOME}/.config/chromium" "${HOME}/.cache/chromium"
     ;;
   org.keepassxc.KeePassXC)
     mkdir -p "${HOME}/.config/keepassxc" "${HOME}/.local/share/keepassxc"
@@ -131,6 +137,8 @@ case "${FILES}" in
     args+=(--bind "${HOME}/Downloads" "${HOME}/Downloads")
     case "${APP_ID}" in
       org.cicada.helium)
+        args+=(--bind "${HOME}/.config/helium" "${HOME}/.config/helium")
+        args+=(--bind "${HOME}/.cache/helium" "${HOME}/.cache/helium")
         args+=(--bind "${HOME}/.config/chromium" "${HOME}/.config/chromium")
         args+=(--bind "${HOME}/.cache/chromium" "${HOME}/.cache/chromium")
         ;;

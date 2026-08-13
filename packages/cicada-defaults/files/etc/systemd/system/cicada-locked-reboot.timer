@@ -3,8 +3,10 @@ Description=Cicada reboot-to-rest timer
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=1min
-AccuracySec=30s
+OnUnitActiveSec=30s
+# Tight enough that CICADA_LID_REBOOT_SEC=120 means roughly 120s, not 210s.
+# Costs a few timer wakeups; a locked machine is not optimising for battery.
+AccuracySec=5s
 
 [Install]
 WantedBy=timers.target

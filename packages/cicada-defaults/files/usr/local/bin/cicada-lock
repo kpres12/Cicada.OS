@@ -28,7 +28,35 @@ if [[ "${nopasswd}" -eq 1 ]] && [[ "${1:-}" != "--force" ]]; then
   exit 0
 fi
 usbguard set-parameter InsertedDevicePolicy block >/dev/null 2>&1 || true
+
+# USBGuard is userspace policy: it decides what to do with a device the kernel
+# has already enumerated and bound a driver to. `authorized_default=0` is the
+# kernel refusing to authorize *new* devices at all — closer to what GrapheneOS
+# does at the USB controller when the screen is locked.
+#
+# Critically this does NOT touch already-authorized devices, which is why it is
+# safe on a MacBook where the keyboard and trackpad are themselves USB HID.
+# Unbinding root hubs would lock you out of your own machine; this does not.
+usb_gate() {
+  local v="$1" h
+  for h in /sys/bus/usb/devices/usb*/authorized_default; do
+    [[ -w "${h}" ]] || continue
+    echo "${v}" > "${h}" 2>/dev/null || true
+  done
+}
+usb_gate 0
+
+# Encrypted profiles hold their volume key in the kernel for as long as they are
+# mapped. Locking the screen while three profiles are unlocked leaves all three
+# keys in RAM for an AFU attacker. Freeze every profile that is not the active
+# one — GrapheneOS "end session", driven off the lock instead of a menu.
+if command -v cicada-profile >/dev/null 2>&1; then
+  cicada-profile freeze-idle >/dev/null 2>&1 || true
+fi
+
 cicada-seal append session.lock "{}" >/dev/null 2>&1 || true
 hyprlock
 cicada-seal append session.unlock "{}" >/dev/null 2>&1 || true
+
+usb_gate 1
 usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true

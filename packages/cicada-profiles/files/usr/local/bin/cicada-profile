@@ -83,8 +83,12 @@ case "${cmd}" in
       read -r -s p1; echo
       read -r -s -p "Again: " p2; echo
       [[ "${p1}" == "${p2}" ]] || { echo "mismatch" >&2; exit 1; }
-      truncate -s 2G "${img}"
-      printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 --pbkdf argon2id --batch-mode "${img}" -
+      truncate -s "${CICADA_PROFILE_SIZE:-8G}" "${img}"
+      # Same reasoning as the root volume: this passphrase faces an unlimited
+      # offline attack once the image is copied off, so the KDF has to cost.
+      printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 \
+        --pbkdf argon2id --pbkdf-memory 262144 --pbkdf-parallel 4 --iter-time 3000 \
+        --batch-mode "${img}" -
       printf '%s' "${p1}" | cryptsetup open "${img}" "cicada-${name}" -
       unset p1 p2
       mkfs.ext4 -q -L "cicada-${name}" "/dev/mapper/cicada-${name}"
@@ -112,7 +116,8 @@ case "${cmd}" in
     [[ -n "${name}" ]] || { usage; exit 1; }
     [[ -d "$(home_of "${name}")" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
     write_current "${name}"
-    export HOME="$(home_of "${name}")"
+    HOME="$(home_of "${name}")"
+    export HOME
     export CICADA_PROFILE="${name}"
     cd "${HOME}"
     exec "${SHELL:-/bin/bash}" -l
@@ -135,6 +140,31 @@ case "${cmd}" in
       rm -f "${CUR}"
     fi
     echo "froze ${name} (keys out of RAM if encrypted)"
+    ;;
+  freeze-idle)
+    # Freeze every encrypted profile that is not the active one. Called from
+    # cicada-lock: an unlocked profile keeps its volume key mapped in the
+    # kernel, so locking the screen with three profiles open leaves three keys
+    # in RAM for anyone who takes the machine in an AFU state.
+    active=""
+    [[ -f "${CUR}" ]] && active="$(sed -n 's/^CICADA_PROFILE=//p' "${CUR}")"
+    compgen -G "${BASE}/*" >/dev/null || exit 0
+    for d in "${BASE}"/*; do
+      [[ -d "${d}" ]] || continue
+      n="$(basename "${d}")"
+      [[ "${n}" == "${active}" ]] && continue
+      [[ -f "$(img_of "${n}")" ]] || continue           # only encrypted ones hold keys
+      [[ -f "${d}/state/FROZEN" ]] && continue
+      umount "$(home_of "${n}")" 2>/dev/null || true
+      cryptsetup close "cicada-${n}" 2>/dev/null || true
+      touch "${d}/state/FROZEN"
+      echo "froze ${n}"
+    done
+    ;;
+  end)
+    # GrapheneOS calls this "end session": put the profile back at rest while
+    # the machine keeps running. Same thing as freeze; named so it is findable.
+    exec "$0" freeze "${name}"
     ;;
   unlock)
     [[ -n "${name}" ]] || { usage; exit 1; }

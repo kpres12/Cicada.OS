@@ -1,8 +1,56 @@
 #!/usr/bin/env bash
-# Enroll a LUKS duress passphrase. Timing vs wrong PIN is handled in cicada-crypt.
+# Enroll a duress credential.
+#
+#   (default)   LUKS duress passphrase — fires at the power-on prompt only.
+#   --session   session duress password — fires at hyprlock/sudo/polkit, i.e.
+#               the case where you are coerced into unlocking a machine that is
+#               already running. The LUKS slot cannot help there because it is
+#               never asked for again after boot.
+#
+# Enrol both. They cover different rooms.
 set -euo pipefail
+
+SESSION=0
+[[ "${1:-}" == "--session" ]] && SESSION=1
+
 command -v cicada-auth >/dev/null && cicada-auth confirm duress.enroll
 [[ ${EUID} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+
+if [[ "${SESSION}" == 1 ]]; then
+  SHASH=/etc/cicada/duress-session.sha256
+  if [[ -f "${SHASH}" ]]; then
+    echo "session duress verifier already present. Refuse to silently rotate." >&2
+    exit 1
+  fi
+  command -v pam_exec.so >/dev/null 2>&1 || true
+  [[ -f /etc/pam.d/hyprlock ]] || echo "warning: /etc/pam.d/hyprlock missing; the hook will not run" >&2
+  read -r -s -p "Session duress password (NOT your login password): " s1; echo
+  read -r -s -p "Again: " s2; echo
+  [[ "${s1}" == "${s2}" ]] || { echo "mismatch" >&2; exit 1; }
+  [[ ${#s1} -ge 8 ]] || { echo "too short" >&2; exit 1; }
+  # A duress secret identical to the real one would never fire — the real auth
+  # would match first and you would believe you had protection you do not.
+  if [[ -n "${SUDO_USER:-}" ]] && command -v python3 >/dev/null 2>&1; then
+    echo "note: verify this differs from your login password; they are not comparable here" >&2
+  fi
+  mkdir -p /etc/cicada
+  printf '%s' "${s1}" | sha256sum | awk '{print $1}' > "${SHASH}"
+  chmod 400 "${SHASH}"
+  unset s1 s2
+  command -v cicada-seal >/dev/null && cicada-seal append duress.enroll '{"kind":"session"}' >/dev/null 2>&1 || true
+  cat <<'EOF'
+Session duress enrolled.
+
+Typing it at the lock screen (or any sudo/polkit prompt) erases every LUKS
+keyslot, smashes the header, and hard-resets the machine. It does not ask for
+confirmation and cannot be interrupted.
+
+This destroys the disk. It does not get you out of the room, and in some
+jurisdictions destroying data under legal process is itself an offence. Enrol it
+deliberately.
+EOF
+  exit 0
+fi
 command -v cryptsetup >/dev/null || { echo "cryptsetup missing" >&2; exit 1; }
 
 dev=""

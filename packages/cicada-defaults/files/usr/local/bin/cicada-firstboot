@@ -11,7 +11,7 @@ cat <<'EOF'
 ╔══════════════════════════════════════════════╗
 ║             C I C A D A . O S                ║
 ║         nimbus // channel:dev                ║
-║  radios blocked · inbound deny               ║
+║  inbound deny · telemetry off                ║
 ║  wifi: click WIFI · settings: click SETTINGS ║
 ║  live: overlay is RAM · yank USB = panic     ║
 ╚══════════════════════════════════════════════╝
@@ -22,7 +22,15 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 0
 fi
 
-if [[ ! -d /run/archiso ]] && [[ -f /usr/lib/libhardened_malloc.so && ! -f /etc/cicada/hardened-malloc-disable ]]; then
+# hardened_malloc applies on live too. The live stick is where a browser 0-day
+# actually gets pointed at this OS — demoing on stock glibc while claiming
+# hardened allocation was the wrong way round. The .so is built into the ISO,
+# so the only real risk is a compat regression, and `cicada.nomalloc` on the
+# kernel cmdline is the escape hatch you can reach from the bootloader when
+# there is no writable filesystem to drop a disable file onto.
+if [[ -f /usr/lib/libhardened_malloc.so ]] \
+   && [[ ! -f /etc/cicada/hardened-malloc-disable ]] \
+   && ! grep -qw cicada.nomalloc /proc/cmdline 2>/dev/null; then
   echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
 fi
 
@@ -30,7 +38,6 @@ fi
 # desktop user trips polkit and stalls tty1.
 if [[ ! -d /run/archiso ]]; then
   systemctl enable --now nftables.service 2>/dev/null || true
-  systemctl enable --now cicada-radios-off.service 2>/dev/null || true
   systemctl enable --now cicada-locked-reboot.timer 2>/dev/null || true
   systemctl enable --now apparmor.service 2>/dev/null || true
 

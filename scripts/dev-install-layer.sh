@@ -19,7 +19,6 @@ cp -a "${ROOT}/packages/cicada-profiles/files/." /
 
 chmod 755 /usr/local/bin/cicada-* 2>/dev/null || true
 systemctl daemon-reload
-systemctl enable cicada-radios-off.service || true
 
 TARGET_USER="${SUDO_USER:-}"
 if [[ -n "${TARGET_USER}" && "${TARGET_USER}" != root ]]; then

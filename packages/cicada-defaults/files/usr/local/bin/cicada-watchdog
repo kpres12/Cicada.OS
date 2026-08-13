@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Hardware-backed AFU ceiling.
+#
+# cicada-locked-reboot is a systemd timer: fine until an adversary has code
+# execution, at which point they stop it and keep the machine awake with the
+# volume key sitting in DRAM. That is precisely the GrayKey-class play.
+#
+# The chipset watchdog does not care about userspace. We open /dev/watchdog,
+# set a short timeout, and pet it on a cadence. While the session is unlocked we
+# always pet. Once locked, we pet only until the AFU deadline — then we stop,
+# and the hardware resets the machine whether or not anything in userspace is
+# still alive or cooperating. Killing this daemon does not disable the watchdog;
+# it guarantees the reset.
+#
+# The only clean disarm is the magic-close character, which we write on an
+# orderly shutdown so a deliberate poweroff does not look like a hang.
+set -uo pipefail
+
+WD=/dev/watchdog
+STAMP=/run/cicada/locked-since
+PET_SEC=10
+
+# shellcheck disable=SC1091
+[[ -f /etc/cicada/defaults.env ]] && source /etc/cicada/defaults.env
+MAX="${CICADA_LOCK_REBOOT_SEC:-1800}"
+LID_MAX="${CICADA_LID_REBOOT_SEC:-120}"
+ENABLED="${CICADA_WATCHDOG:-1}"
+# iTCO and most PC watchdogs cap well below our AFU window, so the timeout is
+# the pet deadline, not the AFU deadline. The AFU logic lives here; the
+# hardware just enforces that we are still alive and still choosing to pet.
+TIMEOUT="${CICADA_WATCHDOG_TIMEOUT:-30}"
+
+[[ "${ENABLED}" == 1 ]] || { echo "cicada-watchdog: disabled by CICADA_WATCHDOG=0"; exit 0; }
+[[ -c "${WD}" ]] || { echo "cicada-watchdog: no ${WD} on this machine" >&2; exit 2; }
+
+exec 9<>"${WD}" || { echo "cicada-watchdog: cannot open ${WD}" >&2; exit 1; }
+
+disarm() {
+  # 'V' is the magic-close sequence: it tells the driver this was deliberate.
+  printf 'V' >&9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+}
+# Only on an orderly stop. A crash or a kill leaves the watchdog armed, which
+# is the entire point.
+trap 'disarm; exit 0' TERM INT
+
+if command -v wdctl >/dev/null 2>&1; then
+  wdctl -s "${TIMEOUT}" "${WD}" >/dev/null 2>&1 || true
+fi
+
+lid_closed() {
+  local f
+  for f in /proc/acpi/button/lid/*/state; do
+    [[ -r "${f}" ]] || continue
+    grep -qi closed "${f}" && return 0
+  done
+  return 1
+}
+
+logger -t cicada-watchdog "armed on ${WD} (timeout ${TIMEOUT}s, pet ${PET_SEC}s)" 2>/dev/null || true
+
+while :; do
+  if pgrep -x hyprlock >/dev/null 2>&1; then
+    deadline="${MAX}"
+    lid_closed && deadline="${LID_MAX}"
+    start="$(cat "${STAMP}" 2>/dev/null || echo 0)"
+    now="$(date +%s)"
+    if [[ "${start}" != 0 ]] && (( now - start >= deadline )); then
+      # Stop petting. The chipset resets us within TIMEOUT seconds, and there
+      # is no userspace path to prevent it from here.
+      logger -t cicada-watchdog "locked ${deadline}s — withholding pet, hardware reset imminent" 2>/dev/null || true
+      sleep "$(( TIMEOUT + 15 ))"
+      # Belt and braces: if the watchdog is a no-op on this board, fall back.
+      systemctl reboot --force 2>/dev/null || echo b > /proc/sysrq-trigger
+      exit 0
+    fi
+  fi
+  printf '\0' >&9 2>/dev/null || true
+  sleep "${PET_SEC}"
+done

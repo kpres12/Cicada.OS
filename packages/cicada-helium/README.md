@@ -1,13 +1,7 @@
 # cicada-helium
 
-Helium is the intended default browser (ungoogled-chromium lineage, like Vanadium is to Chrome).
+Helium is the default browser (ungoogled-chromium lineage, like Vanadium is to Chrome).
 
-**Not on the ISO.** AUR `helium-browser-bin` is third-party binaries — rejected in `docs/aur-audit.md`. Building Helium from source is a Chromium compile (hours, tens of GB).
+**On the ISO.** Not AUR. The Docker builder downloads imputnet’s official `x86_64_linux.tar.xz`, checks the SHA-256 in `channel/helium.lock`, and installs it to `/opt/helium`. The dock **Web** icon runs `/usr/local/bin/chromium`, which execs Helium.
 
-`/usr/local/bin/chromium` already prefers, in order:
-
-1. `/usr/bin/helium`
-2. `/usr/bin/helium-browser`
-3. Arch `chromium`
-
-Install Helium yourself on an installed system; the dock Web icon keeps working. Policies in `/etc/chromium/policies/` apply to Chromium; Helium may honor a subset.
+Enterprise policy (telemetry/sync/DoH off, HTTPS-only, DDG) is copied to `/etc/chromium/policies`, `/etc/helium/policies`, and `/opt/helium/policies`.

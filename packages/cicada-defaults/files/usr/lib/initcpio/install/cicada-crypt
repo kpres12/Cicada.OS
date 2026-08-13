@@ -10,12 +10,35 @@ build() {
   add_binary mount
   add_binary umount
   add_binary poweroff
+  # Locating a USB key token by filesystem label when udev has not populated
+  # /dev/disk/by-label yet.
+  add_binary blkid
+  # Filesystems a key token might be formatted with.
+  add_module 'ext4'
+  add_module 'vfat'
+
+  # /etc/cicada/keyfile.env lives on the encrypted root and so is unreadable at
+  # unlock time. Copy it into the initramfs instead. It records only the mode
+  # and the label — never key material, which stays on the removable token.
+  if [[ -f /etc/cicada/keyfile.env ]]; then
+    add_file /etc/cicada/keyfile.env /cicada-keyfile.env 600
+  fi
+
   add_runscript
 }
 
 help() {
   cat <<'EOF'
-Cicada LUKS unlock. Real passphrase boots. Duress passphrase erases all
-keyslots, pads to the same delay as a wrong passphrase, then poweroffs.
+Cicada LUKS unlock.
+
+Real passphrase boots. Duress passphrase erases all keyslots, pads to the same
+delay as a wrong passphrase, then powers off.
+
+If a USB key token has been enrolled (cicada-keyfile-enroll):
+  or  mode - the token alone unlocks; passphrase remains a fallback.
+  and mode - the secret is passphrase||keyfile, so both are required.
+
+Re-run mkinitcpio -P after enrolling or revoking a token: the mode is baked
+into the initramfs because the encrypted root cannot be read before unlock.
 EOF
 }

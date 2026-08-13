@@ -1,14 +1,15 @@
 CICADA.OS  //  DESKTOP
 
-click SETTINGS        Wi-Fi, sound, brightness, dock, lock
-click WIFI            turn on, pick a network, password
+click SETTINGS        Wi-Fi, scopes, profiles, sound, dock, lock
+click WIFI            pick a network, type the password
 click CLOSE           close the focused window (or Alt+F4)
-click the dock        terminal, files, web, settings, wifi
-click desktop icons   same apps — they launch, they do not ask Execute
+click the dock        terminal, files, Helium, settings, wifi
+click desktop icons   same apps — Cicada wrappers only
+Super+Space           Cicada launcher (not the Arch menu)
 Super+V               float this window
-Super+Space           launcher
 Super+L               lock
+Super+I               app permissions (scopes)
 Super+/               first-boot sheet
 
 Windows tile. You drive the machine by clicking.
-Radios stay off until you turn Wi-Fi on.
+Wi-Fi is on. Telemetry is off. Unknown apps are deny/deny.

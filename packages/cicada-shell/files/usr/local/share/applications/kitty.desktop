@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Kitty
+Exec=kitty
+NoDisplay=true
+Hidden=true

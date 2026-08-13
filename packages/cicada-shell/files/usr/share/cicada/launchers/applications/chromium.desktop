@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Helium
+Comment=Cicada default browser
+Exec=/usr/local/bin/chromium %U
+Icon=web-browser
+Terminal=false
+StartupNotify=false
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=helium

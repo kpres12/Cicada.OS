@@ -22,4 +22,4 @@ command -v hyprctl >/dev/null && hyprctl keyword general:gaps_out "${gaps}" >/de
 
 pkill -x nwg-dock-hyprland 2>/dev/null || true
 sleep 0.2
-exec nwg-dock-hyprland -i 48 -ml 8 -p "${pos}" -x -c "wofi --show drun"
+exec nwg-dock-hyprland -i 48 -ml 8 -p "${pos}" -x -c "cicada-wofi"

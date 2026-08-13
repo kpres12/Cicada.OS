@@ -2,8 +2,8 @@
 Type=Application
 Version=1.0
 Name=Settings
-Comment=Appearance, Wi-Fi, audio, displays, dock
-Exec=cicada-settings
+Comment=Wi-Fi, sound, scopes, profiles, dock
+Exec=cicada-run org.cicada.settings -- cicada-settings
 Icon=preferences-system
 Terminal=false
 StartupNotify=false

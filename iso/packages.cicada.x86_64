@@ -41,8 +41,12 @@ ttf-font-awesome
 noto-fonts
 noto-fonts-emoji
 
-# --- browser (Helium when packaged; Chromium until then) ---
-chromium
+# --- browser runtime (Helium itself is the pinned tarball, not a pacman pkg) ---
+nss
+nspr
+gtk3
+libxss
+libcups
 xdg-utils
 
 # --- desktop shell (mouse-first; Hyprland is the engine, not the UX) ---

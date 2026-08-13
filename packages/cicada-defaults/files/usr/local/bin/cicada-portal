@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Time-boxed plaintext DNS for a captive portal, then back to encrypted.
+#
+# Hotel, airport and campus networks intercept DNS to force you to their login
+# page. With encrypted DNS working correctly that interception fails, which is
+# the point — but it also means you cannot reach the portal to log in.
+#
+# The honest options are: silently fall back to plaintext forever (what most
+# systems do, and what leaks every lookup), or make the downgrade explicit,
+# narrow and self-reversing. This is the second one.
+#
+# While a portal window is open the network's resolver sees your lookups. Do not
+# browse during it. Log in, then `cicada-portal off` — or wait, and it reverts
+# on its own.
+set -uo pipefail
+
+DROPIN=/run/systemd/resolved.conf.d/zz-cicada-portal.conf
+TIMER=/run/cicada/portal-until
+DEFAULT_MIN=5
+
+die() { echo "cicada-portal: $*" >&2; exit 1; }
+# Root is only needed to change state. Reading status and printing usage must
+# work unprivileged, or the error you get is about sudo rather than about what
+# you typed.
+need_root() { [[ ${EUID} -eq 0 ]] || die "run as root (sudo cicada-portal $1)"; }
+
+status() {
+  if [[ -f "${DROPIN}" ]]; then
+    local until_ts now
+    until_ts="$(cat "${TIMER}" 2>/dev/null || echo 0)"
+    now="$(date +%s)"
+    echo "portal mode: ON — plaintext DNS, $(( (until_ts - now) / 60 ))m remaining"
+    echo "the network resolver can see every lookup. Do not browse."
+  else
+    echo "portal mode: off — DNS is encrypted to Quad9"
+  fi
+}
+
+portal_on() {
+  local mins="${1:-${DEFAULT_MIN}}"
+  [[ "${mins}" =~ ^[0-9]+$ ]] || die "minutes must be a number"
+  (( mins >= 1 && mins <= 60 )) || die "pick 1–60 minutes"
+
+  mkdir -p "$(dirname "${DROPIN}")" /run/cicada
+  # /run, not /etc: this cannot survive a reboot, so a forgotten portal session
+  # is bounded by uptime even if the timer below is somehow lost.
+  cat > "${DROPIN}" <<'EOF'
+[Resolve]
+# cicada-portal: temporary. Removed automatically.
+DNSOverTLS=no
+DNSSEC=no
+Domains=
+EOF
+  date -d "+${mins} minutes" +%s 2>/dev/null > "${TIMER}" \
+    || date -v "+${mins}M" +%s > "${TIMER}" 2>/dev/null \
+    || echo $(( $(date +%s) + mins * 60 )) > "${TIMER}"
+
+  systemctl try-restart systemd-resolved 2>/dev/null || true
+  command -v cicada-seal >/dev/null 2>&1 && \
+    cicada-seal append dns.portal.on "{\"minutes\":${mins}}" >/dev/null 2>&1 || true
+
+  # Self-reversing: a detached timer restores encryption even if the user walks
+  # away, closes the terminal, or forgets. Portal mode must never be sticky.
+  setsid --fork bash -c "sleep $(( mins * 60 )); '$0' off >/dev/null 2>&1" >/dev/null 2>&1 &
+
+  echo "Portal mode ON for ${mins} minutes. Log in, then: sudo cicada-portal off"
+  echo "Lookups are visible to this network until then."
+}
+
+portal_off() {
+  rm -f "${DROPIN}" "${TIMER}"
+  systemctl try-restart systemd-resolved 2>/dev/null || true
+  command -v cicada-seal >/dev/null 2>&1 && \
+    cicada-seal append dns.portal.off "{}" >/dev/null 2>&1 || true
+  echo "Portal mode off — DNS encrypted again."
+}
+
+case "${1:-status}" in
+  on)     need_root on; portal_on "${2:-}" ;;
+  off)    need_root off; portal_off ;;
+  status) status ;;
+  *)
+    cat <<'EOF'
+usage: cicada-portal on [minutes] | off | status
+
+  on [minutes]  plaintext DNS for a captive-portal login (default 5, max 60).
+                Reverts automatically; never survives a reboot.
+  off           restore encrypted DNS now
+  status        show current mode
+EOF
+    exit 1
+    ;;
+esac

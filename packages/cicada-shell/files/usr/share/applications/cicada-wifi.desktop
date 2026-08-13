@@ -2,7 +2,7 @@
 Type=Application
 Name=Wi-Fi
 Comment=Connect to a wireless network
-Exec=cicada-wifi
+Exec=cicada-run org.cicada.wifi -- cicada-wifi
 Icon=network-wireless
 Terminal=false
 StartupNotify=false

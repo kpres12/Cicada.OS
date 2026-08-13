@@ -69,8 +69,8 @@ grep -q copytoram "${tmp}/profile/efiboot/loader/entries/"*.conf 2>/dev/null \
   || grep -Rql copytoram "${tmp}/profile/efiboot" || die "copytoram not in boot entries"
 say "assemble ok (see /tmp/cicada-assemble.log)"
 
-echo "==> helium wrapper prefers helium"
-grep -q '/usr/bin/helium' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium" || die "chromium wrapper"
+echo "==> helium wrapper prefers official tarball"
+grep -q '/opt/helium/chrome' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium" || die "chromium wrapper"
 
 if [[ "${fail}" -ne 0 ]]; then
   echo "PREFLIGHT FAILED"

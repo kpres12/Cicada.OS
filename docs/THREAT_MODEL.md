@@ -43,6 +43,36 @@ See [docs/ATTACKS.md](ATTACKS.md) for the forensic/laptop mapping.
 2. **Daily driver (Framework etc.):** same software, better maintainability
 3. **Graphene-adjacent (Librem / NitroPad + Heads/PureBoot):** boot integrity + tamper story
 
+## Known costs of our own design choices
+
+These are not adversary capabilities; they are prices Cicada pays for decisions
+it made on purpose. They belong here so nobody rediscovers them as a surprise.
+
+**btrfs is copy-on-write, so "deleted" is weaker than on ext4.** Overwriting a
+file writes new extents and leaves the old ones unreferenced but intact until a
+rebalance. Against an adversary who obtains the volume *unlocked* — a coerced
+unlock, or an AFU seizure — recovering superseded file contents is materially
+easier than it would be on ext4, which zeroes extent pointers on delete. We take
+this for snapshots and checksums. If per-file deletion resistance matters more
+to you than snapshots, ext4 is the better filesystem for this OS.
+
+**There is no swap, and that is load-bearing.** No swapfile, no zram, no
+hibernation. Swap is one of the standard forensic recoveries — key material and
+plaintext paged to disk, surviving reboot, out of reach of `init_on_free`.
+Adding a swapfile "for performance" would silently undo a real property.
+`tests/here.sh` asserts its absence.
+
+**Profiles share one LUKS volume.** Work/burner separation stops a running
+process in one profile from reading another's files. It does nothing once the
+disk is unlocked: every profile's home is plaintext on the same volume at that
+point. Profiles are a blast-radius tool, not an encryption boundary.
+
+**The ESP is plaintext, unsigned and unmeasured.** Evil maid does not need to
+touch Apple EFI to win — modifying `/boot`'s initramfs to capture the passphrase
+is a screwdriver-and-USB attack with the same outcome. On this hardware there is
+no detection for it. This is the softest of the physical-access attacks, not the
+most exotic one, and it should be ranked accordingly.
+
 ## Non-claims
 
 Do not market Cicada on an MBA as "as secure as GrapheneOS." Market it as Graphene-*intent* with laptop-honest guarantees.

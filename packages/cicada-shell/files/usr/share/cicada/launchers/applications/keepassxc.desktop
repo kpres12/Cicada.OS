@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=KeePassXC
+GenericName=Password Manager
+Exec=/usr/local/bin/keepassxc %f
+Icon=keepassxc
+Terminal=false
+Type=Application
+StartupNotify=false
+Categories=Utility;Security;Qt;
+StartupWMClass=keepassxc

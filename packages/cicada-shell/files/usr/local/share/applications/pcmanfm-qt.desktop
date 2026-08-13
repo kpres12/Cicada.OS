@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=pcmanfm-qt
+Exec=pcmanfm-qt
+NoDisplay=true
+Hidden=true

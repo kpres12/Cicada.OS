@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Files through cicada-run. Network deny; home visible (this is the file manager).
+set -euo pipefail
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.cicada.files -- pcmanfm-qt "$@"
+fi
+echo "cicada-files: cicada-run missing" >&2
+exit 78

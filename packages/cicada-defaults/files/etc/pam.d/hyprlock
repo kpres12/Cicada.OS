@@ -1,0 +1,13 @@
+# Cicada hyprlock stack.
+#
+# The duress check runs FIRST and with expose_authtok so it sees the typed
+# secret before pam_unix does. It is `optional`, so it can never lock you out:
+# if the script is missing, unreadable, or the hash file does not exist, PAM
+# carries on to the normal auth below exactly as if this line were absent.
+#
+# Enrol the session duress password with: cicada-duress-enroll --session
+auth       optional   pam_exec.so expose_authtok quiet /usr/local/bin/cicada-duress-check
+auth       include    system-auth
+account    include    system-auth
+password   include    system-auth
+session    include    system-auth

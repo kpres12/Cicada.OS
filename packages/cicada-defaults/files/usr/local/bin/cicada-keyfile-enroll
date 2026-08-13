@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Enrol removable USB tokens as a LUKS factor.
+#
+# x86 laptops have no secure element, so there is no hardware that can refuse to
+# hand over a key. The nearest equivalent is a factor that physically is not in
+# the machine: a token you can leave elsewhere, hand to someone, or destroy.
+#
+#   --or   (default) token OR passphrase unlocks. Convenience; the passphrase
+#          remains a full-strength fallback, so losing the token is survivable.
+#   --and  token AND passphrase are both required. The slot secret is the typed
+#          passphrase with the keyfile appended, so neither half is sufficient.
+#          Strictly stronger, and strictly less forgiving.
+#
+# --and REQUIRES two tokens. A single point of failure that silently destroys
+# the disk is not a security feature, and the moment to discover that is not
+# after the stick has gone through the wash. Both tokens carry the same keyfile
+# and therefore share one keyslot: the second is a spare, not a separate factor.
+set -euo pipefail
+
+MODE=or
+TOKEN_LABEL=CICADA-KEY
+KEYFILE_NAME=cicada.key
+
+usage() {
+  cat <<'EOF'
+usage: cicada-keyfile-enroll [--or|--and] --device /dev/sdX1 [--backup-device /dev/sdY1]
+
+  --or              token or passphrase unlocks (default, recoverable)
+  --and             token and passphrase both required; --backup-device is
+                    mandatory, because losing the only token loses the disk
+  --device          primary token partition
+  --backup-device   spare token partition (required for --and)
+
+Both partitions are REFORMATTED and labelled CICADA-KEY. Use dedicated USB
+sticks — not ones holding anything you want to keep.
+EOF
+}
+
+die() { echo "cicada-keyfile-enroll: $*" >&2; exit 1; }
+
+DEV=""
+BACKUP_DEV=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --or) MODE=or ;;
+    --and) MODE=and ;;
+    --device) DEV="${2:-}"; shift ;;
+    --backup-device) BACKUP_DEV="${2:-}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+  shift
+done
+
+[[ -n "${DEV}" ]] || { usage; exit 1; }
+
+# Argument validation before anything privileged: --and with a single token is a
+# coin flip on the whole disk. Refuse it outright rather than printing a warning
+# nobody reads at 2am, and refuse it early so the message is the real reason
+# rather than "run as root".
+if [[ "${MODE}" == and && -z "${BACKUP_DEV}" ]]; then
+  echo "cicada-keyfile-enroll: --and requires a second token." >&2
+  echo >&2
+  echo "In --and mode the disk needs the token AND the passphrase. Lose the only" >&2
+  echo "token and the disk is gone for good — there is no recovery path that" >&2
+  echo "Cicada or anyone else can offer, by design." >&2
+  echo >&2
+  echo "Insert a second USB stick and pass --backup-device /dev/sdY1," >&2
+  echo "or use --or, where the passphrase remains a full-strength fallback." >&2
+  exit 1
+fi
+
+[[ ${EUID} -eq 0 ]] || die "run as root"
+
+# Locate the LUKS device we are adding a keyslot to.
+if [[ -f /etc/cicada/install.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/install.env
+fi
+LUKS_DEV=""
+if [[ -n "${CICADA_LUKS_UUID:-}" && -e "/dev/disk/by-uuid/${CICADA_LUKS_UUID}" ]]; then
+  LUKS_DEV="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
+else
+  LUKS_DEV="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')" || true
+fi
+[[ -n "${LUKS_DEV}" && -e "${LUKS_DEV}" ]] || die "cannot find the LUKS device (boot the installed system)"
+
+check_target() {
+  local dev="$1" what="$2" parent
+  [[ -b "${dev}" ]] || die "${what} ${dev} is not a block device"
+  if [[ "$(realpath "${dev}")" == "$(realpath "${LUKS_DEV}")"* ]]; then
+    die "refusing to use the encrypted disk itself as ${what}"
+  fi
+  parent="$(lsblk -no PKNAME "${dev}" 2>/dev/null | head -1)"
+  if [[ -n "${parent}" ]] && ! lsblk -no RM "/dev/${parent}" 2>/dev/null | grep -q 1; then
+    echo "warning: ${dev} does not look removable. A token that lives in the machine is not a second factor." >&2
+    read -r -p "Continue anyway? type YES: " ans
+    [[ "${ans}" == YES ]] || die "aborted"
+  fi
+}
+
+check_target "${DEV}" "the primary token"
+if [[ -n "${BACKUP_DEV}" ]]; then
+  [[ "${BACKUP_DEV}" != "${DEV}" ]] || die "backup token must be a different device than the primary"
+  [[ "$(realpath "${BACKUP_DEV}")" != "$(realpath "${DEV}")" ]] || die "backup token resolves to the same device as the primary"
+  check_target "${BACKUP_DEV}" "the backup token"
+fi
+
+echo "This will ERASE the following and make them Cicada key tokens (${MODE} mode):"
+lsblk "${DEV}"
+[[ -n "${BACKUP_DEV}" ]] && lsblk "${BACKUP_DEV}"
+read -r -p "Type the primary device path to continue: " typed
+[[ "${typed}" == "${DEV}" ]] || die "aborted"
+
+command -v cicada-auth >/dev/null 2>&1 && cicada-auth confirm duress.enroll || true
+
+read -r -s -p "Current LUKS passphrase: " pass; echo
+[[ -n "${pass}" ]] || die "empty passphrase"
+
+tmp="$(mktemp -d)"
+key="${tmp}/${KEYFILE_NAME}"
+cleanup() {
+  # Raw key material: shred it out of the staging dir, and never let it touch
+  # the encrypted disk in plaintext form.
+  [[ -f "${key}" ]] && shred -u "${key}" 2>/dev/null || true
+  mountpoint -q "${tmp}/mnt" && umount "${tmp}/mnt" 2>/dev/null || true
+  rm -rf "${tmp}" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+umask 077
+dd if=/dev/urandom of="${key}" bs=512 count=1 status=none
+keyhash="$(sha256sum < "${key}" | awk '{print $1}')"
+echo "==> generated 512-byte keyfile"
+
+# Write, then read back and compare. A backup you have never verified is a
+# rehearsal for losing the disk.
+write_token() {
+  local dev="$1" what="$2" got
+  echo "==> writing ${what} to ${dev}"
+  mkfs.ext4 -q -L "${TOKEN_LABEL}" "${dev}" || die "mkfs failed on ${dev}"
+  mkdir -p "${tmp}/mnt"
+  mount "${dev}" "${tmp}/mnt" || die "cannot mount ${dev}"
+  install -Dm400 "${key}" "${tmp}/mnt/${KEYFILE_NAME}"
+  sync
+  umount "${tmp}/mnt"
+  mount -o ro "${dev}" "${tmp}/mnt" || die "cannot re-mount ${dev} to verify"
+  got="$(sha256sum < "${tmp}/mnt/${KEYFILE_NAME}" | awk '{print $1}')"
+  umount "${tmp}/mnt"
+  [[ "${got}" == "${keyhash}" ]] || die "${what} failed readback verification — bad stick?"
+  echo "    verified"
+}
+
+# Tokens first, keyslot last. If anything above fails, the LUKS header is still
+# untouched and the machine boots exactly as it did before.
+write_token "${DEV}" "primary token"
+[[ -n "${BACKUP_DEV}" ]] && write_token "${BACKUP_DEV}" "backup token"
+
+slot_secret() {
+  if [[ "${MODE}" == and ]]; then
+    printf '%s' "${pass}"
+    cat "${key}"
+  else
+    cat "${key}"
+  fi
+}
+
+echo "==> adding LUKS keyslot on ${LUKS_DEV}"
+if ! slot_secret | cryptsetup luksAddKey --key-file=<(printf '%s' "${pass}") \
+     --pbkdf argon2id "${LUKS_DEV}" - ; then
+  die "luksAddKey failed — wrong passphrase, or no free keyslot (tokens were written but are not yet active)"
+fi
+
+mkdir -p /etc/cicada
+cat > /etc/cicada/keyfile.env <<EOF
+CICADA_KEYFILE_MODE=${MODE}
+CICADA_KEYFILE_LABEL=${TOKEN_LABEL}
+CICADA_KEYFILE_NAME=${KEYFILE_NAME}
+EOF
+chmod 600 /etc/cicada/keyfile.env
+
+command -v cicada-seal >/dev/null 2>&1 && \
+  cicada-seal append keyfile.enroll "{\"mode\":\"${MODE}\",\"backup\":$([[ -n "${BACKUP_DEV}" ]] && echo true || echo false)}" \
+  >/dev/null 2>&1 || true
+
+echo
+echo "Token enrolled in ${MODE} mode. Rebuild the initramfs so the boot hook"
+echo "looks for it:   mkinitcpio -P"
+if [[ "${MODE}" == and ]]; then
+  echo
+  echo "TWO-FACTOR: this disk now needs a token AND the passphrase."
+  echo "Both sticks carry the same keyfile and are interchangeable. Store the"
+  echo "backup somewhere the primary would not be seized or lost with it."
+fi

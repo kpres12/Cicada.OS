@@ -2,28 +2,28 @@
 
 Arch stays the engine. This directory is the **channel**: a tested package set, not a rewrite.
 
-## Why this waited until tonight
+## Product identity (step 4)
 
-A freeze with no successful ISO is a wishlist. We now have one: `out/cicada-2026.08.12-x86_64.iso`. The 654 packages that landed in that image are the first pin.
+“Cicada is its own OS” needs a signed update path. Until then, a lockfile is the contract and Arch `extra` is still the warehouse.
 
-## What’s here vs what’s not
-
-| Now | Not yet |
+| Now | Next (signed channel) |
 |---|---|
-| Version lockfile (NEVR list from a booted-build ISO) | Hosted pacman repo of the `.pkg.tar.zst` blobs |
-| A named snapshot we can rebuild against | GPG-signed `cicada-stable` mirror |
-| Policy: daily drivers consume a pin, not raw `extra` | CI that promotes `extra` → stable after smoke boot |
+| Version lockfile (NEVR list from a booted ISO) | Hosted pacman repo of the `.pkg.tar.zst` blobs |
+| Helium tarball pin (`helium.lock` sha256) | GPG-signed `cicada-stable` mirror |
+| Policy: daily drivers consume a pin, not raw `extra` | ISO `pacman.conf` prefers `[cicada-stable]` before `[extra]` |
 
-Without the blobs, `pacman -S hyprland` still hits Arch `extra` and can float. The lockfile is the contract; the repo is the warehouse.
+`scripts/channel-verify.sh` checks the pins in this tree. It does not prove a rebuild matches until the blob repo exists.
 
 ## Snapshots
 
-- [cicada-stable-2026.08.12.pkglist.txt](cicada-stable-2026.08.12.pkglist.txt) — first ISO (`hyprland 0.56.2-1`, `linux 7.1.8.arch1-3`, …)
+- [cicada-stable-2026.08.12.pkglist.txt](cicada-stable-2026.08.12.pkglist.txt) — first ISO
+- [helium.lock](helium.lock) — official Helium Linux tarball (not AUR)
 - [CURRENT](CURRENT) — which snapshot is “stable”
 
-## Next (when we want rebuilds to match)
+## How to finish the signed channel
 
-1. Persist Docker’s `/var/cache/pacman/pkg` in a volume at ISO build time
+1. Persist Docker’s `/var/cache/pacman/pkg` at ISO build time
 2. `repo-add` those packages into `channel/repo/`
-3. Point the ISO `pacman.conf` at `[cicada-stable]` before `[extra]`
-4. Only then does an MBA `pacman -Syu` stay on the pin
+3. Sign the db with a Cicada release key; publish the pubkey on the ISO
+4. Point live + installed `pacman.conf` at `[cicada-stable]` before `[extra]`
+5. Only then does an MBA `pacman -Syu` stay on the pin

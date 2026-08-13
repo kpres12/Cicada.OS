@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Web
+Name=Helium
 Exec=/usr/local/bin/chromium
 Icon=web-browser
 StartupNotify=false

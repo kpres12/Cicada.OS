@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Wi-Fi
+Exec=cicada-run org.cicada.wifi -- cicada-wifi
+Icon=network-wireless
+Terminal=false
+StartupNotify=false
+Categories=Network;Settings;
