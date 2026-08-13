@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Build the `onion` network namespace: the only egress is Tor, enforced by the
+# kernel rather than by an application honouring a proxy setting.
+#
+# Why a namespace and not a SOCKS setting:
+#   A proxy setting is a request. WebRTC, a bundled updater, a crash reporter,
+#   a DNS call that skips the resolver, or simply a bug will ignore it and go
+#   direct. The user finds out afterwards, if ever. For someone whose risk is
+#   being outed, arrested or worse, "usually proxied" is not a security control.
+#
+#   Inside this namespace there is exactly one route, to a veth whose far end
+#   only accepts redirect-to-Tor. A packet aimed anywhere else is dropped by the
+#   kernel. An app cannot leak by misconfiguration because there is nowhere to
+#   leak to.
+#
+# What this does NOT hide: that you are using Tor. Anyone watching your link
+# sees connections to guards or bridges. In places where using Tor is itself the
+# offence, you need bridges with a pluggable transport — see `cicada-tor bridges`.
+set -euo pipefail
+
+NS=onion
+HOST_IP=10.71.0.1
+NS_IP=10.71.0.2
+PREFIX=30
+VETH=veth-onion
+VETH_NS=veth-onion-ns
+TRANS_PORT=9040
+DNS_PORT=9053
+
+die() { echo "cicada-tor-netns: $*" >&2; exit 1; }
+[[ ${EUID} -eq 0 ]] || die "run as root"
+
+up() {
+  ip netns list 2>/dev/null | grep -qw "${NS}" && { echo "already up"; exit 0; }
+
+  ip netns add "${NS}"
+  ip link add "${VETH}" type veth peer name "${VETH_NS}"
+  ip link set "${VETH_NS}" netns "${NS}"
+
+  ip addr add "${HOST_IP}/${PREFIX}" dev "${VETH}"
+  ip link set "${VETH}" up
+
+  ip -n "${NS}" addr add "${NS_IP}/${PREFIX}" dev "${VETH_NS}"
+  ip -n "${NS}" link set "${VETH_NS}" up
+  ip -n "${NS}" link set lo up
+  ip -n "${NS}" route add default via "${HOST_IP}"
+
+  # Inside the namespace: every TCP connection is rewritten to Tor's TransPort
+  # and every DNS query to Tor's DNSPort. Anything that is neither is dropped,
+  # so UDP that is not DNS (QUIC, WebRTC, NTP) cannot escape — those would
+  # bypass Tor entirely if they were allowed through.
+  ip netns exec "${NS}" nft -f - <<EOF
+table inet onion {
+  chain output {
+    type nat hook output priority -100;
+    ip daddr ${HOST_IP} return
+    meta l4proto tcp dnat ip to ${HOST_IP}:${TRANS_PORT}
+    udp dport 53 dnat ip to ${HOST_IP}:${DNS_PORT}
+  }
+  chain filter_out {
+    type filter hook output priority filter; policy drop;
+    oif "lo" accept
+    ip daddr ${HOST_IP} tcp dport { ${TRANS_PORT}, ${DNS_PORT} } accept
+    ip daddr ${HOST_IP} udp dport ${DNS_PORT} accept
+    ct state established,related accept
+  }
+}
+EOF
+
+  # Host side: accept only the two Tor ports from this namespace. The baseline
+  # forward chain is already policy drop, so there is no path from here to the
+  # physical interface even if these rules were bypassed.
+  nft -f - <<EOF
+table inet cicada_onion {
+  chain input {
+    type filter hook input priority 0;
+    iifname "${VETH}" ip saddr ${NS_IP} tcp dport { ${TRANS_PORT}, ${DNS_PORT} } accept
+    iifname "${VETH}" ip saddr ${NS_IP} udp dport ${DNS_PORT} accept
+    iifname "${VETH}" drop
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    iifname "${VETH}" drop
+    oifname "${VETH}" drop
+  }
+}
+EOF
+
+  logger -t cicada-tor "onion netns up (egress restricted to Tor)" 2>/dev/null || true
+  echo "onion netns up: only Tor is reachable from inside it"
+}
+
+down() {
+  nft delete table inet cicada_onion 2>/dev/null || true
+  ip netns del "${NS}" 2>/dev/null || true
+  ip link del "${VETH}" 2>/dev/null || true
+  echo "onion netns down"
+}
+
+status() {
+  if ip netns list 2>/dev/null | grep -qw "${NS}"; then
+    echo "onion netns: up"
+    ip netns exec "${NS}" ip route show 2>/dev/null | sed 's/^/  /'
+  else
+    echo "onion netns: down"
+  fi
+}
+
+case "${1:-status}" in
+  up) up ;;
+  down) down ;;
+  status) status ;;
+  *) echo "usage: cicada-tor-netns up|down|status" >&2; exit 1 ;;
+esac

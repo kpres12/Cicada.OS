@@ -88,7 +88,31 @@ systemctl enable cicada-locked-reboot.timer || true
 systemctl enable cicada-firstboot.service || true
 # Hardware AFU ceiling; exits 2 and stays inactive on boards with no watchdog.
 systemctl enable cicada-watchdog.service || true
+systemctl enable tor.service || true
+systemctl enable cicada-tor-netns.service || true
+# Authenticated time. Plaintext NTP lets an on-path attacker move the clock
+# past certificate expiry, which turns TLS validation into a formality.
+systemctl disable systemd-timesyncd.service 2>/dev/null || true
+systemctl mask systemd-timesyncd.service 2>/dev/null || true
+systemctl enable chronyd.service || true
+# Guest agents are a host-to-guest control channel; never on by default.
+for u in vboxservice vmtoolsd vmware-vmblock-fuse qemu-guest-agent ModemManager; do
+  systemctl disable "${u}.service" 2>/dev/null || true
+  systemctl mask "${u}.service" 2>/dev/null || true
+done
 systemctl enable cicada-memwipe.service || true
+
+# Launcher monopoly + channel pin on the installed root.
+if [[ -x /usr/local/lib/cicada/hide-arch-desktops.sh ]]; then
+  /usr/local/lib/cicada/hide-arch-desktops.sh || true
+fi
+if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
+  /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf || true
+fi
+
+# Work UID is created on firstboot (create-locked). Marker for owner UI.
+mkdir -p /etc/cicada
+echo 'WORK_UID=pending' > /etc/cicada/work-uid.env
 
 # Use the strongest root of trust this machine actually has. On a TPM2 laptop
 # (Framework, ThinkPad, most modern x86) sealing the key to PCRs gives the

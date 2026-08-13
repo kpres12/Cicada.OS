@@ -1,0 +1,14 @@
+[Unit]
+Description=Cicada onion network namespace (Tor-only egress)
+After=network.target nss-lookup.target
+Wants=tor.service
+After=tor.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/cicada-tor-netns up
+ExecStop=/usr/local/bin/cicada-tor-netns down
+
+[Install]
+WantedBy=multi-user.target

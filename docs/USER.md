@@ -18,7 +18,7 @@ You will see two different machines:
 3. You are `cicada` with **no password**. Click the dock or **SETTINGS** on the top bar.
 4. Click **WIFI**, pick a network. Telemetry stays off.
 5. Windows **tile**. **CLOSE** on the bar or Alt+F4. Super+V floats one window.
-6. **SETTINGS** has sound, brightness, **App permissions** (scopes), **Profiles** (Work UID), dock, lock.
+6. **SETTINGS** has sound, brightness, **App permissions** (scopes), **Camera & microphone** (software kill), **Profiles** (Work UID), dock, lock.
 7. **Web** is Helium. The launcher only shows Cicada apps — not the full Arch menu.
 
 **Amnesic (Tails-shaped):** at the boot menu pick **Cicada.OS live (amnesic — copy to RAM)**. Needs more RAM. The stick can leave; yanking it force-reboots. Default live entry keeps the USB in (safer on 8GB Airs). Internal SSD is not mounted.
@@ -91,35 +91,33 @@ Live USB: this command exits. Install first.
 
 ---
 
-## 5. Extra users (Graphene-shaped)
+## 5. Work UID / Burner / camera kill
 
-**Owner** is `cicada`. That is you.
-
-Add a second person (different UID, cannot sudo):
+**Owner** is `cicada`. That is you. On install, firstboot creates locked `cicada-work` (second UID).
 
 ```bash
-cicada-profile create work --user
-# you will be asked for cicada-work's login password
+sudo passwd cicada-work            # Settings → Profiles → Set Work password
 cicada-profile login work          # Hyprland on tty3
-# Ctrl+Alt+F1 = you,  F3 = work
+# Ctrl+Alt+F1 = Owner,  F3 = Work
 ```
-
-Or reboot and log in as `cicada-work`.
 
 Once LUKS is open, both homes sit on the same decrypted disk. That is weaker than Graphene’s per-user encryption. It still stops Work’s browser from reading Owner files in a running session.
 
-Weaker (same person, another folder):
+**Burner** is a folder home for sandboxed apps (not a second UID):
 
 ```bash
 cicada-profile create burner
 cicada-profile switch burner
 ```
 
-Throwaway:
+**Camera & microphone** (software kill — Settings → Camera & microphone):
 
 ```bash
-cicada-profile dispose work      # confirm dialog
+sudo cicada-av-kill both off
+sudo cicada-av-kill status
 ```
+
+Blocks sandboxed apps and unloads `uvcvideo`. Not a hardware kill switch; root can reverse it.
 
 ---
 

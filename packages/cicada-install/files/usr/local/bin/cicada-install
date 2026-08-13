@@ -79,6 +79,9 @@ copy_product() {
     [[ -x /usr/local/bin/keepassxc ]] && cp -a /usr/local/bin/keepassxc "${mnt}/usr/local/bin/"
   fi
   [[ -x "${CHROOT}" ]] && cp -a "${CHROOT}" "${mnt}/usr/local/lib/cicada/"
+  if [[ -d /usr/local/lib/cicada ]]; then
+    find /usr/local/lib/cicada -maxdepth 1 -type f -exec cp -a {} "${mnt}/usr/local/lib/cicada/" \;
+  fi
   if [[ -d /etc/skel ]]; then
     mkdir -p "${mnt}/etc/skel"
     rsync -a /etc/skel/ "${mnt}/etc/skel/"
@@ -100,10 +103,12 @@ copy_product() {
     /etc/usbguard \
     /etc/iwd \
     /etc/tmpfiles.d \
-    /etc/pacman.d/hooks \
+    /etc/pacman.d \
     /etc/wireguard \
     /etc/profile.d \
-    /etc/pam.d
+    /etc/pam.d \
+    /etc/tor \
+    /etc/systemd/coredump.conf.d
   do
     if [[ -e "${d}" ]]; then
       mkdir -p "${mnt}$(dirname "${d}")"
@@ -111,6 +116,7 @@ copy_product() {
     fi
   done
   [[ -f /etc/nftables.conf ]] && cp -a /etc/nftables.conf "${mnt}/etc/nftables.conf"
+  [[ -f /etc/chrony.conf ]] && cp -a /etc/chrony.conf "${mnt}/etc/chrony.conf"
   mkdir -p "${mnt}/etc/systemd/system"
   find /etc/systemd/system -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/etc/systemd/system/" \;
   mkdir -p "${mnt}/usr/lib/initcpio/hooks" "${mnt}/usr/lib/initcpio/install" "${mnt}/usr/lib"
@@ -129,7 +135,7 @@ copy_product() {
     mkdir -p "${mnt}/usr/bin"
     cp -a /usr/bin/helium-browser "${mnt}/usr/bin/"
   fi
-  [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && cp -a /etc/sudoers.d/cicada-profile "${mnt}/etc/sudoers.d/" 2>/dev/null || true
+  [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && find /etc/sudoers.d -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/etc/sudoers.d/" \; 2>/dev/null || true
 }
 
 pacstrap_filtered() {

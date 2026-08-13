@@ -13,7 +13,7 @@ name="${2:-}"
 user="cicada-${name}"
 
 case "${cmd}" in
-  create)
+  create|create-locked)
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }
     id "${user}" >/dev/null 2>&1 && { echo "exists: ${user}" >&2; exit 1; }
     useradd -m -G video,audio,input,storage,rfkill,network,users -s /bin/bash "${user}"
@@ -21,9 +21,16 @@ case "${cmd}" in
       rsync -a /etc/skel/ "/home/${user}/"
       chown -R "${user}:${user}" "/home/${user}"
     fi
-    echo "Set a login password for ${user} (not in wheel, cannot sudo):"
-    passwd "${user}"
-    echo "created Unix user ${user}. Log in as ${user} — different UID, not a folder."
+    if [[ "${cmd}" == "create-locked" ]]; then
+      # Firstboot / non-interactive: account exists, login locked until owner sets a password.
+      passwd -l "${user}" >/dev/null
+      echo "created locked Unix user ${user} (passwd -l). Set password before login:"
+      echo "  sudo passwd ${user}"
+    else
+      echo "Set a login password for ${user} (not in wheel, cannot sudo):"
+      passwd "${user}"
+      echo "created Unix user ${user}. Log in as ${user} — different UID, not a folder."
+    fi
     ;;
   login)
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }
@@ -38,7 +45,7 @@ case "${cmd}" in
     echo "deleted ${user}"
     ;;
   *)
-    echo "usage: cicada-profile-helper create|login|dispose NAME" >&2
+    echo "usage: cicada-profile-helper create|create-locked|login|dispose NAME" >&2
     exit 1
     ;;
 esac

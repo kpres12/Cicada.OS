@@ -1,0 +1,4 @@
+# Grants a network namespace, never privilege: the helper drops to the calling
+# uid with --no-new-privs before exec. See cicada-netns-helper for the argument
+# handling that makes that safe.
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-netns-helper

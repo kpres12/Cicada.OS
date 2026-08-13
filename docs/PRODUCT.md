@@ -13,10 +13,10 @@ Arch is the warehouse. Cicada is the product. Graphene is still AOSP; people do 
 
 ## Product layers (ship order)
 
-1. **Launcher monopoly** — dock, Waybar, Super+Space, desktop icons, MIME only start Cicada wrappers / `cicada-run <app-id>`. `cicada-wofi` sees `/usr/share/cicada/launchers` only. Arch `kitty` / `pcmanfm-qt` desktops are `Hidden=true`.
-2. **Default-deny scopes** — unknown app-ids get `NETWORK=deny` `FILES=deny`. Helium / Files / KeePass ship explicit `.env` files. Settings → App permissions opens MAGI-02.
-3. **Work-as-UID** — `cicada-profile create work --user` makes `cicada-work`. Same LUKS, different uid. Settings → Profiles. Directory Burner only re-points `HOME` for `cicada-run`.
-4. **Signed channel** — `channel/` pin today; signed pacman repo next (`channel/README.md`). Until blobs are signed, `pacman -Syu` can still float Arch `extra`.
+1. **Launcher monopoly** — dock, Waybar, Super+Space, desktop icons, MIME only start Cicada wrappers / `cicada-run <app-id>`. `cicada-wofi` sees `/usr/share/cicada/launchers` only. `hide-arch-desktops.sh` writes `Hidden=true` overrides for Arch `.desktop` files.
+2. **Default-deny scopes** — unknown app-ids get `NETWORK=deny` `FILES=deny` (and cam/mic/usb/sensors deny). Helium / Files / KeePass ship explicit `.env` files. Settings → App permissions opens MAGI-02. System **Camera & microphone** kill is separate (`cicada-av-kill`).
+3. **Work-as-UID** — install firstboot creates locked `cicada-work`. Settings → Profiles → Set Work password, then Login Work. Directory Burner only re-points `HOME` for `cicada-run` (not Work).
+4. **Signed channel** — `channel/` pin + local `file:///var/cache/cicada/repo` after ISO build (`channel-build-repo` / `channel-sign`). Hosted mirror later (`channel/README.md`).
 
 ## Owner shell
 

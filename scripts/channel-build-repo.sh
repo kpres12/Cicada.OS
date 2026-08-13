@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Build a local cicada-stable pacman repo from a pacman pkg cache directory.
+# Usage: channel-build-repo.sh <pkg-cache-dir> <repo-out-dir>
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CACHE="${1:-}"
+OUT="${2:-${ROOT}/out/channel-repo}"
+
+if [[ -z "${CACHE}" || ! -d "${CACHE}" ]]; then
+  echo "usage: channel-build-repo.sh <pkg-cache-dir> [repo-out-dir]" >&2
+  exit 1
+fi
+
+mkdir -p "${OUT}"
+shopt -s nullglob
+pkgs=("${CACHE}"/*.pkg.tar.zst "${CACHE}"/*.pkg.tar.xz)
+if [[ ${#pkgs[@]} -eq 0 ]]; then
+  echo "channel-build-repo: no packages in ${CACHE}" >&2
+  exit 2
+fi
+
+# Copy (hardlink when possible) into the repo dir
+for p in "${pkgs[@]}"; do
+  base="$(basename "${p}")"
+  if [[ ! -e "${OUT}/${base}" ]]; then
+    cp -an "${p}" "${OUT}/${base}" 2>/dev/null || cp -a "${p}" "${OUT}/${base}"
+  fi
+done
+
+if ! command -v repo-add >/dev/null 2>&1; then
+  echo "channel-build-repo: repo-add missing (need pacman on Arch builder)" >&2
+  exit 3
+fi
+
+rm -f "${OUT}/cicada-stable.db"* "${OUT}/cicada-stable.files"* 2>/dev/null || true
+(
+  cd "${OUT}"
+  repo-add cicada-stable.db.tar.zst ./*.pkg.tar.zst ./*.pkg.tar.xz 2>/dev/null \
+    || repo-add cicada-stable.db.tar.zst ./*.pkg.tar.zst
+)
+
+echo "channel-build-repo: wrote ${OUT}/cicada-stable.db*"
+# Optional sign
+if [[ -x "${ROOT}/scripts/channel-sign.sh" ]]; then
+  "${ROOT}/scripts/channel-sign.sh" "${OUT}" || true
+fi

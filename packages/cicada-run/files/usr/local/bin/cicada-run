@@ -49,6 +49,14 @@ if [[ -f "${ENVF}" ]]; then
   source "${ENVF}"
 fi
 
+# System AV kill (Settings → Camera & microphone) overrides per-app allows.
+if [[ -f /etc/cicada/av-kill.env ]]; then
+  # shellcheck disable=SC1091
+  source /etc/cicada/av-kill.env
+  [[ "${CAMERA_KILL:-0}" == "1" ]] && CAMERA=deny
+  [[ "${MIC_KILL:-0}" == "1" ]] && MIC=deny
+fi
+
 if ! command -v bwrap >/dev/null 2>&1; then
   echo "cicada-run: bubblewrap missing; running unsandboxed (fail open is forbidden — abort)." >&2
   exit 78
@@ -99,13 +107,53 @@ args=(
 [[ -L /lib ]] && args+=(--symlink usr/lib /lib) || bind_opt /lib
 [[ -L /lib64 ]] && args+=(--symlink usr/lib /lib64) || bind_opt /lib64
 
-bind_opt /sys
+# SENSORS=deny: bind a filtered /sys (no hidraw / iio). allow: full /sys.
+if [[ "${SENSORS}" == "allow" ]]; then
+  bind_opt /sys
+else
+  args+=(--tmpfs /sys)
+  bind_opt /sys/devices /sys/devices
+  bind_opt /sys/dev /sys/dev
+  bind_opt /sys/bus /sys/bus
+  bind_opt /sys/class /sys/class
+  bind_opt /sys/fs /sys/fs
+  bind_opt /sys/kernel /sys/kernel
+  bind_opt /sys/module /sys/module
+  # Hide sensor buses if present under the class/bus mounts by overlaying empty dirs.
+  for sensor_path in /sys/class/hidraw /sys/bus/iio /sys/bus/hid; do
+    if [[ -e "${sensor_path}" ]]; then
+      args+=(--tmpfs "${sensor_path}")
+    fi
+  done
+fi
+
 bind_rw /dev/dri
 bind_rw /dev/shm
 bind_opt /run/systemd/resolve
 
+# MIC=deny: selective XDG_RUNTIME_DIR (Wayland + portal sock only).
+# MIC=allow: full runtime dir (PipeWire / Pulse accessible).
 if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
-  args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
+  if [[ "${MIC}" == "allow" ]]; then
+    args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
+  else
+    args+=(--tmpfs "${XDG_RUNTIME_DIR}")
+    # Wayland display
+    if [[ -n "${WAYLAND_DISPLAY:-}" && -e "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]]; then
+      bind_rw "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
+    fi
+    for wsock in "${XDG_RUNTIME_DIR}"/wayland-*; do
+      [[ -e "${wsock}" ]] || continue
+      bind_rw "${wsock}"
+    done
+    # Portal / bus sockets the filtered proxy will use
+    [[ -S "${XDG_RUNTIME_DIR}/bus" ]] && bind_rw "${XDG_RUNTIME_DIR}/bus"
+    [[ -S "${XDG_RUNTIME_DIR}/pulse/native" ]] || true
+    # Do NOT bind pipewire*, pulse*, speech-dispatcher* when MIC=deny.
+    # dconf / at-spi sometimes needed for GTK portals
+    [[ -d "${XDG_RUNTIME_DIR}/dconf" ]] && bind_rw "${XDG_RUNTIME_DIR}/dconf"
+    [[ -d "${XDG_RUNTIME_DIR}/at-spi" ]] && bind_rw "${XDG_RUNTIME_DIR}/at-spi"
+  fi
 fi
 
 if [[ "${CAMERA}" == "allow" ]]; then
@@ -115,15 +163,45 @@ fi
 if [[ "${USB}" == "allow" ]]; then
   bind_rw /dev/bus/usb
 fi
+# SENSORS=allow also exposes iio device nodes when present
+if [[ "${SENSORS}" == "allow" ]]; then
+  for iio in /dev/iio:device*; do
+    [[ -e "${iio}" ]] || continue
+    bind_rw "${iio}"
+  done
+fi
 
+netns_wrap=()
 case "${NETWORK}" in
   deny)
     args+=(--unshare-net)
     ;;
   vpn-only)
+    # Real definition: host net only while WireGuard wg0 is up; else airplane.
     if ! ip link show wg0 >/dev/null 2>&1; then
       args+=(--unshare-net)
     fi
+    ;;
+  tor)
+    # Run inside the onion namespace, whose only route is Tor. Deliberately no
+    # --unshare-net here: that would give the app a fresh empty namespace and
+    # cut it off from Tor as well, which fails safe but always looks like "the
+    # internet is broken" rather than a policy decision.
+    #
+    # Fail closed, loudly. Silently falling back to direct network for a scope
+    # the user chose *because* direct network is dangerous is the worst thing
+    # this program could do.
+    if ! ip netns list 2>/dev/null | grep -qw onion; then
+      echo "cicada-run: ${APP_ID} requires Tor, but the onion namespace is down." >&2
+      echo "  sudo systemctl start cicada-tor-netns   (then: cicada-tor check)" >&2
+      echo "  Refusing to run it on the direct network." >&2
+      exit 78
+    fi
+    if ! command -v cicada-netns-helper >/dev/null 2>&1; then
+      echo "cicada-run: cicada-netns-helper missing; cannot enter the Tor namespace." >&2
+      exit 78
+    fi
+    netns_wrap=(sudo -n /usr/local/bin/cicada-netns-helper exec --)
     ;;
 esac
 
@@ -132,6 +210,10 @@ case "${FILES}" in
     args+=(--tmpfs "${HOME}")
     ;;
   portal)
+    # Storage scopes: Downloads + app config. File picker via xdg-desktop-portal.
+    # Not full $HOME. Native apps that ignore portals only see Downloads.
+    export GTK_USE_PORTAL=1
+    export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals"
     args+=(--tmpfs "${HOME}")
     args+=(--dir "${HOME}/.config" --dir "${HOME}/.cache" --dir "${HOME}/.local/share" --dir "${HOME}/Downloads")
     args+=(--bind "${HOME}/Downloads" "${HOME}/Downloads")
@@ -173,6 +255,7 @@ trap cleanup EXIT INT TERM
 if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
   sock="${XDG_RUNTIME_DIR}/cicada-${APP_ID}.sock"
   rm -f "${sock}"
+  # Host creates the proxy sock; sandbox must see it under MIC=deny selective bind.
   xdg-dbus-proxy "${DBUS_SESSION_BUS_ADDRESS}" "${sock}" --filter \
       --talk=org.freedesktop.portal.Desktop \
       --talk=org.freedesktop.portal.Documents \
@@ -187,6 +270,10 @@ if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && 
   sleep 0.15
   if [[ -S "${sock}" ]]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=${sock}"
+    # Re-bind the proxy socket into the sandbox args if we used selective runtime.
+    if [[ "${MIC}" != "allow" ]]; then
+      bind_rw "${sock}"
+    fi
   else
     kill "${proxy_pid}" 2>/dev/null || true
     proxy_pid=""
@@ -202,5 +289,8 @@ fi
 # leaking the proxy again. `|| rc=$?` keeps set -e from aborting before we can
 # propagate the sandboxed app's real exit code; cleanup runs from the trap.
 rc=0
-"${args[@]}" "$@" || rc=$?
+# netns_wrap is empty for every scope except tor, where it enters the onion
+# namespace first and drops straight back to this user. bwrap runs inside it,
+# so the sandbox is nested within the network restriction rather than beside it.
+"${netns_wrap[@]}" "${args[@]}" "$@" || rc=$?
 exit "${rc}"

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Cicada Scopes — Graphene-shaped permission panel (store + UX).
-# Enforcement is cicada-run (later). This is the MAGI sheet.
+# Enforcement is cicada-run on every sandboxed launch.
 set -euo pipefail
 
 STORE="${CICADA_SCOPES_ROOT:-$HOME/.local/share/cicada/scopes}"
 mkdir -p "${STORE}"
 
+# Boxed apps only. Owner shell (Kitty) is host/adb — not in this sheet.
 APPS=(
   "org.cicada.helium|HELIUM|browser"
   "org.keepassxc.KeePassXC|KEEPASSXC|secrets"
   "org.cicada.files|FILES|files"
-  "org.cicada.kitty|KITTY|terminal"
 )
 
-# Browser/terminal need the net; files need the home; secrets default-deny.
+# Browser needs the net; files need the home; secrets default-deny.
 defaults_for() {
   case "$1" in
     org.keepassxc.KeePassXC)
@@ -22,7 +22,7 @@ defaults_for() {
     org.cicada.files)
       printf 'NETWORK=deny\nFILES=allow\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
       ;;
-    org.cicada.helium|org.cicada.kitty)
+    org.cicada.helium)
       printf 'NETWORK=allow\nFILES=portal\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n'
       ;;
     *)
@@ -70,6 +70,7 @@ draw() {
 ╔══════════════════════════════════════════════════════════════╗
 ║  CICADA // MAGI-02            SCOPES                         ║
 ║  per-app permissions · deny looks like "down" not crash      ║
+║  KITTY = host/adb (not boxed — toggle sheet does not apply)  ║
 ╚══════════════════════════════════════════════════════════════╝
 HDR
   printf '  %-12s %-8s %-8s %-8s %-8s %-8s %-8s\n' \
@@ -93,9 +94,10 @@ HDR
   done
   cat <<'FTR'
 
-  [1] HELIUM   [2] KEEPASSXC   [3] FILES   [4] KITTY
+  [1] HELIUM   [2] KEEPASSXC   [3] FILES
   toggle:  n net   f files   c camera   m mic   u usb   s sensors
   q quit   (enforced by cicada-run on launch)
+  vpn-only = host net only while wg0 is up
 
 FTR
 }
@@ -119,7 +121,6 @@ selected=0
 ensure_app org.cicada.helium
 ensure_app org.keepassxc.KeePassXC
 ensure_app org.cicada.files
-ensure_app org.cicada.kitty
 
 while true; do
   draw
@@ -132,7 +133,6 @@ while true; do
     1) selected=0 ;;
     2) selected=1 ;;
     3) selected=2 ;;
-    4) selected=3 ;;
     n) NETWORK="$(cycle "${NETWORK}" NETWORK)"; save "${id}" ;;
     f) FILES="$(cycle "${FILES}" FILES)"; save "${id}" ;;
     c) CAMERA="$(cycle "${CAMERA}" OTHER)"; save "${id}" ;;

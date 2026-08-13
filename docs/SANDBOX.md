@@ -63,13 +63,16 @@ Every launched app gets a **Cicada app-id** (`org.cicada.helium`, `org.keepassxc
 
 ### Layer B — Enforcement (steal, don't invent)
 
-- **Filesystem / camera / mic / USB:** xdg-desktop-portal (Hyprland + GTK backends). No `--filesystem=home`.
-- **Network:** `bwrap --unshare-net` when scope is deny. Optional slirp4netns / netns + nftables when scope is vpn-only (ties to the kill switch).
+- **Filesystem:** `FILES=deny` → tmpfs `$HOME`. `FILES=portal` → Downloads + app config only + `GTK_USE_PORTAL=1` (portal FileChooser when the toolkit cooperates). `FILES=allow` → full home.
+- **Camera:** no `/dev/video*` unless `CAMERA=allow`. System kill (`cicada-av-kill camera off`) blacklists `uvcvideo` and forces deny.
+- **Mic:** `MIC=deny` does not bind PipeWire/Pulse sockets. System kill mutes capture sources and forces deny for sandboxed apps. Speakers stay up.
+- **Sensors:** `SENSORS=deny` hides hidraw/iio under `/sys`.
+- **Network:** `bwrap --unshare-net` when deny. `vpn-only` allows host net only while `wg0` exists.
 - **D-Bus:** `xdg-dbus-proxy` (what Flatpak/Bubblejail already use).
-- **Devices:** USBGuard + USB portal; no raw `/dev/bus/usb`.
+- **USB:** USBGuard + no raw `/dev/bus/usb` unless allow.
 - **Landlock** later, as a second floor under bwrap.
 
-This is weaker than Android UIDs: a compromised app that escapes bwrap is still *your user*. Profiles (separate UIDs/homes) are the blast-radius layer above this.
+This is weaker than Android UIDs: a compromised app that escapes bwrap is still *your user*. Profiles (separate UIDs/homes) are the blast-radius layer above this. System AV kill is **software** — root can reverse it; firmware implants ignore it; Librem-style hardware kill is the real ceiling.
 
 ### Layer C — UX (what we actually have to design)
 
@@ -80,7 +83,7 @@ Graphene's trick is the **settings page**, not the kernel. Cicada Scopes is that
 - Deny looks like "network down", not a crash — wrappers return ENETUNREACH / empty portal
 - Changing a scope restarts that sandbox only
 
-v0 ships the panel (Settings → App permissions / Super+I), the launcher catalog, and enforcement on Helium, Files, and KeePassXC. `cicada-run` defaults are **deny/deny**. Known apps ship `.env` overrides. Dock / Wofi / MIME only start Cicada wrappers — see [docs/PRODUCT.md](PRODUCT.md). Kitty / Settings / Wi-Fi stay host-admin (identity via app-id, no bwrap).
+v0 ships the panel (Settings → App permissions / Super+I), the launcher catalog, and enforcement on Helium, Files, and KeePassXC. `cicada-run` defaults are **deny/deny**. Known apps ship `.env` overrides. Dock / Wofi / MIME only start Cicada wrappers — see [docs/PRODUCT.md](PRODUCT.md). Kitty / Settings / Wi-Fi stay host-admin (identity via app-id, no bwrap). Settings → **Camera & microphone** is the system software kill (not per-app scopes).
 
 ## What we will not do
 

@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Tor status and bridge management.
+#
+# Read `cicada-tor limits` before trusting this with anything that matters.
+set -uo pipefail
+
+BRIDGES=/etc/cicada/tor-bridges.conf
+
+usage() {
+  cat <<'EOF'
+cicada-tor — onion routing for cicada-run scopes
+
+  cicada-tor status          is Tor up, is the onion namespace up
+  cicada-tor check           verify traffic in the namespace really exits via Tor
+  cicada-tor bridges         add obfs4 bridges (for networks where Tor is blocked)
+  cicada-tor bridges --clear remove bridges, go back to direct connections
+  cicada-tor limits          what this does and does not protect against
+
+Run an app over Tor:  cicada-run org.torproject.torbrowser
+EOF
+}
+
+status() {
+  printf 'tor daemon:     '
+  systemctl is-active tor.service 2>/dev/null || echo inactive
+  printf 'onion netns:    '
+  ip netns list 2>/dev/null | grep -qw onion && echo up || echo down
+  printf 'bridges:        '
+  if [[ -s "${BRIDGES}" ]] && grep -q '^Bridge ' "${BRIDGES}" 2>/dev/null; then
+    echo "$(grep -c '^Bridge ' "${BRIDGES}") configured (obfs4)"
+  else
+    echo "none — direct connection, visible as Tor use to your network"
+  fi
+}
+
+check() {
+  # The only honest check is to make a request from inside the namespace and see
+  # whether Tor claims it. Anything else tests configuration, not reality.
+  ip netns list 2>/dev/null | grep -qw onion || { echo "onion netns is down" >&2; exit 1; }
+  echo "asking check.torproject.org from inside the namespace..."
+  local out
+  out="$(sudo -n /usr/local/bin/cicada-netns-helper exec -- \
+        curl -s --max-time 30 https://check.torproject.org/api/ip 2>/dev/null)" || true
+  if [[ -z "${out}" ]]; then
+    echo "no answer — Tor may still be bootstrapping, or the network is blocking it" >&2
+    exit 1
+  fi
+  echo "  ${out}"
+  if grep -q '"IsTor":true' <<<"${out}"; then
+    echo "OK: traffic from the onion namespace exits via Tor"
+  else
+    echo "FAIL: traffic is NOT going through Tor — do not use this scope" >&2
+    exit 1
+  fi
+}
+
+bridges() {
+  [[ ${EUID} -eq 0 ]] || { echo "run as root (sudo cicada-tor bridges)" >&2; exit 1; }
+  mkdir -p /etc/cicada
+  if [[ "${1:-}" == "--clear" ]]; then
+    : > "${BRIDGES}"; chmod 600 "${BRIDGES}"
+    systemctl try-restart tor.service 2>/dev/null || true
+    echo "bridges cleared — Tor will connect directly, which is visible to your network"
+    return
+  fi
+  cat <<'EOF'
+Paste obfs4 bridge lines, one per line, then Ctrl-D.
+
+Get them from https://bridges.torproject.org, or email bridges@torproject.org
+from a Gmail or Riseup address with the body:  get transport obfs4
+
+If the bridge site itself is blocked, email is the intended fallback.
+A line looks like:
+  obfs4 1.2.3.4:443 FINGERPRINT cert=... iat-mode=0
+EOF
+  local tmp; tmp="$(mktemp)"
+  {
+    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy"
+    echo "UseBridges 1"
+    while IFS= read -r line; do
+      line="$(echo "${line}" | tr -d '\r')"
+      [[ -z "${line}" ]] && continue
+      # Accept with or without a leading `Bridge`, since the site gives both.
+      [[ "${line}" == Bridge\ * ]] && echo "${line}" || echo "Bridge ${line}"
+    done
+  } > "${tmp}"
+  if ! grep -q '^Bridge ' "${tmp}"; then
+    rm -f "${tmp}"; echo "no bridge lines given; nothing changed" >&2; exit 1
+  fi
+  install -m600 "${tmp}" "${BRIDGES}"; rm -f "${tmp}"
+  systemctl try-restart tor.service 2>/dev/null || true
+  echo "$(grep -c '^Bridge ' "${BRIDGES}") bridges configured. Verify with: cicada-tor check"
+}
+
+limits() {
+  cat <<'EOF'
+What the onion scope does
+  Traffic from an app in this scope cannot leave except through Tor. That is
+  enforced by the kernel: inside the namespace there is one route, and the far
+  end only accepts redirect-to-Tor. A misconfigured or buggy app cannot leak,
+  because there is nowhere for a stray packet to go.
+
+What it does NOT do
+
+  1. It does not hide that you are using Tor. Your network sees connections to
+     Tor guards. Where using Tor is itself the danger, you need bridges with a
+     pluggable transport: sudo cicada-tor bridges
+
+  2. It does not make a normal browser anonymous. Tor Browser's protection is
+     that every user looks identical. Helium over Tor looks like Helium over
+     Tor — a small, distinctive population. For anonymity use
+     org.torproject.torbrowser, not the Helium scope with Tor bolted on.
+
+  3. It does not protect you from what you type. Logging into an account you
+     have used elsewhere links that identity to the session regardless of Tor.
+
+  4. It does not defend the endpoint. If the machine is compromised or seized
+     unlocked, Tor is irrelevant.
+
+  5. Tor's own threat model excludes an adversary who can watch both ends of
+     your circuit. A large state observing enough of the network can correlate
+     timing. Tor raises the cost enormously; it is not a guarantee.
+
+If your safety depends on this, verify it works before relying on it:
+  cicada-tor check
+EOF
+}
+
+case "${1:-status}" in
+  status) status ;;
+  check) check ;;
+  bridges) shift; bridges "${@:-}" ;;
+  limits) limits ;;
+  -h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

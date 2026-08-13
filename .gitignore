@@ -8,3 +8,8 @@ pkg/
 .DS_Store
 *.log
 .archiso/
+channel/repo/**
+!channel/repo/.gitkeep
+channel/keys/gnupg/
+channel/keys/batch-keygen
+channel/keys/*.sec

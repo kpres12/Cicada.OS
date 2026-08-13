@@ -170,20 +170,28 @@ screenshot() {
 }
 
 profiles() {
-  local pick name
+  local pick
   pick="$(zenity --list --title="Profiles" \
-    --text="Work is a real Unix user (different UID). Directory profiles only re-point cicada-run HOME." \
+    --text="Work = second Unix UID (cicada-work). Burner = folder home for sandboxed apps only. Kitty stays Owner/adb." \
     --column=Action --column=Does --print-column=1 --hide-header \
-    --width=560 --height=360 \
+    --width=600 --height=400 \
     "List" "Show profiles on this machine" \
-    "Create Work (UID)" "cicada-work — separate user, login on tty3" \
+    "Set Work password" "Unlock cicada-work login (created on install)" \
     "Login Work" "Open Hyprland as cicada-work (Ctrl+Alt+F3)" \
-    "Create Burner" "Folder home for throwaway sessions" \
+    "Create Work (UID)" "Manual create if missing" \
+    "Create Burner" "Folder home for throwaway sandboxed apps" \
     "Switch Burner" "Next sandboxed apps use Burner HOME" \
     2>/dev/null)" || return 0
   case "${pick}" in
     List)
       cicada-profile list 2>/dev/null | zenity --text-info --title="Profiles" --width=480 --height=320 || true
+      ;;
+    "Set Work password")
+      if id cicada-work >/dev/null 2>&1; then
+        kitty --title CICADA-WORK-PASS -e bash -lc 'sudo passwd cicada-work; read -r -p "Enter…"'
+      else
+        zenity --error --text="cicada-work missing. Use Create Work (UID), or reboot once after install."
+      fi
       ;;
     "Create Work (UID)")
       if zenity --question --title="Create Work" \
@@ -192,16 +200,48 @@ profiles() {
       fi
       ;;
     "Login Work")
-      cicada-profile login work || zenity --error --text="Create Work first, or see terminal output."
+      if id cicada-work >/dev/null 2>&1; then
+        cicada-profile login work || zenity --error --text="Set Work password first, or see terminal output."
+      else
+        zenity --error --text="Create Work first (or wait for installed firstboot)."
+      fi
       ;;
     "Create Burner")
       cicada-profile create burner
-      notify-send "Cicada" "Burner profile created" 2>/dev/null || true
+      notify-send "Cicada" "Burner folder profile created (not Work)" 2>/dev/null || true
       ;;
     "Switch Burner")
       cicada-profile switch burner
-      notify-send "Cicada" "Active profile: burner" 2>/dev/null || true
+      notify-send "Cicada" "Active Burner HOME for sandboxed apps" 2>/dev/null || true
       ;;
+  esac
+}
+
+av_kill() {
+  local pick st
+  st="$(cicada-av-kill status 2>/dev/null || echo "camera: on"$'\n'"mic: on")"
+  pick="$(zenity --list --title="Camera & microphone" \
+    --text="Software kill. Blocks apps + unloads the camera driver. Not a hardware switch — root can reverse it."$'\n\n'"${st}" \
+    --column=Action --column=Does --print-column=1 --hide-header \
+    --width=560 --height=360 \
+    "Status" "Show current kill state" \
+    "Camera off" "Blacklist uvcvideo; no /dev/video*" \
+    "Camera on" "Allow camera driver again" \
+    "Mic off" "Mute capture; force MIC=deny for apps" \
+    "Mic on" "Allow microphone again" \
+    "Both off" "Camera + mic software kill" \
+    "Both on" "Re-enable both" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    Status)
+      cicada-av-kill status 2>/dev/null | zenity --text-info --title="Camera & microphone" --width=480 --height=200 || true
+      ;;
+    "Camera off") sudo -n cicada-av-kill camera off && notify-send "Cicada" "Camera off (software)" ;;
+    "Camera on")  sudo -n cicada-av-kill camera on  && notify-send "Cicada" "Camera on" ;;
+    "Mic off")    sudo -n cicada-av-kill mic off    && notify-send "Cicada" "Mic off (software)" ;;
+    "Mic on")     sudo -n cicada-av-kill mic on     && notify-send "Cicada" "Mic on" ;;
+    "Both off")   sudo -n cicada-av-kill both off   && notify-send "Cicada" "Camera + mic off" ;;
+    "Both on")    sudo -n cicada-av-kill both on    && notify-send "Cicada" "Camera + mic on" ;;
   esac
 }
 
@@ -213,6 +253,7 @@ case "${1:-}" in
   appearance|Appearance) appearance; exit 0 ;;
   scopes|Scopes) exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
   profiles|Profiles) profiles; exit 0 ;;
+  av|camera|mic|"Camera & microphone") av_kill; exit 0 ;;
   lock|Lock) exec cicada-lock ;;
 esac
 
@@ -220,14 +261,15 @@ pick="$(zenity --list --title="Settings" \
   --text="Click a row. Telemetry stays off. Unknown apps are default-deny." \
   --column=Setting --column=Does \
   --print-column=1 --hide-header \
-  --width=560 --height=560 \
+  --width=560 --height=600 \
   "Wi-Fi" "Pick a network from a scan" \
   "Sound" "Volume, mute, headphones" \
   "Brightness" "Screen brightness" \
   "Displays" "How large the UI is" \
   "Appearance" "Dark/light and desktop icon size" \
   "App permissions" "Scopes — network/files/camera per app" \
-  "Profiles" "Work (UID) / Burner compartments" \
+  "Camera & microphone" "Software kill — not a hardware switch" \
+  "Profiles" "Work (UID) / Burner (folder) compartments" \
   "Notifications" "Notification center" \
   "Dock left" "Keep the dock on the left" \
   "Dock bottom" "Move the dock to the bottom" \
@@ -244,6 +286,7 @@ case "${pick}" in
   Displays) displays ;;
   Appearance) appearance ;;
   "App permissions") exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
+  "Camera & microphone") av_kill ;;
   Profiles) profiles ;;
   Notifications) exec swaync-client -t -sw ;;
   "Dock left") restart_dock left ;;

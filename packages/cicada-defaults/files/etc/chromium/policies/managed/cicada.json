@@ -63,5 +63,6 @@
     "autofill",
     "site_settings"
   ],
-  "DnsOverHttpsTemplates": "https://dns.quad9.net/dns-query"
+  "DnsOverHttpsTemplates": "https://dns.quad9.net/dns-query",
+  "EncryptedClientHelloEnabled": true
 }

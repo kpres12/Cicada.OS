@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Run a command inside the `onion` namespace as the *calling user*.
+#
+# This is reachable through sudo NOPASSWD, so it is a root-adjacent surface and
+# is written accordingly:
+#
+#   * The namespace name is hardcoded. Nothing the caller passes selects it.
+#   * Privileges are dropped to the invoking uid/gid with --no-new-privs before
+#     the command is executed, so what the caller gets is a network namespace,
+#     never a root shell.
+#   * The command is exec'd directly from the argument vector. No shell, no
+#     word splitting, no string interpolation of caller input.
+#   * There is no verb that runs anything as root.
+#
+# The only capability granted is "your own process, in a namespace whose sole
+# route is Tor". That is the whole point: less network, not more privilege.
+set -euo pipefail
+
+NS=onion
+
+die() { echo "cicada-netns-helper: $*" >&2; exit 1; }
+[[ ${EUID} -eq 0 ]] || die "must be invoked through sudo"
+
+# sudo tells us who called. Refuse if it is absent or nonsensical rather than
+# guessing, because guessing here means running something as root.
+uid="${SUDO_UID:-}"
+gid="${SUDO_GID:-}"
+[[ "${uid}" =~ ^[0-9]+$ && "${gid}" =~ ^[0-9]+$ ]] || die "no calling uid/gid (invoke via sudo)"
+[[ "${uid}" != 0 ]] || die "refusing to run as root inside the namespace"
+
+[[ "${1:-}" == "exec" ]] || { echo "usage: cicada-netns-helper exec -- COMMAND [ARGS...]" >&2; exit 1; }
+shift
+[[ "${1:-}" == "--" ]] && shift
+[[ $# -ge 1 ]] || die "no command given"
+
+ip netns list 2>/dev/null | grep -qw "${NS}" \
+  || die "onion namespace is down (systemctl start cicada-tor-netns)"
+
+# ip netns exec enters the namespace as root; setpriv immediately drops back to
+# the caller and forbids regaining privilege via setuid binaries.
+exec ip netns exec "${NS}" \
+  setpriv --reuid "${uid}" --regid "${gid}" --clear-groups --no-new-privs -- "$@"

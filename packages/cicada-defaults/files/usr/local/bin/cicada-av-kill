@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# System camera / microphone kill (software). Not a hardware kill switch.
+# - Camera off: blacklist + unload uvcvideo; apps cannot open /dev/video*
+# - Mic off: mute PipeWire/Pulse capture; cicada-run forces MIC=deny
+# Root malware can reverse this. Firmware implants ignore it. Hardware kill is the ceiling.
+set -euo pipefail
+
+STATE=/var/lib/cicada/av-kill.env
+MODPROBE_DROPIN=/etc/modprobe.d/cicada-av-kill.conf
+usage() {
+  cat <<'EOF'
+usage: cicada-av-kill status
+       cicada-av-kill camera on|off
+       cicada-av-kill mic on|off
+       cicada-av-kill both on|off
+
+Software kill for the built-in camera and microphone.
+Blocks sandboxed apps (via cicada-run) and unloads the camera driver.
+Not a Librem-style hardware cut — root can reverse it.
+EOF
+}
+
+need_root() {
+  [[ ${EUID} -eq 0 ]] || { echo "cicada-av-kill: root required (use sudo)" >&2; exit 1; }
+}
+
+read_state() {
+  CAMERA_KILL=0
+  MIC_KILL=0
+  if [[ -f "${STATE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${STATE}"
+  elif [[ -f /etc/cicada/av-kill.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/cicada/av-kill.env
+  fi
+}
+
+write_state() {
+  need_root
+  mkdir -p "$(dirname "${STATE}")" /etc/cicada
+  cat > "${STATE}" <<EOF
+CAMERA_KILL=${CAMERA_KILL}
+MIC_KILL=${MIC_KILL}
+EOF
+  chmod 644 "${STATE}"
+  cp -a "${STATE}" /etc/cicada/av-kill.env
+  chmod 644 /etc/cicada/av-kill.env
+}
+
+camera_modules_off() {
+  need_root
+  cat > "${MODPROBE_DROPIN}" <<'EOF'
+# Written by cicada-av-kill — camera software kill
+blacklist uvcvideo
+install uvcvideo /bin/true
+blacklist gspca_main
+install gspca_main /bin/true
+EOF
+  for m in uvcvideo gspca_main; do
+    modprobe -r "${m}" 2>/dev/null || true
+  done
+  for n in /dev/video*; do
+    [[ -e "${n}" ]] || continue
+    chmod 000 "${n}" 2>/dev/null || true
+  done
+}
+
+camera_modules_on() {
+  need_root
+  rm -f "${MODPROBE_DROPIN}"
+  modprobe uvcvideo 2>/dev/null || true
+  for n in /dev/video*; do
+    [[ -e "${n}" ]] || continue
+    chmod 666 "${n}" 2>/dev/null || chmod 660 "${n}" 2>/dev/null || true
+  done
+}
+
+mic_sources_off() {
+  if command -v pactl >/dev/null 2>&1; then
+    while IFS= read -r idx; do
+      [[ -n "${idx}" ]] || continue
+      pactl set-source-mute "${idx}" 1 2>/dev/null || true
+      pactl set-source-volume "${idx}" 0 2>/dev/null || true
+    done < <(pactl list short sources 2>/dev/null | awk '{print $1}')
+  fi
+  if command -v wpctl >/dev/null 2>&1; then
+    wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1 2>/dev/null || true
+  fi
+  if [[ -d /etc/wireplumber ]] || mkdir -p /etc/wireplumber/wireplumber.conf.d 2>/dev/null; then
+    need_root
+    mkdir -p /etc/wireplumber/wireplumber.conf.d
+    cat > /etc/wireplumber/wireplumber.conf.d/99-cicada-mic-kill.conf <<'EOF'
+# cicada-av-kill: disable audio sources (mic). Outputs untouched.
+monitor.alsa.rules = [
+  {
+    matches = [ { node.name = "~alsa_input.*" } ]
+    actions = { update-props = { node.disabled = true } }
+  }
+]
+EOF
+  fi
+}
+
+mic_sources_on() {
+  need_root
+  rm -f /etc/wireplumber/wireplumber.conf.d/99-cicada-mic-kill.conf
+  if command -v pactl >/dev/null 2>&1; then
+    while IFS= read -r idx; do
+      [[ -n "${idx}" ]] || continue
+      pactl set-source-mute "${idx}" 0 2>/dev/null || true
+    done < <(pactl list short sources 2>/dev/null | awk '{print $1}')
+  fi
+  if command -v wpctl >/dev/null 2>&1; then
+    wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 2>/dev/null || true
+  fi
+}
+
+cmd="${1:-}"
+arg="${2:-}"
+case "${cmd}" in
+  status|"")
+    read_state
+    cam=on; mic=on
+    [[ "${CAMERA_KILL}" == "1" ]] && cam=off
+    [[ "${MIC_KILL}" == "1" ]] && mic=off
+    echo "camera: ${cam}  (software kill; not hardware)"
+    echo "mic:     ${mic}  (software kill; not hardware)"
+    if [[ -f "${MODPROBE_DROPIN}" ]]; then
+      echo "camera driver: blacklisted (uvcvideo)"
+    else
+      echo "camera driver: allowed"
+    fi
+    ;;
+  camera)
+    need_root
+    read_state
+    case "${arg}" in
+      off) CAMERA_KILL=1; camera_modules_off; write_state; echo "camera: off" ;;
+      on)  CAMERA_KILL=0; camera_modules_on; write_state; echo "camera: on" ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  mic)
+    need_root
+    read_state
+    case "${arg}" in
+      off) MIC_KILL=1; mic_sources_off; write_state; echo "mic: off" ;;
+      on)  MIC_KILL=0; mic_sources_on; write_state; echo "mic: on" ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  both)
+    need_root
+    read_state
+    case "${arg}" in
+      off)
+        CAMERA_KILL=1; MIC_KILL=1
+        camera_modules_off; mic_sources_off; write_state
+        echo "camera: off  mic: off"
+        ;;
+      on)
+        CAMERA_KILL=0; MIC_KILL=0
+        camera_modules_on; mic_sources_on; write_state
+        echo "camera: on  mic: on"
+        ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  -h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

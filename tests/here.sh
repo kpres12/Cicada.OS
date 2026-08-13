@@ -63,6 +63,19 @@ grep -q 'bind = $mainMod, SPACE, exec, cicada-wofi' "${hypr}" || die "Super+Spac
 grep -q 'exec, cicada-files' "${hypr}" || die "Super+E must open cicada-files"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must default-deny network"
 grep -q 'FILES=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must default-deny files"
+grep -q 'MIC=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must default-deny mic"
+grep -q 'SENSORS=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must default-deny sensors"
+grep -q 'pipewire' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "MIC=deny must mention pipewire omit"
+grep -q 'hidraw\|/sys/bus/iio\|SENSORS' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "SENSORS deny path missing"
+grep -q 'GTK_USE_PORTAL=1' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "FILES=portal must set GTK_USE_PORTAL"
+grep -q 'av-kill.env' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must honor system AV kill"
+grep -q 'Camera & microphone' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Camera & microphone"
+grep -q 'cicada-av-kill' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-av-kill" || die "cicada-av-kill missing"
+test -f "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/hide-arch-desktops.sh" || die "hide-arch-desktops.sh missing"
+grep -q 'create-locked work' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" || die "firstboot must create Work UID"
+grep -q 'hide-arch-desktops' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" || die "firstboot must hide Arch desktops"
+grep -q 'Set Work password' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Set Work password"
+grep -q 'host/adb' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-scopes" || die "scopes must label Kitty as host/adb"
 grep -q 'App permissions' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing App permissions"
 grep -q 'Create Work (UID)' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Work UID profiles"
 grep -q 'custom/rf' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" && die "dead waybar custom/rf still defined" || true
@@ -175,8 +188,11 @@ grep -q 'ipv4.ignore-auto-dns=true' "${nm}" || die "NM still hands DHCP DNS to r
 python3 - <<PY || die "browser DoH not strict, or not pointed at Quad9"
 import json, sys, pathlib
 d = json.loads(pathlib.Path("${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/managed/cicada.json").read_text())
+# ECH is why DoH is worth having: without it TLS leaks the hostname in
+# cleartext SNI immediately after the encrypted lookup hid it.
 sys.exit(0 if d.get("DnsOverHttpsMode") == "secure"
-         and "quad9" in d.get("DnsOverHttpsTemplates", "") else 1)
+         and "quad9" in d.get("DnsOverHttpsTemplates", "")
+         and d.get("EncryptedClientHelloEnabled") is True else 1)
 PY
 # Strict browser DNS with no portal escape is a bricked connection on campus.
 pt="${CICADA_BIN}/cicada-portal"
@@ -192,7 +208,9 @@ d = json.loads(p.read_text())
 assert d.get("MetricsReportingEnabled") is False
 assert d.get("CloudReportingEnabled") is False
 assert d.get("SyncDisabled") is True
-assert d.get("DnsOverHttpsMode") == "off"
+# Was "off" (plaintext to whatever the network hands you). Now strict DoH to
+# Quad9 — the campus resolver no longer sees the domains you visit.
+assert d.get("DnsOverHttpsMode") == "secure"
 print("  OK  chromium managed telemetry/sync/DoH")
 PY
 grep -q 'kernel.kptr_restrict = 2' "${ROOT}/packages/cicada-defaults/files/etc/sysctl.d/99-cicada.conf" || die "kptr_restrict"
@@ -397,6 +415,98 @@ bash -c "set -e; source '${ROOT}/packages/cicada-defaults/files/etc/cicada/defau
   [[ \"\${CICADA_LID_REBOOT_SEC}\" =~ ^[0-9]+$ ]] || exit 1" \
   || die "defaults.env has a malformed value"
 say "defaults.env sources with numeric values intact"
+
+echo "==> Tor scope is kernel-enforced, not proxy-cooperative"
+tornetns="${CICADA_BIN}/cicada-tor-netns"
+test -x "${tornetns}" || die "cicada-tor-netns missing"
+test -x "${CICADA_BIN}/cicada-netns-helper" || die "cicada-netns-helper missing"
+test -x "${CICADA_BIN}/cicada-tor" || die "cicada-tor missing"
+# The whole point: an app that ignores a proxy setting must still be unable to
+# reach anything but Tor. That means a default-drop egress policy in the netns.
+grep -q 'policy drop' "${tornetns}" || die "onion netns egress is not default-drop"
+grep -q 'udp dport 53 dnat' "${tornetns}" || die "DNS in the netns would bypass Tor"
+grep -qE 'oifname "\$\{VETH\}" drop' "${tornetns}" || die "host could forward netns traffic to the physical NIC"
+# Fail closed and loud: silently using the direct network for a Tor scope is the
+# worst possible outcome for the people this exists for.
+grep -q 'Refusing to run it on the direct network' "${RUN_BIN}/cicada-run" \
+  || die "cicada-run may fall back to direct network for a tor scope"
+grep -q 'netns_wrap' "${RUN_BIN}/cicada-run" || die "cicada-run does not enter the onion namespace"
+python3 - <<PY || die "tor scope must not also --unshare-net (that cuts off Tor too)"
+import pathlib, re, sys
+t = pathlib.Path("${RUN_BIN}/cicada-run").read_text()
+m = re.search(r"^  tor\)(.*?)^    ;;", t, re.S | re.M)
+# Strip comments first: the block explains *why* --unshare-net is absent, and
+# matching that prose would fail the check the code passes.
+body = "\n".join(l for l in (m.group(1).splitlines() if m else []) if not l.strip().startswith("#"))
+sys.exit(0 if m and "--unshare-net" not in body else 1)
+PY
+# The sudo-reachable helper must grant a namespace, never privilege.
+hlp="${CICADA_BIN}/cicada-netns-helper"
+grep -q 'setpriv --reuid' "${hlp}" || die "helper does not drop privileges before exec"
+grep -q -- '--no-new-privs' "${hlp}" || die "helper allows regaining privilege via setuid"
+grep -q 'refusing to run as root inside the namespace' "${hlp}" || die "helper would run as root for uid 0"
+grep -qE '^NS=onion' "${hlp}" || die "namespace name must be hardcoded, not caller-supplied"
+# Tor Browser, not Helium-over-Tor, carries the anonymity claim.
+tb="${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes/org.torproject.torbrowser.env"
+test -f "${tb}" || die "no Tor Browser scope"
+grep -q '^NETWORK=tor' "${tb}" || die "Tor Browser scope is not on the tor network"
+grep -q '^NETWORK=tor' "${hel}" && die "Helium must not claim Tor anonymity (fingerprint)" || true
+grep -qx 'tor' "${pkgs}" || die "tor not on the ISO"
+grep -qx 'obfs4proxy' "${pkgs}" || die "no pluggable transport: Tor use is visible where that is the danger"
+grep -qx 'torbrowser-launcher' "${pkgs}" || die "no Tor Browser"
+grep -q 'bridges' "${CICADA_BIN}/cicada-tor" || die "no bridge configuration path"
+grep -q 'does not hide that you are using Tor' "${CICADA_BIN}/cicada-tor" \
+  || die "cicada-tor must state that Tor use itself is visible without bridges"
+say "onion netns default-drop / fail-closed / helper drops privs / bridges / Tor Browser"
+
+echo "==> archiso installer surface is carved out, not inherited"
+asm="${ROOT}/iso/assemble-profile.sh"
+# releng enables these for a cloud/VM installer ISO. Anything not explicitly
+# removed here ships enabled, because the whole releng airootfs is rsynced in.
+for u in vboxservice vmtoolsd vmware-vmblock-fuse hv_fcopy_daemon hv_kvp_daemon \
+         hv_vss_daemon qemu-guest-agent ModemManager choose-mirror; do
+  grep -q "${u}.service" "${asm}" || die "${u} still enabled (inherited from releng)"
+done
+grep -q 'rm -rf.*cloud-init.target.wants' "${asm}" || die "dangling cloud-init units still enabled"
+grep -q 'pcscd.socket' "${asm}" || die "smartcard socket still listening"
+grep -q 'livecd-talk' "${asm}" || die "removing the screen reader must be a documented decision, not silent"
+say "guest agents / cloud-init / ModemManager / mirror fetch / pcscd removed"
+
+echo "==> core dumps never write memory to disk"
+cd_="${ROOT}/packages/cicada-defaults/files/etc/systemd/coredump.conf.d/cicada.conf"
+grep -q '^Storage=none' "${cd_}" || die "core dumps would write process memory to /var/lib/systemd/coredump"
+grep -q 'kernel.core_pattern = |/bin/false' "${ROOT}/packages/cicada-defaults/files/etc/sysctl.d/98-cicada-coredump.conf" \
+  || die "kernel fallback core pattern still writes files"
+grep -q 'fs.suid_dumpable = 0' "${ROOT}/packages/cicada-defaults/files/etc/sysctl.d/98-cicada-coredump.conf" \
+  || die "setuid processes can still dump core"
+say "no core dumps: a browser crash cannot leave keys on disk"
+
+echo "==> network identity does not survive MAC randomization"
+# Randomizing the MAC and then sending a stable hostname/DUID hands the network
+# a persistent identifier and undoes the entire exercise.
+grep -q 'ipv4.dhcp-send-hostname=false' "${nm}" || die "hostname broadcast in every DHCP request"
+grep -q 'ipv6.dhcp-send-hostname=false' "${nm}" || die "hostname broadcast over DHCPv6"
+grep -q 'ipv4.dhcp-client-id=mac' "${nm}" || die "DHCP client-id does not follow the randomized MAC"
+grep -qE 'ipv6.dhcp-duid=(ll|llt)$' "${nm}" || die "DHCPv6 DUID is stable across MAC rotation"
+say "hostname withheld / client-id + DUID derive from the random MAC"
+
+echo "==> time is authenticated"
+ch="${ROOT}/packages/cicada-defaults/files/etc/chrony.conf"
+grep -qc 'nts' "${ch}" >/dev/null && [[ "$(grep -c 'iburst nts' "${ch}")" -ge 3 ]] \
+  || die "fewer than 3 NTS sources: one operator could move the clock alone"
+grep -q '^authselectmode require' "${ch}" || die "chrony would fall back to unauthenticated time"
+grep -q '^port 0' "${ch}" || die "chrony would serve time to others"
+grep -q 'systemd-timesyncd' "${asm}" || die "plaintext timesyncd still enabled on live"
+say "NTS from 3 jurisdictions, no plaintext fallback, never a server"
+
+echo "==> module blacklist covers known-bad, not the boot path"
+mb2="${ROOT}/packages/cicada-defaults/files/etc/modprobe.d/cicada-blacklist.conf"
+grep -q '^blacklist vivid' "${mb2}" || die "vivid (CVE-2019-18683 LPE test driver) still loadable"
+grep -q '^install vivid /bin/true' "${mb2}" || die "vivid blacklist bypassable by explicit modprobe"
+grep -q '^blacklist squashfs' "${mb2}" && die "blacklisting squashfs would break the live ISO" || true
+grep -q '^blacklist ext4' "${mb2}" && die "blacklisting ext4 would break the installed root" || true
+grep -q '^blacklist btrfs' "${mb2}" && die "blacklisting btrfs would break the installed root" || true
+say "vivid + unused filesystem parsers blocked, boot path untouched"
 
 echo "==> lock cannot strand a passwordless session"
 lock="${CICADA_BIN}/cicada-lock"

@@ -48,6 +48,32 @@ if [[ ! -d /run/archiso ]]; then
     fi
     systemctl enable --now usbguard.service 2>/dev/null || true
   fi
+
+  # Work-as-UID: create cicada-work once on installed systems (locked until passwd).
+  if [[ -x /usr/local/bin/cicada-profile-helper ]] && ! id cicada-work >/dev/null 2>&1; then
+    /usr/local/bin/cicada-profile-helper create-locked work || true
+    if id cicada >/dev/null 2>&1; then
+      mkdir -p /home/cicada/.local/share/cicada/profiles/work/state
+      echo uid > /home/cicada/.local/share/cicada/profiles/work/state/UID
+      chown -R cicada:cicada /home/cicada/.local/share/cicada/profiles/work 2>/dev/null || true
+    fi
+  fi
+fi
+
+# Launcher monopoly: hide Arch .desktop files from generic XDG menus.
+if [[ -x /usr/local/lib/cicada/hide-arch-desktops.sh ]]; then
+  /usr/local/lib/cicada/hide-arch-desktops.sh || true
+fi
+
+# Prefer signed cicada-stable channel when present.
+if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
+  /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf || true
+fi
+
+# Import Cicada channel pubkey when pacman-key exists (installed systems).
+if [[ -f /etc/pacman.d/cicada-stable-key.gpg ]] && command -v pacman-key >/dev/null 2>&1; then
+  pacman-key --add /etc/pacman.d/cicada-stable-key.gpg 2>/dev/null || true
+  pacman-key --lsign-key "$(pacman-key --list-keys 2>/dev/null | awk '/cicada-stable|Cicada/{getline; print $1; exit}')" 2>/dev/null || true
 fi
 
 # Tell the session whether locking is survivable. An empty password hash means

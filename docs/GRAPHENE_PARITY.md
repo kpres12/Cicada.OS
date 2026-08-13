@@ -22,7 +22,7 @@ Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel 
 - [x] `linux-hardened` as extra boot entry (default `linux` for MBA `broadcom-wl`)
 - [x] `lockdown=confidentiality` on the hardened entry only
 - [x] `ibt=on shstk=on` on live and installed cmdline (no-op on CPUs without CET; **not MTE**)
-- [ ] Forced module signing
+- [ ] Forced module signing — **won't do without forking Arch's kernel** (violates official-repos-only for security-critical packages). Policy-OS ceiling does not include a custom signed kernel.
 - [ ] Secure Boot chain (sbctl hook shipped; enroll with `cicada-sbctl-enroll` in Setup Mode)
 
 **Gap:** MTE has no x86 equivalent. CET/shadow stack is the substitute on 11th-gen Intel / Zen 3+. Do not list MTE as done.
@@ -77,9 +77,14 @@ Graphene: PIN scramble, fingerprint+PIN 2FA, 5 fingerprint attempts, 128-char pa
 Graphene: per-app network permission (network-down, not crash), Sensors, Storage Scopes, Contact Scopes.
 
 **Cicada (approximate, not equal):**
-- [x] `cicada-run`: bwrap is **not** bind-all; Helium `NETWORK=allow` + `FILES=portal` (camera/mic deny); KeePassXC `NETWORK=deny`; D-Bus proxy when `xdg-dbus-proxy` exists
-- [x] `cicada-profile`: Work/Burner homes; `--encrypt` LUKS loop; `--user` real Unix UID + `login` on another TTY
-- [ ] Flatpak + xdg-desktop-portal as the file picker for `FILES=portal`
+- [x] `cicada-run`: bwrap is **not** bind-all; default-deny NETWORK/FILES/CAMERA/MIC/USB/SENSORS
+- [x] **MIC=deny** omits PipeWire/Pulse from `XDG_RUNTIME_DIR`; **SENSORS=deny** hides hidraw/iio under `/sys`
+- [x] **FILES=portal** = Downloads + app config + `GTK_USE_PORTAL=1` (storage scopes, not full `$HOME`)
+- [x] **NETWORK=vpn-only** = host net only while `wg0` is up; else `--unshare-net`
+- [x] System **Camera & microphone** kill (`cicada-av-kill`): unloads uvcvideo + forces MIC/CAMERA deny for sandboxed apps. Software only — not a hardware kill switch
+- [x] Helium / KeePass / Files ship explicit scopes; D-Bus proxy when `xdg-dbus-proxy` exists
+- [x] `cicada-profile`: Work UID auto-created on install firstboot (`create-locked`); Burner is directory HOME; `--encrypt` LUKS loop
+- [ ] Flatpak FileChooser as the *only* file path for every native toolkit
 - [ ] AppArmor profiles per shipped app
 
 See [docs/SANDBOX.md](SANDBOX.md) and [docs/AMNESIC.md](AMNESIC.md) (live USB forgets; installed disk persists).

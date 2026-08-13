@@ -110,10 +110,41 @@ mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
   fi
 } > "${PROFILE}/airootfs/usr/share/cicada/BUILD-ID"
 
+# Prefer [cicada-stable] + embed local repo when a prior/current channel build exists.
+mkdir -p "${PROFILE}/airootfs/var/cache/cicada/repo" \
+         "${PROFILE}/airootfs/usr/local/lib/cicada"
+if [[ -x "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-channel-enable.sh" ]]; then
+  # Patch the eventual live pacman.conf placeholder; pacstrap may overwrite — firstboot re-runs enable.
+  mkdir -p "${PROFILE}/airootfs/etc/pacman.d"
+  cp -a "${ROOT}/packages/cicada-defaults/files/etc/pacman.d/"* \
+    "${PROFILE}/airootfs/etc/pacman.d/" 2>/dev/null || true
+fi
+for repo_src in "${ROOT}/out/channel-repo" "${ROOT}/channel/repo"; do
+  if [[ -d "${repo_src}" ]] && compgen -G "${repo_src}/cicada-stable.db*" >/dev/null 2>&1; then
+    echo "==> embedding cicada-stable repo from ${repo_src}"
+    rsync -a "${repo_src}/" "${PROFILE}/airootfs/var/cache/cicada/repo/"
+    break
+  fi
+done
+# hide-arch-desktops runs on firstboot / install-chroot (needs the real airootfs package set).
+
 mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
 cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
 cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/null || true
 
+# Also seed Hidden overrides for known Arch apps into the profile so live boots
+# are sealed before firstboot runs (paths relative to PROFILE airootfs).
+mkdir -p "${PROFILE}/airootfs/usr/local/share/applications"
+for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desktop \
+            alacritty.desktop foot.desktop org.gnome.Nautilus.desktop; do
+  cat > "${PROFILE}/airootfs/usr/local/share/applications/${base}" <<EOF
+[Desktop Entry]
+Hidden=true
+NoDisplay=true
+Name=Hidden by Cicada (${base})
+Type=Application
+EOF
+done
 # Releng enables mDNS; Cicada does not. Drop the archiso resolved drop-in if present.
 rm -f "${PROFILE}/airootfs/etc/systemd/resolved.conf.d/archiso.conf"
 rm -f "${PROFILE}/airootfs/etc/systemd/system/multi-user.target.wants/sshd.service"
@@ -125,6 +156,7 @@ mkdir -p "${wants}"
 ln -sfn /etc/systemd/system/cicada-firstboot.service "${wants}/cicada-firstboot.service"
 ln -sfn /etc/systemd/system/cicada-amnesic.service "${wants}/cicada-amnesic.service"
 ln -sfn /etc/systemd/system/cicada-watchdog.service "${wants}/cicada-watchdog.service"
+ln -sfn /etc/systemd/system/cicada-tor-netns.service "${wants}/cicada-tor-netns.service"
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/poweroff.target.wants" "${PROFILE}/airootfs/etc/systemd/system/reboot.target.wants"
 for t_ in poweroff reboot; do ln -sfn /etc/systemd/system/cicada-memwipe.service "${PROFILE}/airootfs/etc/systemd/system/${t_}.target.wants/cicada-memwipe.service"; done
 ln -sfn /etc/systemd/system/cicada-yank-watch.service "${wants}/cicada-yank-watch.service"
@@ -142,6 +174,55 @@ rm -f "${wants}/apparmor.service"
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants"
 ln -sfn /etc/systemd/system/cicada-locked-reboot.timer \
   "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants/cicada-locked-reboot.timer"
+
+# --- carve out archiso's installer-ISO surface ------------------------------
+# releng enables a set of services appropriate for a general-purpose Arch
+# installer that boots in clouds and hypervisors. Cicada inherits all of it by
+# rsyncing the releng airootfs, so anything not explicitly removed here ships
+# enabled. Each removal below is a decision, not tidying.
+
+# Hypervisor guest agents are a host-to-guest control channel by design:
+# clipboard capture, file transfer, and command execution initiated by whoever
+# owns the hypervisor. That is a reasonable convenience for a VM you own and an
+# anti-feature for an OS whose threat model includes an adversary controlling
+# the machine underneath you. People WILL test Cicada in a VM; they should not
+# silently get a host with read access to the guest.
+rm -f "${wants}/vboxservice.service" \
+      "${wants}/vmtoolsd.service" \
+      "${wants}/vmware-vmblock-fuse.service" \
+      "${wants}/hv_fcopy_daemon.service" \
+      "${wants}/hv_kvp_daemon.service" \
+      "${wants}/hv_vss_daemon.service" \
+      "${wants}/qemu-guest-agent.service"
+
+# cloud-init is excluded from the package list, but releng still ships the enable
+# symlinks — dangling units that would fetch instance metadata from a cloud
+# provider if the package ever came back. Remove the whole target.
+rm -rf "${PROFILE}/airootfs/etc/systemd/system/cloud-init.target.wants"
+
+# ModemManager probes every serial-looking device with AT commands. On a laptop
+# with no WWAN that is pure attack surface, and it interferes with USB serial.
+rm -f "${wants}/ModemManager.service"
+
+# choose-mirror reads a kernel cmdline parameter and reaches out to fetch a
+# mirrorlist: a network callout during early boot, before the user has chosen
+# to be on a network at all.
+rm -f "${wants}/choose-mirror.service"
+
+# pcscd is a smartcard daemon listening on a socket for any reader plugged in.
+# Nothing in Cicada uses it; it is a USB-triggered attack surface.
+rm -f "${PROFILE}/airootfs/etc/systemd/system/sockets.target.wants/pcscd.socket"
+
+# Plaintext NTP at boot leaks the IP and lets anyone on-path move the clock —
+# which is how certificate expiry checks get bypassed. Replaced by chrony with
+# NTS (authenticated time). See etc/chrony.conf.
+rm -f "${PROFILE}/airootfs/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service" \
+      "${PROFILE}/airootfs/etc/systemd/system/sysinit.target.wants/systemd-time-wait-sync.service"
+ln -sfn /usr/lib/systemd/system/chronyd.service "${wants}/chronyd.service"
+
+# livecd-talk (screen reader) is deliberately KEPT: it only activates with
+# accessibility=on, and stripping accessibility from a privacy OS would exclude
+# the people least able to shop around for an alternative.
 
 # Brand the ISO metadata without rewriting releng bootloader machinery
 python3 - "${PROFILE}/profiledef.sh" <<'PY'
@@ -192,6 +273,10 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-memwipe"]="0:0:755"
   ["/usr/local/bin/cicada-logs"]="0:0:755"
   ["/usr/local/bin/cicada-portal"]="0:0:755"
+  ["/usr/local/bin/cicada-tor"]="0:0:755"
+  ["/usr/local/bin/cicada-tor-netns"]="0:0:755"
+  ["/usr/local/bin/cicada-netns-helper"]="0:0:755"
+  ["/etc/sudoers.d/cicada-netns"]="0:0:440"
   ["/usr/local/bin/cicada-duress-check"]="0:0:700"
   ["/usr/local/lib/cicada/install-chroot.sh"]="0:0:755"
   ["/usr/local/bin/chromium"]="0:0:755"
@@ -205,6 +290,9 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-files"]="0:0:755"
   ["/usr/local/bin/cicada-desktop-trust"]="0:0:755"
   ["/usr/local/bin/cicada-profile-helper"]="0:0:755"
+  ["/usr/local/bin/cicada-av-kill"]="0:0:755"
+  ["/usr/local/lib/cicada/hide-arch-desktops.sh"]="0:0:755"
+  ["/usr/local/lib/cicada/cicada-channel-enable.sh"]="0:0:755"
   ["/etc/sudoers.d/cicada-profile"]="0:0:440"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"

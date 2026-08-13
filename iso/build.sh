@@ -42,5 +42,30 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 "${MKARCHISO[@]}"
 
+# Persist pacman pkg cache → local cicada-stable repo (next assemble embeds it).
+PKG_CACHE=""
+for cand in \
+  "${WORK}/mkarchiso/x86_64/airootfs/var/cache/pacman/pkg" \
+  "${WORK}/mkarchiso/airootfs/var/cache/pacman/pkg" \
+  "${WORK}/mkarchiso/pacman/pkg"
+do
+  if [[ -d "${cand}" ]] && compgen -G "${cand}/*.pkg.tar.*" >/dev/null 2>&1; then
+    PKG_CACHE="${cand}"
+    break
+  fi
+done
+if [[ -n "${PKG_CACHE}" ]]; then
+  echo "==> channel repo from ${PKG_CACHE}"
+  mkdir -p "${OUT}/channel-repo" "${ROOT}/channel/repo"
+  if [[ -x "${ROOT}/scripts/channel-build-repo.sh" ]] || [[ -f "${ROOT}/scripts/channel-build-repo.sh" ]]; then
+    bash "${ROOT}/scripts/channel-build-repo.sh" "${PKG_CACHE}" "${OUT}/channel-repo" || \
+      echo "==> channel-build-repo skipped (non-fatal)"
+    # Keep a tree copy for the next assemble-profile embed
+    rsync -a "${OUT}/channel-repo/" "${ROOT}/channel/repo/" 2>/dev/null || true
+  fi
+else
+  echo "==> no pacman pkg cache found under ${WORK}/mkarchiso (channel repo deferred)"
+fi
+
 echo "==> ISO(s):"
 ls -lh "${OUT}"/*.iso

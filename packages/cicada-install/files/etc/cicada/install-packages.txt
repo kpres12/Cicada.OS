@@ -86,3 +86,7 @@ wireguard-tools
 libnotify
 restic
 flatpak
+tor
+obfs4proxy
+torbrowser-launcher
+chrony

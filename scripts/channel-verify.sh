@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify channel pins in-tree. Not a substitute for a signed pacman repo.
+# Verify channel pins in-tree. Not a substitute for a hosted mirror.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
@@ -21,7 +21,29 @@ say "helium.lock pinned"
 
 grep -q 'install-helium.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Helium"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run default-deny missing"
-say "build + default-deny wired"
+test -x "${ROOT}/scripts/channel-build-repo.sh" || test -f "${ROOT}/scripts/channel-build-repo.sh" || die "channel-build-repo.sh missing"
+test -f "${ROOT}/scripts/channel-sign.sh" || die "channel-sign.sh missing"
+test -f "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-channel-enable.sh" || die "cicada-channel-enable.sh missing"
+grep -q 'channel-build-repo' "${ROOT}/iso/build.sh" || die "ISO build must call channel-build-repo"
+say "build + default-deny + channel pipeline wired"
+
+# If a local repo db exists (after an ISO build), require a signature when gpg can check it.
+repo_db=""
+for cand in "${ROOT}/out/channel-repo" "${ROOT}/channel/repo"; do
+  if compgen -G "${cand}/cicada-stable.db.tar.*" >/dev/null 2>&1; then
+    repo_db="$(ls "${cand}"/cicada-stable.db.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)"
+    break
+  fi
+done
+if [[ -n "${repo_db}" ]]; then
+  if [[ -f "${repo_db}.sig" ]]; then
+    say "repo db signed: $(basename "${repo_db}").sig"
+  else
+    echo "  NOTE repo db present but unsigned (run scripts/channel-sign.sh after build)"
+  fi
+else
+  echo "  NOTE no cicada-stable repo db yet (pin-only OK until first ISO build fills out/channel-repo)"
+fi
 
 if [[ "${fail}" -ne 0 ]]; then
   echo "CHANNEL-VERIFY FAILED"

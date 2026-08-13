@@ -1,1 +1,3 @@
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-helper
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-av-kill
+%wheel ALL=(root) NOPASSWD: /usr/bin/passwd cicada-work
