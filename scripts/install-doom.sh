@@ -90,15 +90,27 @@ cmake -S "${src}" -B "${src}/build" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/opt/cicada-doom
 cmake --build "${src}/build" -j"$(nproc 2>/dev/null || echo 2)"
-DESTDIR="${DEST}" cmake --install "${src}/build"
+
+# Upstream CMakeLists has no install() rules — cmake --install is a no-op.
+# Copy the built game binary (and setup tool if present) ourselves.
+doom_built="$(find "${src}/build" -type f -name 'chocolate-doom' -perm -u+x | head -1)"
+[[ -n "${doom_built}" && -x "${doom_built}" ]] || {
+  echo "error: chocolate-doom binary missing after cmake build" >&2
+  find "${src}/build" -type f -name 'chocolate-*' 2>/dev/null | head -20 >&2 || true
+  exit 1
+}
+mkdir -p "${DEST}/opt/cicada-doom/bin"
+cp -a "${doom_built}" "${DEST}/opt/cicada-doom/bin/chocolate-doom"
+chmod 755 "${DEST}/opt/cicada-doom/bin/chocolate-doom"
+setup_built="$(find "${src}/build" -type f -name 'chocolate-setup' -perm -u+x | head -1 || true)"
+if [[ -n "${setup_built}" && -x "${setup_built}" ]]; then
+  cp -a "${setup_built}" "${DEST}/opt/cicada-doom/bin/chocolate-doom-setup"
+  chmod 755 "${DEST}/opt/cicada-doom/bin/chocolate-doom-setup"
+fi
 rm -rf "${eng_work}"
 
 bin="${DEST}/opt/cicada-doom/bin/chocolate-doom"
 [[ -x "${bin}" ]] || { echo "error: chocolate-doom not installed at ${bin}" >&2; exit 1; }
-chmod 755 "${bin}"
-# Setup tool is optional but useful.
-[[ -x "${DEST}/opt/cicada-doom/bin/chocolate-doom-setup" ]] \
-  && chmod 755 "${DEST}/opt/cicada-doom/bin/chocolate-doom-setup" || true
 
 mkdir -p "${DEST}/usr/bin"
 ln -sfn /opt/cicada-doom/bin/chocolate-doom "${DEST}/usr/bin/chocolate-doom"
