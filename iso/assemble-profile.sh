@@ -118,6 +118,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-radios-toggle"]="0:0:755"
   ["/usr/local/bin/cicada-profile"]="0:0:755"
   ["/usr/local/bin/cicada-scopes"]="0:0:755"
+  ["/usr/local/bin/cicada-wifi"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"
 )'''

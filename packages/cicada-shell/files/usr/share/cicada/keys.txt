@@ -1,0 +1,20 @@
+CICADA.OS  //  MAGI KEYS
+
+Super+Enter     terminal (Kitty)
+Super+Space     launcher
+Super+E         files (Thunar)
+Super+Q         close window
+Super+L         lock (MAGI-03)
+Super+I         scopes
+Super+N         Wi-Fi (impala / iwd)
+Super+Shift+R   radios on/off
+Super+Shift+S   screenshot → clipboard
+Super+/         this sheet
+
+click MAGI-01   launcher
+click TERM      Kitty
+click WEB       Chromium
+click FILES     Thunar
+click NET       Wi-Fi
+click RF        radios
+click AUD       mute

@@ -7,6 +7,7 @@ vulkan-intel
 libva-intel-driver
 intel-media-driver
 libva-utils
+linux-firmware-broadcom
 # pin providers so pacstrap is non-interactive
 iptables
 pipewire-jack
@@ -48,9 +49,17 @@ xdg-utils
 # --- GUI files (click / drag / drop, not a desktop-icon metaphor) ---
 thunar
 thunar-volman
+thunar-archive-plugin
+file-roller
 gvfs
 tumbler
 ffmpegthumbnailer
+xdg-user-dirs
+papirus-icon-theme
+gnome-themes-extra
+mako
+pavucontrol
+impala
 
 # --- privacy / security baseline ---
 nftables
@@ -62,7 +71,6 @@ keepassxc
 gnupg
 age
 wireguard-tools
-openresolv
 macchanger
 libnotify
 lynis

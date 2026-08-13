@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Unblock Wi-Fi, then open the iwd TUI (impala) or iwctl.
+rfkill unblock wifi 2>/dev/null || true
+if command -v impala >/dev/null 2>&1; then
+  exec kitty --title CICADA-NET -e impala
+fi
+exec kitty --title CICADA-NET -e iwctl

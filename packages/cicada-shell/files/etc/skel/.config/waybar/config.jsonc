@@ -18,6 +18,12 @@
     "interval": "once",
     "on-click": "kitty"
   },
+  "custom/web": {
+    "format": "WEB",
+    "tooltip": "Chromium",
+    "interval": "once",
+    "on-click": "chromium"
+  },
   "custom/files": {
     "format": "FILES",
     "tooltip": "Thunar",
@@ -39,7 +45,8 @@
   "custom/rf": {
     "exec": "rfkill list wifi 2>/dev/null | grep -q 'Soft blocked: yes' && echo 'RF BLOCK' || echo 'RF LIVE'",
     "interval": 5,
-    "tooltip": false
+    "tooltip": "click: toggle radios",
+    "on-click": "cicada-radios-toggle"
   },
   "hyprland/workspaces": {
     "format": "{name}",
@@ -63,10 +70,13 @@
     "format-wifi": "NET {essid}",
     "format-ethernet": "NET WIRED",
     "format-disconnected": "NET DOWN",
-    "tooltip": false
+    "tooltip": "click: Wi-Fi (impala)",
+    "on-click": "cicada-wifi"
   },
   "pulseaudio": {
     "format": "AUD {volume}",
-    "format-muted": "AUD MUTE"
+    "format-muted": "AUD MUTE",
+    "on-click": "pamixer -t",
+    "on-click-right": "pavucontrol"
   }
 }

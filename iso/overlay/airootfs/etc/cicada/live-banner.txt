@@ -3,7 +3,9 @@
   radios soft-blocked · nftables inbound-deny · sshd masked
 
   GUI:        Hyprland
-  radios:     cicada-radios-toggle
-  profiles:   cicada-profile
-  install:    archinstall   (use an external disk)
+  radios:     Super+Shift+R   or click RF
+  wifi:       Super+N         or click NET
+  files:      Super+E         or click FILES
+  keys:       Super+/
+  install:    archinstall     (external disk only)
 
