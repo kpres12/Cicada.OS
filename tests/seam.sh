@@ -105,6 +105,17 @@ while IFS= read -r rel; do
 done < <(cd "${ROOT}/iso/overlay/airootfs" && find . -type f | sed 's|^\./||')
 [[ "${shadowed}" -eq 0 ]] && say "overlay files are all reachable"
 
+echo "==> every shipped helper script is registered in file_permissions"
+# mkarchiso only guarantees mode for files listed in profiledef file_permissions.
+# An unlisted script can land non-executable, and if a pacman hook calls it the
+# failure is "execv: Permission denied" on every transaction.
+while IFS= read -r f; do
+  rel="/usr/local/lib/cicada/$(basename "${f}")"
+  grep -qF "\"${rel}\"" "${ASSEMBLE}" \
+    || die "${rel} is shipped but not in file_permissions (may land non-executable)"
+done < <(find "${ROOT}/packages" -path '*/usr/local/lib/cicada/*' -name '*.sh' -type f)
+say "helper scripts all registered"
+
 echo "==> live-only assets stay out of the installed product"
 grep -q 'rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf' "${CHROOT}" \
   || die "installed system would inherit live autologin"

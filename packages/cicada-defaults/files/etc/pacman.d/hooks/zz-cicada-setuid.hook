@@ -9,4 +9,6 @@ Target = usr/bin/*
 [Action]
 Description = Cicada: re-strip setuid from unused binaries
 When = PostTransaction
-Exec = /usr/local/lib/cicada/strip-setuid.sh
+# /bin/bash explicitly: if the exec bit is ever lost the hook still runs,
+# instead of failing every pacman transaction with 'execv: Permission denied'.
+Exec = /bin/bash /usr/local/lib/cicada/strip-setuid.sh

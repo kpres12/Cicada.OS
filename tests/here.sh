@@ -236,6 +236,20 @@ grep -q 'umask=0077' "${inst}" || die "ESP world-readable"
 say "history off / journal volatile / no recent+thumbs / noatime / ESP 0077"
 nft="${ROOT}/packages/cicada-defaults/files/etc/nftables.d/cicada-baseline.nft"
 grep -q 'policy drop' "${nft}" || die "nft baseline not drop"
+# A default-drop input chain silently breaks DHCP: the server answers from its
+# own address to broadcast:68, so the reply does not match the conntrack entry
+# the request created and is seen as NEW. Presents as "Wi-Fi connects but there
+# is no internet". NM's internal client uses raw sockets and dodges this, but
+# dhclient/dhcpcd do not — do not rely on one backend's implementation detail.
+grep -q 'udp sport 67 udp dport 68 accept' "${nft}" || die "baseline drops DHCP offers: no lease, no network"
+grep -q 'udp sport 547 udp dport 546 accept' "${nft}" || die "baseline drops DHCPv6"
+grep -qE 'ip6 nexthdr (icmpv6|ipv6-icmp) accept' "${nft}" || die "no ICMPv6: IPv6 neighbour discovery breaks"
+grep -q 'ip protocol icmp accept' "${nft}" || die "no ICMP: path MTU discovery breaks, large transfers hang"
+# Same trap inside the kill switch: without renewal the lease lapses, the link
+# drops, and the switch kills the very connection it was protecting.
+ks="${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft"
+grep -q 'udp dport 67 accept' "${ks}" || die "kill switch blocks DHCP renewal: tunnel dies when the lease expires"
+grep -q 'udp sport 67 udp dport 68 accept' "${ks}" || die "kill switch blocks DHCP replies"
 grep -q 'policy drop' "${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft" || die "killswitch not drop"
 # The output chain must NOT exempt established flows: that lets pre-tunnel
 # connections keep running on wlan0, and lets flows fail over to the physical
@@ -342,6 +356,12 @@ test -x "${wd}" || die "cicada-watchdog not executable"
 grep -q "printf 'V'" "${wd}" || die "no magic-close: every clean poweroff looks like a hang"
 grep -q 'trap .*disarm.*TERM' "${wd}" || die "watchdog disarms on crash (should stay armed)"
 grep -q 'lid_closed' "${wd}" || die "watchdog ignores lid state"
+# This is the only control whose failure mode is "the machine reboot-loops", and
+# defaults.env cannot be edited before boot on a live ISO. Without a cmdline
+# switch that state is unrecoverable.
+grep -q 'cicada.nowatchdog' "${wd}" || die "no bootloader escape from a watchdog reboot loop"
+grep -q '/sys/class/watchdog' "${wd}" || die "watchdog trusts its requested timeout instead of the driver's real one"
+grep -q 'refusing to arm' "${wd}" || die "watchdog must not arm when it cannot read the real timeout"
 grep -q 'SuccessExitStatus=2' "${ROOT}/packages/cicada-defaults/files/etc/systemd/system/cicada-watchdog.service" \
   || die "boards without a watchdog would look like a failed unit"
 say "watchdog arms on lock, withholds pet at deadline, magic-close on shutdown"

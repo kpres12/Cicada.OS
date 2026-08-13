@@ -31,6 +31,16 @@ ENABLED="${CICADA_WATCHDOG:-1}"
 TIMEOUT="${CICADA_WATCHDOG_TIMEOUT:-30}"
 
 [[ "${ENABLED}" == 1 ]] || { echo "cicada-watchdog: disabled by CICADA_WATCHDOG=0"; exit 0; }
+
+# Bootloader escape. This is the one control here whose failure mode is "the
+# machine reboots every N seconds", and defaults.env lives on a filesystem you
+# cannot edit before boot on a live ISO — so without a kernel cmdline switch a
+# misbehaving watchdog is unrecoverable. Same pattern as cicada.nomalloc.
+if grep -qw cicada.nowatchdog /proc/cmdline 2>/dev/null; then
+  echo "cicada-watchdog: disabled by cicada.nowatchdog on the kernel cmdline"
+  exit 0
+fi
+
 [[ -c "${WD}" ]] || { echo "cicada-watchdog: no ${WD} on this machine" >&2; exit 2; }
 
 exec 9<>"${WD}" || { echo "cicada-watchdog: cannot open ${WD}" >&2; exit 1; }
@@ -46,6 +56,30 @@ trap 'disarm; exit 0' TERM INT
 
 if command -v wdctl >/dev/null 2>&1; then
   wdctl -s "${TIMEOUT}" "${WD}" >/dev/null 2>&1 || true
+fi
+
+# Read back what the driver ACTUALLY accepted rather than trusting the request.
+# Drivers clamp to their own range, and if the real timeout is shorter than our
+# pet interval the machine resets at random — which looks like failing hardware,
+# not like a policy. Derive the pet interval from the truth.
+actual=""
+for wdir in /sys/class/watchdog/watchdog*; do
+  [[ -r "${wdir}/timeout" ]] || continue
+  actual="$(cat "${wdir}/timeout" 2>/dev/null)"
+  break
+done
+if [[ "${actual}" =~ ^[0-9]+$ ]] && [[ "${actual}" -gt 0 ]]; then
+  TIMEOUT="${actual}"
+  # Pet at a third of the real timeout, floor 2s, so a slow moment never
+  # starves the pet and reboots a working machine.
+  PET_SEC=$(( TIMEOUT / 3 ))
+  (( PET_SEC < 2 )) && PET_SEC=2
+else
+  # We could not learn the real timeout. For a control whose failure mode is
+  # "reboots your machine", the safe answer when uncertain is to do nothing.
+  echo "cicada-watchdog: cannot read the hardware timeout; refusing to arm" >&2
+  disarm
+  exit 2
 fi
 
 lid_closed() {

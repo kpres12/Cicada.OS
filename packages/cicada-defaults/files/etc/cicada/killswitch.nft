@@ -6,6 +6,13 @@ table inet cicada_ks {
     oif "lo" accept
     oifname "wg0" accept
     udp dport 51820 accept
+    # DHCP renewal on the physical link. Without this the lease eventually
+    # expires, the link drops, and the tunnel dies with it — the kill switch
+    # kills the connection it was protecting. The disclosure is that a device
+    # already associated to this AP is still associated, which the AP knows by
+    # definition. That is not a leak worth an outage.
+    udp dport 67 accept
+    udp dport 547 accept
     # NOTE: deliberately no `ct state established,related accept` here.
     # Output is the exfiltration path, and a conntrack exemption defeats the
     # whole switch twice over:
@@ -23,6 +30,8 @@ table inet cicada_ks {
     iif "lo" accept
     iifname "wg0" accept
     udp sport 51820 accept
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
     # Return path only. Inbound cannot exfiltrate on its own, and dropping this
     # would break long-lived tunnel sessions across a rekey.
     ct state established,related accept

@@ -8,6 +8,24 @@ table inet cicada {
     ct state invalid drop
     ct state established,related accept
     iif "lo" accept
+
+    # DHCP client replies. These do NOT match the conntrack entry created by the
+    # request: the client sends 0.0.0.0:68 -> 255.255.255.255:67, but the server
+    # answers from its own address to broadcast:68, so the reply tuple differs
+    # and conntrack sees NEW, not ESTABLISHED. Without these two rules the offer
+    # is dropped and the machine never gets a lease — which presents as "Wi-Fi
+    # connects but there is no internet".
+    #
+    # NetworkManager's internal DHCP client uses a raw packet socket and so
+    # bypasses netfilter today, which is why this can appear to work. That is an
+    # implementation detail of one backend, not a property to rely on: dhclient
+    # and dhcpcd both use ordinary UDP sockets and would fail here.
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
+
+    # IPv6 needs neighbour discovery and router advertisements to function at
+    # all; ICMP is also how path MTU discovery works, and silently dropping it
+    # produces connections that open and then hang on large transfers.
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept
   }
