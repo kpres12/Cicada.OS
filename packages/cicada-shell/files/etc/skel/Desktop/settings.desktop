@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Settings
+Comment=Appearance, Wi-Fi, audio, displays, dock
+Exec=cicada-settings
+Icon=preferences-system
+Terminal=false
+StartupNotify=false
+Categories=Settings;DesktopSettings;

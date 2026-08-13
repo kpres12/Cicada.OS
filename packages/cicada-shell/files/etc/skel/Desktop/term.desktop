@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Web
-Exec=/usr/local/bin/chromium
-Icon=web-browser
+Name=Terminal
+Exec=kitty
+Icon=utilities-terminal
 StartupNotify=false
 Terminal=false

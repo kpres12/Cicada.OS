@@ -20,7 +20,7 @@ Prototype: Intel MacBook Air 2015–2017. Graphene-class attestation / Titan-cla
 
 ## GUI (current track)
 
-Left dock, Waybar with RF state, Wofi, mako, Thunar, one-click Wi-Fi, hyprlock, coherent GTK theme. Tiling default, floating for utilities. Responsiveness over rice.
+Left dock, Waybar, Wofi, pcmanfm-qt (desktop icons and file windows), one-click Wi-Fi, hyprlock, coherent GTK theme. Tiling default, floating for utilities. Responsiveness over rice.
 
 ## Security tiers
 

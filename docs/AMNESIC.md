@@ -24,6 +24,30 @@ Unplug is **not** a cryptographic guarantee. There is no Tails `sdmem` pass over
 
 Do not save to the live USB. Do not enable persistence. For files you want to keep, `cicada-install` onto another stick/SSD or `cicada-backup` to a **different** USB.
 
+## Verify the USB forgot (bulk_extractor)
+
+Session data must not land on JACKSPARROW. Procedure is `tests/amnesic-verify.sh`.
+
+1. Boot **Cicada.OS live (amnesic — copy to RAM)**.
+2. Create a canary only in RAM:
+
+```bash
+CANARY="CICADA-CANARY-$(head -c 8 /dev/urandom | xxd -p)"
+echo "$CANARY" | tee /tmp/canary.txt
+```
+
+Write that string on paper. Do not copy it onto another file on the stick.
+
+3. Reboot (or yank). Plug the stick into the Mac. Confirm the disk, then:
+
+```bash
+export CICADA_BE_DEV=/dev/rdisk4
+export CICADA_CANARY='CICADA-CANARY-....'   # paper
+./tests/amnesic-verify.sh
+```
+
+Zero hits = the overlay never wrote the canary to the USB. That is not a RAM wipe proof.
+
 ## Boot menu
 
 1. Cicada.OS live — daily-driver demo (USB stays in)

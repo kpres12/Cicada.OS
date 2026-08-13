@@ -20,8 +20,24 @@ need_conf() {
 case "${1:-}" in
   on)
     need_conf
+    # The killswitch only whitelists udp/51820. A non-standard Endpoint port
+    # would hand you a tunnel that cannot handshake, which reads as "VPN broken"
+    # rather than "port mismatch". Say so up front.
+    port="$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=.*:\([0-9]\+\).*/\1/p' "${CONF}" | head -1)"
+    if [[ -n "${port}" && "${port}" != "51820" ]]; then
+      echo "cicada-vpn: Endpoint uses udp/${port}; killswitch only permits 51820." >&2
+      echo "  Edit ${KS} to match, or move the endpoint to 51820." >&2
+      exit 1
+    fi
     wg-quick up wg0
-    nft -f "${KS}"
+    # Fail closed: a tunnel without a killswitch is worse than no tunnel, because
+    # it looks protected. If the ruleset will not load, tear the tunnel back down.
+    if ! nft -f "${KS}"; then
+      echo "cicada-vpn: killswitch failed to load — taking the tunnel down." >&2
+      wg-quick down wg0 2>/dev/null || true
+      nft delete table inet cicada_ks 2>/dev/null || true
+      exit 1
+    fi
     cicada-seal append vpn.on "{}" >/dev/null 2>&1 || true
     logger -t cicada "VPN up, kill switch on"
     notify-send "Cicada VPN" "Tunnel up · kill switch on" 2>/dev/null || true

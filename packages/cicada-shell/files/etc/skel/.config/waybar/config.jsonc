@@ -1,13 +1,13 @@
 {
   "layer": "top",
   "position": "top",
-  "height": 26,
+  "height": 38,
   "spacing": 0,
-  "modules-left": ["custom/cicada", "custom/term", "custom/web", "custom/files", "hyprland/workspaces", "custom/profile"],
+  "modules-left": ["custom/cicada", "custom/term", "custom/web", "custom/files", "custom/settings", "hyprland/workspaces", "custom/profile"],
   "modules-center": ["hyprland/window"],
-  "modules-right": ["custom/swaync", "custom/scopes", "custom/rf", "network", "pulseaudio", "tray", "battery", "clock"],
+  "modules-right": ["custom/close", "custom/swaync", "network", "pulseaudio", "backlight", "battery", "clock"],
   "custom/cicada": {
-    "format": "CICADA // MAGI-01",
+    "format": "CICADA",
     "tooltip": "click: launcher",
     "interval": "once",
     "on-click": "wofi --show drun"
@@ -20,15 +20,27 @@
   },
   "custom/web": {
     "format": "WEB",
-    "tooltip": "Chromium",
+    "tooltip": "Browser",
     "interval": "once",
-    "on-click": "chromium"
+    "on-click": "/usr/local/bin/chromium"
   },
   "custom/files": {
     "format": "FILES",
-    "tooltip": "Thunar",
+    "tooltip": "Files",
     "interval": "once",
-    "on-click": "thunar"
+    "on-click": "pcmanfm-qt"
+  },
+  "custom/settings": {
+    "format": "SETTINGS",
+    "tooltip": "Wi-Fi, sound, brightness, dock, lock",
+    "interval": "once",
+    "on-click": "cicada-settings"
+  },
+  "custom/close": {
+    "format": "CLOSE",
+    "tooltip": "Close the focused window (also Alt+F4)",
+    "interval": "once",
+    "on-click": "hyprctl dispatch killactive"
   },
   "custom/profile": {
     "exec": "cicada-profile list 2>/dev/null | head -1 | tr '[:lower:]' '[:upper:]'",
@@ -42,18 +54,6 @@
     "interval": "once",
     "on-click": "swaync-client -t -sw"
   },
-  "custom/scopes": {
-    "exec": "test -d \"$HOME/.local/share/cicada/scopes\" && echo SCOPES || echo SCOPES INIT",
-    "interval": 15,
-    "tooltip": "Super+I  MAGI-02 scopes",
-    "on-click": "kitty --title CICADA-SCOPES -e cicada-scopes"
-  },
-  "custom/rf": {
-    "exec": "rfkill list wifi 2>/dev/null | grep -q 'Soft blocked: yes' && echo 'RF BLOCK' || echo 'RF LIVE'",
-    "interval": 5,
-    "tooltip": "click: toggle radios",
-    "on-click": "cicada-radios-toggle"
-  },
   "hyprland/workspaces": {
     "format": "{name}",
     "disable-scroll": true
@@ -63,7 +63,7 @@
     "max-length": 42
   },
   "clock": {
-    "format": "{:%Y-%b-%d %H:%M}Z",
+    "format": "{:%Y-%b-%d %H:%M}",
     "tooltip": false
   },
   "battery": {
@@ -73,20 +73,24 @@
     "format-critical": "BAT CRIT {capacity}"
   },
   "network": {
-    "format-wifi": "NET {essid}",
-    "format-ethernet": "NET WIRED",
-    "format-disconnected": "NET DOWN",
-    "tooltip": "click: pick a Wi-Fi network",
+    "format-wifi": "WIFI {essid}",
+    "format-ethernet": "WIRED",
+    "format-disconnected": "WIFI OFF",
+    "tooltip": "click: turn Wi-Fi on and pick a network",
     "on-click": "cicada-wifi"
   },
-  "tray": {
-    "icon-size": 14,
-    "spacing": 6
-  },
   "pulseaudio": {
-    "format": "AUD {volume}",
-    "format-muted": "AUD MUTE",
-    "on-click": "pamixer -t",
-    "on-click-right": "pavucontrol"
-  }
+    "format": "VOL {volume}",
+    "format-muted": "MUTED",
+    "on-click": "cicada-settings sound",
+    "on-click-right": "pamixer -t",
+    "on-scroll-up": "pamixer -i 5",
+    "on-scroll-down": "pamixer -d 5"
+  },
+  "backlight": {
+    "format": "BRI {percent}",
+    "on-scroll-up": "brightnessctl set +5%",
+    "on-scroll-down": "brightnessctl set 5%-",
+    "on-click": "cicada-settings brightness"
+  },
 }

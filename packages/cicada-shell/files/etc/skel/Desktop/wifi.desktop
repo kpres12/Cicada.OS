@@ -4,4 +4,5 @@ Name=Wi-Fi
 Comment=Connect to a wireless network
 Exec=cicada-wifi
 Icon=network-wireless
+StartupNotify=false
 Terminal=false

@@ -11,8 +11,8 @@ cat <<'EOF'
 ╔══════════════════════════════════════════════╗
 ║             C I C A D A . O S                ║
 ║         nimbus // channel:dev                ║
-║  radios blocked · inbound deny · usbguard    ║
-║  wifi: dock icon or Super+N                  ║
+║  radios blocked · inbound deny               ║
+║  wifi: click WIFI · settings: click SETTINGS ║
 ║  live: overlay is RAM · yank USB = panic     ║
 ╚══════════════════════════════════════════════╝
 EOF
@@ -35,11 +35,22 @@ if [[ ! -d /run/archiso ]]; then
   systemctl enable --now apparmor.service 2>/dev/null || true
 
   if command -v usbguard >/dev/null 2>&1; then
-    if [[ ! -s /etc/usbguard/rules.conf ]] || grep -q '^#' /etc/usbguard/rules.conf; then
-      usbguard generate-policy > /etc/usbguard/rules.conf 2>/dev/null || true
+    rules=/etc/usbguard/rules.conf
+    if [[ ! -s "${rules}" ]] || ! grep -qvE '^[[:space:]]*(#|$)' "${rules}"; then
+      usbguard generate-policy > "${rules}" 2>/dev/null || true
     fi
     systemctl enable --now usbguard.service 2>/dev/null || true
   fi
+fi
+
+# Tell the session whether locking is survivable. An empty password hash means
+# hyprlock would grab input and accept nothing — see cicada-lock. Root-only work,
+# which is why it lives here and not in the lock helper.
+mkdir -p /run/cicada
+rm -f /run/cicada/live-nopasswd
+if [[ -z "$(awk -F: '$1 == "cicada" { print $2 }' /etc/shadow 2>/dev/null)" ]]; then
+  : > /run/cicada/live-nopasswd
+  logger -t cicada "lock disabled: user cicada has no password" 2>/dev/null || true
 fi
 
 if command -v cicada-seal >/dev/null 2>&1; then

@@ -232,10 +232,15 @@ mount /dev/mapper/cicada /mnt
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
 umount /mnt
-mount -o subvol=@ /dev/mapper/cicada /mnt
+# noatime: access times are a read-history. A forensic timeline reconstructs
+# "which files did they open, and when" largely from atime. genfstab -U reads
+# /proc/mounts, so mounting with these options is what lands in fstab.
+mount -o subvol=@,noatime /dev/mapper/cicada /mnt
 mkdir -p /mnt/home /mnt/boot
-mount -o subvol=@home /dev/mapper/cicada /mnt/home
-mount "${ESP}" /mnt/boot
+mount -o subvol=@home,noatime /dev/mapper/cicada /mnt/home
+# The ESP is the one plaintext volume on the disk. Keep it root-only rather
+# than the vfat default of world-readable.
+mount -o umask=0077 "${ESP}" /mnt/boot
 
 echo "==> pacstrap (needs network)"
 pacstrap_filtered /mnt

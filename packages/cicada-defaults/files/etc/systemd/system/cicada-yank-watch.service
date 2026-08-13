@@ -1,0 +1,13 @@
+[Unit]
+Description=Cicada USB-yank panic watcher
+ConditionPathExists=/run/archiso
+After=cicada-amnesic.service
+DefaultDependencies=no
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cicada-yank-watch
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

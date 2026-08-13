@@ -18,7 +18,7 @@ Hardware under test: Intel MacBook Air 2015–2017 live USB unless noted.
 | Kill switch: `cicada-vpn on` then `ip link del wg0`; tcpdump on wlan0 shows no leak | pending | | needs a real endpoint |
 | Locked 30 min reboot-to-rest | pending | | timer 1 min; default 1800s. Set `CICADA_LOCK_REBOOT_SEC=60` to test |
 | `cicada-seal verify` after boot/lock/wifi events | pending | | next ISO; `tests/seal.sh` passes on the builder |
-| linux-hardened boot entry | pending | | Option 2 in systemd-boot. Default stays `linux` for `broadcom-wl` |
+| Amnesic USB forgets session (`tests/amnesic-verify.sh`) | procedure | 2026-08-13 | static wiring pass on Mac; bulk_extractor/strings scan after an Air canary session |
 | LUKS2 pull-the-drive | n/a live | | install-time |
 | TPM2 fail-to-passphrase | n/a live | | MBA Apple EFI: no Cicada TPM story |
 | sbctl re-sign pacman hook | n/a until enrolled | | hook no-ops if sbctl not installed/enrolled |

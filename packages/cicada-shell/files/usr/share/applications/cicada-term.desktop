@@ -5,4 +5,5 @@ Comment=Kitty
 Exec=kitty
 Icon=utilities-terminal
 Terminal=false
+StartupNotify=false
 Categories=System;TerminalEmulator;

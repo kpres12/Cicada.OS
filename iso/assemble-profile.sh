@@ -85,6 +85,31 @@ rsync -a "${ROOT}/packages/cicada-install/files/" "${PROFILE}/airootfs/"
 # Live user must get skel (dock, hypr, scopes). Overlay only ships .bash_profile.
 mkdir -p "${PROFILE}/airootfs/home/cicada"
 rsync -a "${PROFILE}/airootfs/etc/skel/" "${PROFILE}/airootfs/home/cicada/"
+chmod +x "${PROFILE}/airootfs/home/cicada/Desktop/"*.desktop 2>/dev/null || true
+chmod +x "${PROFILE}/airootfs/etc/skel/Desktop/"*.desktop 2>/dev/null || true
+# Ship the Wi-Fi diagnostic on the medium — it is needed on the Air, where
+# there is no network to fetch it over. That is the whole point of it.
+install -Dm755 "${ROOT}/tests/wifi-diag.sh" \
+  "${PROFILE}/airootfs/usr/local/bin/cicada-wifi-diag"
+
+# Build stamp. Without this there is no way to tell a freshly built ISO from one
+# sitting in out/ from three commits ago — which is exactly how a known-fixed
+# bug gets re-tested on a stale image. Compare against `git rev-parse HEAD`.
+mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
+{
+  printf 'built=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if git -C "${ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
+    printf 'commit=%s\n' "$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [[ -n "$(git -C "${ROOT}" status --porcelain 2>/dev/null)" ]]; then
+      printf 'tree=dirty\n'
+    else
+      printf 'tree=clean\n'
+    fi
+  else
+    printf 'commit=not-a-git-checkout\ntree=unknown\n'
+  fi
+} > "${PROFILE}/airootfs/usr/share/cicada/BUILD-ID"
+
 mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
 cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
 cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/null || true
@@ -100,6 +125,7 @@ mkdir -p "${wants}"
 ln -sfn /etc/systemd/system/cicada-radios-off.service "${wants}/cicada-radios-off.service"
 ln -sfn /etc/systemd/system/cicada-firstboot.service "${wants}/cicada-firstboot.service"
 ln -sfn /etc/systemd/system/cicada-amnesic.service "${wants}/cicada-amnesic.service"
+ln -sfn /etc/systemd/system/cicada-yank-watch.service "${wants}/cicada-yank-watch.service"
 ln -sfn /usr/lib/systemd/system/nftables.service "${wants}/nftables.service"
 
 # Desktop Wi-Fi: NetworkManager owns the stack. networkd+iwd-standalone fight NM.
@@ -108,10 +134,8 @@ rm -f "${PROFILE}/airootfs/etc/systemd/system/dbus-org.freedesktop.network1.serv
 rm -f "${PROFILE}/airootfs/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
 rm -f "${PROFILE}/airootfs/etc/systemd/system/sockets.target.wants/systemd-networkd.socket"
 ln -sfn /usr/lib/systemd/system/NetworkManager.service "${wants}/NetworkManager.service"
-# USBGuard on live will block the Air's USB HID keyboard/trackpad if it
-# starts before they enumerate. Installed systems enable it in install-chroot.
-rm -f "${wants}/usbguard.service"
-ln -sfn /usr/lib/systemd/system/apparmor.service "${wants}/apparmor.service"
+# Live ISO must reach a mouse desktop. USBGuard/AppArmor stay for cicada-install.
+rm -f "${wants}/usbguard.service" "${wants}/apparmor.service"
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants"
 ln -sfn /etc/systemd/system/cicada-locked-reboot.timer \
   "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants/cicada-locked-reboot.timer"
@@ -164,6 +188,10 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/keepassxc"]="0:0:755"
   ["/usr/local/bin/cicada-panic"]="0:0:755"
   ["/usr/local/bin/cicada-amnesic"]="0:0:755"
+  ["/usr/local/bin/cicada-yank-watch"]="0:0:755"
+  ["/usr/local/bin/cicada-settings"]="0:0:755"
+  ["/usr/local/bin/cicada-dock"]="0:0:755"
+  ["/usr/local/bin/cicada-desktop-trust"]="0:0:755"
   ["/usr/local/bin/cicada-profile-helper"]="0:0:755"
   ["/etc/sudoers.d/cicada-profile"]="0:0:440"
   ["/etc/shadow"]="0:0:400"
@@ -203,19 +231,19 @@ for folder in ("efiboot", "syslinux", "grub"):
 print(f"==> rebranded {count} bootloader files")
 PY
 
-# IOMMU + zero-on-free on every live entry. lockdown only on the hardened clone (breaks some out-of-tree modules).
+# Zero-on-free on every live entry. Do NOT put intel_iommu on the default
+# desktop entry — Apple EFI + iGPU then never leaves the text console.
 python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-# igfx_off: Apple Intel iGPU + IOMMU otherwise never leaves the text console.
-extra = " intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+extra = " init_on_alloc=1 init_on_free=1"
 count = 0
 for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
     text = path.read_text()
     if "archisosearchuuid=%ARCHISO_UUID%" not in text:
         continue
-    if "intel_iommu=" in text:
+    if "init_on_alloc=" in text:
         continue
     path.write_text(text.replace(
         "archisosearchuuid=%ARCHISO_UUID%",
@@ -223,7 +251,7 @@ for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() el
         1,
     ))
     count += 1
-print(f"==> DMA/zero-on-free cmdline on {count} UEFI entries")
+print(f"==> zero-on-free cmdline on {count} UEFI entries")
 PY
 
 # Second boot entry: linux-hardened. Default entry stays `linux` so MBA Broadcom (broadcom-wl) works.
@@ -244,7 +272,7 @@ else:
     if "lockdown=" not in text:
         text = text.replace(
             "archisosearchuuid=%ARCHISO_UUID%",
-            "archisosearchuuid=%ARCHISO_UUID% lockdown=confidentiality",
+            "archisosearchuuid=%ARCHISO_UUID% intel_iommu=on,igfx_off iommu.passthrough=0 ibt=on shstk=on lockdown=confidentiality",
         )
     dest = entries / "03-cicada-hardened.conf"
     dest.write_text(text)
@@ -261,9 +289,19 @@ if src is not None:
             "archisosearchuuid=%ARCHISO_UUID%",
             "archisosearchuuid=%ARCHISO_UUID% copytoram cow_spacesize=2G",
         )
-    dest = entries / "00-cicada-amnesic.conf"
+    dest = entries / "04-cicada-amnesic.conf"
     dest.write_text(text)
     print(f"==> amnesic copytoram boot entry {dest.name}")
+
+loader = root / "efiboot/loader/loader.conf"
+if loader.exists():
+    text = loader.read_text()
+    text = text.replace("timeout 15", "timeout 8")
+    if "default 01-archiso-linux.conf" not in text:
+        # keep whatever default exists; do not point at 04- amnesic
+        pass
+    loader.write_text(text)
+    print("==> loader timeout 8s, default stays 01-archiso-linux.conf")
 PY
 
 chmod 755 "${PROFILE}/airootfs/usr/local/bin/"* 2>/dev/null || true

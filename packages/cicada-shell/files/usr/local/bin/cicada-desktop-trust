@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# pcmanfm-qt treats untrusted .desktop files as documents (Open vs Execute).
+set -euo pipefail
+shopt -s nullglob
+for f in "${HOME}/Desktop/"*.desktop; do
+  chmod +x "${f}" 2>/dev/null || true
+  gio set "${f}" metadata::trusted true 2>/dev/null || true
+done

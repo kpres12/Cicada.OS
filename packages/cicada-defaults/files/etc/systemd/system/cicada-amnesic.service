@@ -1,5 +1,5 @@
 [Unit]
-Description=Cicada live amnesic (ignore internal disks, USB-yank panic)
+Description=Cicada live amnesic (ignore internal disks)
 ConditionPathExists=/run/archiso
 After=systemd-udevd.service
 Before=udisks2.service

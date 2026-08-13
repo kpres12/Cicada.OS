@@ -1,9 +1,8 @@
 
   CICADA.OS  //  nimbus  //  channel:dev
-  radios soft-blocked · nftables inbound-deny · sshd masked
+  radios off until you click WIFI · inbound deny · sshd masked
 
-  dock:       terminal · files · web · wifi
-  wifi:       click the wifi icon, or Super+N
-  keys:       Super+/
+  click:      SETTINGS · WIFI · CLOSE · dock · desktop icons
+  wifi:       on/off, then pick a scanned network
   install:    sudo cicada-install --target /dev/sdX   (external disk; Apple internal refused)
 

@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Daily-driver settings. Cicada owns the click path — no dump into a foreign app.
+set -euo pipefail
+DIR="${HOME}/.config/cicada"
+mkdir -p "${DIR}"
+POS_FILE="${DIR}/dock-position"
+MON_FILE="${HOME}/.config/hypr/monitors.conf"
+PCMAN_CONF="${HOME}/.config/pcmanfm-qt/default/settings.conf"
+
+restart_dock() {
+  printf '%s\n' "$1" > "${POS_FILE}"
+  pkill -x nwg-dock-hyprland 2>/dev/null || true
+  cicada-dock &
+}
+
+brightness() {
+  local max cur pct
+  max="$(brightnessctl m 2>/dev/null || echo 100)"
+  cur="$(brightnessctl g 2>/dev/null || echo 50)"
+  [[ "${max}" -gt 0 ]] || max=100
+  pct=$((cur * 100 / max))
+  [[ "${pct}" -lt 5 ]] && pct=5
+  pct="$(zenity --scale --title="Brightness" --text="Display brightness" \
+    --min-value=5 --max-value=100 --value="${pct}" --step=5)" || return 0
+  brightnessctl set "${pct}%"
+}
+
+sound() {
+  local vol muted mute_lbl pick pct sink
+  vol="$(pamixer --get-volume 2>/dev/null || echo 50)"
+  muted="$(pamixer --get-mute 2>/dev/null || echo false)"
+  mute_lbl="Mute"
+  extra=""
+  if [[ "${muted}" == "true" ]]; then
+    mute_lbl="Unmute"
+    extra=" (muted)"
+  fi
+  pick="$(zenity --list --title="Sound" \
+    --text="Volume ${vol}%${extra}" \
+    --column=Setting --column=Does --print-column=1 --hide-header \
+    --width=460 --height=280 \
+    "Volume" "Set the level" \
+    "${mute_lbl}" "Toggle mute" \
+    "Output" "Speakers or headphones" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    Volume)
+      pct="$(zenity --scale --title="Volume" --text="Output volume" \
+        --min-value=0 --max-value=100 --value="${vol}" --step=5)" || return 0
+      pamixer --unmute
+      pamixer --set-volume "${pct}"
+      ;;
+    Mute|Unmute)
+      pamixer -t
+      ;;
+    Output)
+      mapfile -t rows < <(pactl list sinks 2>/dev/null | awk -F': ' '
+        /^Sink / { n=""; d="" }
+        /Name:/ { n=$2 }
+        /Description:/ { d=$2; if (n != "") print n "\t" d }
+      ')
+      if [[ "${#rows[@]}" -eq 0 ]]; then
+        zenity --info --title="Sound" --text="No audio outputs found." 2>/dev/null || true
+        return 0
+      fi
+      local args=()
+      local line name desc
+      for line in "${rows[@]}"; do
+        name="${line%%$'\t'*}"
+        desc="${line#*$'\t'}"
+        args+=("${name}" "${desc}")
+      done
+      sink="$(zenity --list --title="Sound" --text="Play sound through" \
+        --column=id --column=Output --hide-column=1 --print-column=1 \
+        --width=480 --height=320 \
+        "${args[@]}" 2>/dev/null)" || return 0
+      [[ -n "${sink}" ]] || return 0
+      pactl set-default-sink "${sink}" 2>/dev/null || true
+      pamixer --unmute
+      ;;
+  esac
+}
+
+displays() {
+  local pick scale name
+  name="$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2; exit}')"
+  [[ -n "${name}" ]] || name=""
+  pick="$(zenity --list --title="Displays" \
+    --text="This Air has one panel. Pick a scale if text looks tiny or huge." \
+    --column=Setting --column=Does --print-column=1 --hide-header \
+    --width=480 --height=320 \
+    "100%" "Native pixels" \
+    "125%" "Slightly larger" \
+    "150%" "Larger UI" \
+    "200%" "Largest" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    "100%") scale=1 ;;
+    "125%") scale=1.25 ;;
+    "150%") scale=1.5 ;;
+    "200%") scale=2 ;;
+    *) return 0 ;;
+  esac
+  mkdir -p "$(dirname "${MON_FILE}")"
+  if [[ -n "${name}" ]]; then
+    printf 'monitor=%s,preferred,auto,%s\n' "${name}" "${scale}" > "${MON_FILE}"
+    hyprctl keyword monitor "${name},preferred,auto,${scale}" >/dev/null 2>&1 || true
+  else
+    printf 'monitor=,preferred,auto,%s\n' "${scale}" > "${MON_FILE}"
+  fi
+}
+
+set_gtk_key() {
+  local file="$1" key="$2" value="$3"
+  mkdir -p "$(dirname "${file}")"
+  if [[ -f "${file}" ]] && grep -q "^${key}=" "${file}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${file}"
+  else
+    [[ -f "${file}" ]] || printf '[Settings]\n' > "${file}"
+    printf '%s=%s\n' "${key}" "${value}" >> "${file}"
+  fi
+}
+
+appearance() {
+  local pick size
+  pick="$(zenity --list --title="Appearance" \
+    --text="Theme and desktop icons. New windows pick this up immediately." \
+    --column=Setting --column=Does --print-column=1 --hide-header \
+    --width=480 --height=320 \
+    "Dark" "Black / amber (default)" \
+    "Light" "Adwaita light" \
+    "Icons small" "Desktop icons 48px" \
+    "Icons medium" "Desktop icons 56px" \
+    "Icons large" "Desktop icons 72px" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    Dark)
+      set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-theme-name Adwaita-dark
+      set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-application-prefer-dark-theme 1
+      set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-theme-name Adwaita-dark
+      set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme 1
+      ;;
+    Light)
+      set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-theme-name Adwaita
+      set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-application-prefer-dark-theme 0
+      set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-theme-name Adwaita
+      set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme 0
+      ;;
+    "Icons small") size=48 ;;
+    "Icons medium") size=56 ;;
+    "Icons large") size=72 ;;
+  esac
+  if [[ -n "${size:-}" ]]; then
+    mkdir -p "$(dirname "${PCMAN_CONF}")"
+    if [[ -f "${PCMAN_CONF}" ]] && grep -q '^DesktopIconSize=' "${PCMAN_CONF}"; then
+      sed -i "s|^DesktopIconSize=.*|DesktopIconSize=${size}|" "${PCMAN_CONF}"
+    else
+      printf '[Desktop]\nDesktopIconSize=%s\n' "${size}" >> "${PCMAN_CONF}"
+    fi
+    pkill -f '[p]cmanfm-qt --desktop' 2>/dev/null || true
+    pcmanfm-qt --desktop >/dev/null 2>&1 &
+  fi
+}
+
+screenshot() {
+  local out="${HOME}/Desktop/cicada-$(date +%Y%m%d-%H%M%S).png"
+  if grim -g "$(slurp)" "${out}" 2>/dev/null; then
+    notify-send "Screenshot" "${out}" 2>/dev/null || true
+  fi
+}
+
+case "${1:-}" in
+  wifi|Wi-Fi) exec cicada-wifi ;;
+  sound|Sound) sound; exit 0 ;;
+  brightness|Brightness) brightness; exit 0 ;;
+  displays|Displays) displays; exit 0 ;;
+  appearance|Appearance) appearance; exit 0 ;;
+  lock|Lock) exec cicada-lock ;;
+esac
+
+pick="$(zenity --list --title="Settings" \
+  --text="Click a row. Wi-Fi stays off until you turn it on." \
+  --column=Setting --column=Does \
+  --print-column=1 --hide-header \
+  --width=520 --height=480 \
+  "Wi-Fi" "On/off, then pick a network from a scan" \
+  "Sound" "Volume, mute, headphones" \
+  "Brightness" "Screen brightness" \
+  "Displays" "How large the UI is" \
+  "Appearance" "Dark/light and desktop icon size" \
+  "Notifications" "Notification center" \
+  "Dock left" "Keep the dock on the left" \
+  "Dock bottom" "Move the dock to the bottom" \
+  "Dock right" "Move the dock to the right" \
+  "Lock" "Lock the screen now" \
+  "Screenshot" "Select a region, save to Desktop" \
+  "Start here" "First-boot cheat sheet" \
+  2>/dev/null)" || exit 0
+
+case "${pick}" in
+  "Wi-Fi") exec cicada-wifi ;;
+  Sound) sound ;;
+  Brightness) brightness ;;
+  Displays) displays ;;
+  Appearance) appearance ;;
+  Notifications) exec swaync-client -t -sw ;;
+  "Dock left") restart_dock left ;;
+  "Dock bottom") restart_dock bottom ;;
+  "Dock right") restart_dock right ;;
+  Lock) exec cicada-lock ;;
+  Screenshot) screenshot ;;
+  "Start here") exec kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt ;;
+esac

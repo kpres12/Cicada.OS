@@ -23,7 +23,6 @@ hyprlock
 waybar
 wofi
 kitty
-foot
 grim
 slurp
 swappy
@@ -47,9 +46,6 @@ chromium
 xdg-utils
 
 # --- desktop shell (mouse-first; Hyprland is the engine, not the UX) ---
-thunar
-thunar-volman
-thunar-archive-plugin
 file-roller
 layer-shell-qt
 pcmanfm-qt
@@ -60,13 +56,10 @@ xdg-user-dirs
 papirus-icon-theme
 gnome-themes-extra
 swaync
-pavucontrol
 nwg-dock-hyprland
-nwg-look
 zenity
 networkmanager
 nm-connection-editor
-network-manager-applet
 
 # --- privacy / security baseline ---
 python

@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Files
-Exec=thunar
+Exec=pcmanfm-qt
 Icon=system-file-manager
+StartupNotify=false
 Terminal=false

@@ -5,4 +5,5 @@ Comment=Install to an external SSD (refuses internal Apple disk)
 Exec=kitty --title CICADA-INSTALL -e sudo cicada-install --list
 Icon=drive-harddisk
 Terminal=false
+StartupNotify=false
 Categories=System;

@@ -50,6 +50,7 @@ grep -q 'cicada-crypt' "${ROOT}/packages/cicada-install/files/usr/local/lib/cica
 grep -q 'copytoram' "${ROOT}/iso/assemble-profile.sh" || die "assemble missing copytoram"
 grep -q 'ibt=on shstk=on' "${ROOT}/iso/assemble-profile.sh" || die "assemble missing CET cmdline"
 grep -q 'cicada-amnesic.service' "${ROOT}/iso/assemble-profile.sh" || die "assemble missing amnesic unit"
+grep -q 'cicada-yank-watch' "${ROOT}/iso/assemble-profile.sh" || die "assemble missing yank-watch"
 test -f "${ROOT}/docs/USER.md" || die "docs/USER.md missing"
 test -x "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-duress-enroll" || die "duress enroll not executable"
 test -f "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" || die "cicada-crypt hook missing"

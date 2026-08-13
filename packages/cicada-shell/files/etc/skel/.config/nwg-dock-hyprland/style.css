@@ -1,7 +1,7 @@
 window {
   background-color: rgba(0, 0, 0, 0.92);
   border-radius: 0;
-  border-right: 1px solid #ffb000;
+  border: 1px solid #ffb000;
 }
 
 #box {

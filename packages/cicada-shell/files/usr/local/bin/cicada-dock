@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Persistent dock. Default left. Updates Hyprland gaps so tiles/icons don't sit under it.
+set -euo pipefail
+pos=left
+f="${HOME}/.config/cicada/dock-position"
+if [[ -f "${f}" ]]; then
+  pos="$(tr -d '[:space:]' < "${f}")"
+fi
+case "${pos}" in
+  left|right|bottom|top) ;;
+  *) pos=left ;;
+esac
+
+gaps="10,10,10,72"
+case "${pos}" in
+  left) gaps="10,10,10,72" ;;
+  right) gaps="10,72,10,10" ;;
+  bottom) gaps="10,10,72,10" ;;
+  top) gaps="48,10,10,10" ;;
+esac
+command -v hyprctl >/dev/null && hyprctl keyword general:gaps_out "${gaps}" >/dev/null 2>&1 || true
+
+pkill -x nwg-dock-hyprland 2>/dev/null || true
+sleep 0.2
+exec nwg-dock-hyprland -i 48 -ml 8 -p "${pos}" -x -c "wofi --show drun"

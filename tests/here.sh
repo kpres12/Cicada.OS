@@ -43,7 +43,26 @@ grep -q 'match:title' "${hypr}" || die "missing match: windowrules"
 grep -q 'layout = dwindle' "${hypr}" || die "tiling not default"
 grep -A2 'blur {' "${hypr}" | grep -q 'enabled = false' || die "blur not off"
 grep -q 'cicada-firstboot' "${hypr}" && die "hyprland must not exec-once firstboot" || true
-grep -q 'no_hardware_cursors = true' "${hypr}" || die "need software cursor on Intel"
+grep -A1 'animations {' "${hypr}" | grep -q 'enabled = false' || die "animations must be off (input lag)"
+grep -q 'fullscreen on' "${hypr}" && die "desktop must not be fullscreen over the dock" || true
+grep -q 'style=default' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/wofi/config" && die "wofi style=default ignores Cicada CSS" || true
+grep -q 'QuickExec=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" || die "desktop icons will prompt Open vs Execute"
+grep -q SETTINGS "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" || die "waybar missing SETTINGS"
+grep -q 'bind = $mainMod, M, exit' "${hypr}" && die "Super+M must not kill the session" || true
+grep -q 'WLR_NO_HARDWARE_CURSORS' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" && die "software cursors lag HD 6000" || true
+grep -q 'WLR_NO_HARDWARE_CURSORS' "${ROOT}/iso/overlay/airootfs/home/cicada/.bash_profile" && die "overlay bash_profile still forces software cursors" || true
+grep -q 'lock_cmd = pidof hyprlock || cicada-lock' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hypridle.conf" || die "hypridle must lock via cicada-lock"
+grep -q 'nofocus on' "${hypr}" && die "pcmanfm nofocus makes desktop icons unclickable" || true
+grep -q 'bind = $mainMod, T, exec, kitty' "${hypr}" || die "Super+T should open terminal"
+grep -q 'hyprctl keyword general:gaps_out' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-dock" || die "dock move must update Hyprland gaps"
+grep -q 'custom/rf' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" && die "dead waybar custom/rf still defined" || true
+grep -q '%H:%M}Z' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" && die "waybar clock still appends Z to local time" || true
+grep -q 'cicada-settings brightness' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" || die "BRI click must open brightness, not full settings"
+grep -q 'cicada-settings sound' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" || die "VOL click must open Cicada sound, not pavucontrol"
+grep -q 'exec, pcmanfm-qt' "${hypr}" || die "Super+E must open pcmanfm-qt"
+grep -q 'exec pavucontrol' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" && die "settings still dumps into pavucontrol" || true
+grep -q 'exec nwg-look' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" && die "settings still dumps into nwg-look" || true
+grep -q 'exec wdisplays' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" && die "settings still dumps into wdisplays" || true
 say "hyprland 0.56 / tile / no blur"
 
 echo "==> package policy"
@@ -56,6 +75,11 @@ grep -qx 'cloud-init' "${pkgs}" && die "cloud-init in cicada extras" || true
 grep -qx 'bubblewrap' "${pkgs}" || die "bubblewrap missing"
 grep -qx 'xdg-dbus-proxy' "${pkgs}" || die "xdg-dbus-proxy missing"
 grep -qx 'linux-hardened' "${pkgs}" || die "linux-hardened missing"
+grep -qx 'network-manager-applet' "${pkgs}" && die "nm-applet opens the connection editor" || true
+grep -qx 'thunar' "${pkgs}" && die "Thunar still in ISO extras (pcmanfm-qt is Files)" || true
+grep -qx 'pavucontrol' "${pkgs}" && die "pavucontrol still in ISO extras" || true
+grep -qx 'nwg-look' "${pkgs}" && die "nwg-look still in ISO extras" || true
+grep -qx 'wdisplays' "${pkgs}" && die "wdisplays still in ISO extras" || true
 grep -qx 'cloud-init' "${ROOT}/iso/packages.exclude" || die "cloud-init not excluded"
 say "official repos / excludes"
 
@@ -111,6 +135,13 @@ echo "==> privacy defaults"
 nm="${ROOT}/packages/cicada-defaults/files/etc/NetworkManager/conf.d/cicada.conf"
 grep -q 'enabled=false' "${nm}" || die "NM connectivity not off"
 grep -q 'cloned-mac-address=random' "${nm}" || die "MAC random missing"
+# broadcom-wl cannot be driven by iwd and cannot randomize scan MACs. Both
+# settings look like "no networks found" on the MBA.
+grep -q 'wifi.backend=wpa_supplicant' "${nm}" || die "NM backend must be wpa_supplicant for broadcom-wl"
+grep -q 'wifi.scan-rand-mac-address=no' "${nm}" || die "scan MAC rand breaks broadcom-wl scanning"
+mb="${ROOT}/packages/cicada-defaults/files/etc/modprobe.d/cicada-blacklist.conf"
+grep -q '^blacklist bcma' "${mb}" || die "bcma may steal BCM4360 from wl"
+grep -q '^blacklist brcmfmac' "${mb}" && die "brcmfmac needed for BCM43602 Airs" || true
 grep -q 'LLMNR=no' "${ROOT}/packages/cicada-defaults/files/etc/systemd/resolved.conf.d/cicada.conf" || die "LLMNR not off"
 python3 - <<PY
 import json, pathlib
@@ -123,9 +154,55 @@ assert d.get("DnsOverHttpsMode") == "off"
 print("  OK  chromium managed telemetry/sync/DoH")
 PY
 grep -q 'kernel.kptr_restrict = 2' "${ROOT}/packages/cicada-defaults/files/etc/sysctl.d/99-cicada.conf" || die "kptr_restrict"
+
+echo "==> anti-forensic defaults (LinuxLEO artifact classes)"
+hist="${ROOT}/packages/cicada-defaults/files/etc/profile.d/cicada-history.sh"
+grep -q 'HISTFILE=/dev/null' "${hist}" || die "shell history still lands on disk"
+grep -q 'SAVEHIST=0' "${hist}" || die "zsh SAVEHIST not zeroed"
+jd="${ROOT}/packages/cicada-defaults/files/etc/systemd/journald.conf.d/cicada.conf"
+grep -q '^Storage=volatile' "${jd}" || die "journal persists to /var/log/journal"
+grep -q '^ForwardToSyslog=no' "${jd}" || die "journal forwarded to a second sink"
+gtk="${ROOT}/packages/cicada-shell/files/etc/skel/.config/gtk-3.0/settings.ini"
+grep -q 'gtk-recent-files-max-age=0' "${gtk}" || die "recently-used.xbel still recorded"
+tf="${ROOT}/packages/cicada-defaults/files/etc/tmpfiles.d/cicada.conf"
+grep -q 'thumbnails' "${tf}" || die "thumbnail cache not wiped at boot"
+grep -q 'recently-used.xbel' "${tf}" || die "recent-files list not wiped at boot"
+inst="${INSTALL_BIN}/cicada-install"
+grep -q 'subvol=@,noatime' "${inst}" || die "installed root mounts with atime"
+grep -q 'subvol=@home,noatime' "${inst}" || die "installed home mounts with atime"
+grep -q 'umask=0077' "${inst}" || die "ESP world-readable"
+say "history off / journal volatile / no recent+thumbs / noatime / ESP 0077"
 nft="${ROOT}/packages/cicada-defaults/files/etc/nftables.d/cicada-baseline.nft"
 grep -q 'policy drop' "${nft}" || die "nft baseline not drop"
 grep -q 'policy drop' "${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft" || die "killswitch not drop"
+# The output chain must NOT exempt established flows: that lets pre-tunnel
+# connections keep running on wlan0, and lets flows fail over to the physical
+# interface when wg0 dies. Parse the chain rather than grepping the whole file,
+# since the input chain legitimately keeps the rule.
+python3 - <<PY || die "killswitch output chain exempts established flows (leak)"
+import pathlib, re, sys
+t = pathlib.Path("${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft").read_text()
+m = re.search(r"chain output \{(.*?)\n  \}", t, re.S)
+if not m:
+    sys.exit("no output chain found")
+body = "\n".join(l for l in m.group(1).splitlines() if not l.strip().startswith("#"))
+sys.exit(1 if "ct state established" in body else 0)
+PY
+grep -q 'killswitch failed to load' "${CICADA_BIN}/cicada-vpn" || die "cicada-vpn fails open if nft errors"
+grep -q 'wg-quick down wg0' "${CICADA_BIN}/cicada-vpn" || die "cicada-vpn does not tear down on killswitch failure"
+grep -q 'trap cleanup EXIT' "${RUN_BIN}/cicada-run" || die "cicada-run leaks xdg-dbus-proxy on nonzero app exit"
+
+echo "==> lock cannot strand a passwordless session"
+lock="${CICADA_BIN}/cicada-lock"
+grep -q 'live-nopasswd' "${lock}" || die "cicada-lock will lock a session with no password"
+grep -q 'passwd -S' "${lock}" || die "cicada-lock lacks a live no-password check"
+grep -q 'live-nopasswd' "${CICADA_BIN}/cicada-firstboot" || die "firstboot does not publish the no-password marker"
+# The live user ships passwordless on purpose; that is exactly why lock must refuse.
+grep -q '^cicada::' "${ROOT}/iso/overlay/airootfs/etc/shadow" || die "live user no longer passwordless (revisit lock guard)"
+# Not executed here: cicada-lock's success path runs hyprlock, which would grab
+# this machine's display. Structure is asserted statically instead.
+grep -q -- '--force' "${lock}" || die "no deliberate-lock escape hatch"
+say "lock guard present (marker + passwd -S + --force escape)"
 say "NM / resolved / nft / sysctl"
 
 echo "==> live overlay"
@@ -155,10 +232,12 @@ grep -q 'CICADA_DURESS_BUDGET' "${hook}" || die "hook missing pad budget"
 say "duress hook has pad + same error + erase"
 
 echo "==> desktop launchers"
-for f in web.desktop wifi.desktop files.desktop start-here.desktop; do
+for f in web.desktop wifi.desktop files.desktop start-here.desktop term.desktop settings.desktop; do
   test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/${f}" || die "missing ${f}"
 done
 grep -q '/usr/local/bin/chromium' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/web.desktop" || die "web.desktop not wrapped"
+grep -q 'Exec=pcmanfm-qt' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/files.desktop" || die "Files must be pcmanfm-qt"
+grep -q 'inode/directory=pcmanfm-qt.desktop' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/mimeapps.list" || die "directories must open in pcmanfm-qt"
 grep -q 'FIRST-BOOT.txt' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/start-here.desktop" || die "start-here"
 say "desktop launchers"
 
@@ -175,7 +254,15 @@ test -L "${P}/airootfs/etc/systemd/system/sshd.service" || die "sshd not masked"
 readlink "${P}/airootfs/etc/systemd/system/sshd.service" | grep -q '/dev/null' || die "sshd mask not /dev/null"
 test -L "${P}/airootfs/etc/systemd/system/multi-user.target.wants/cicada-amnesic.service" || die "amnesic unit not enabled"
 test -L "${P}/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service" || die "NM not enabled"
+test ! -e "${P}/airootfs/etc/systemd/system/multi-user.target.wants/usbguard.service" || die "usbguard enabled on live"
+test ! -e "${P}/airootfs/etc/systemd/system/multi-user.target.wants/apparmor.service" || die "apparmor enabled on live"
 test ! -e "${P}/airootfs/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" || die "networkd still enabled"
+grep -q Hyprland "${P}/airootfs/home/cicada/.bash_profile" || die "live home does not start Hyprland"
+grep -q 'cicada-firstboot' "${P}/airootfs/home/cicada/.config/hypr/hyprland.conf" && die "assembled hypr still exec-once firstboot" || true
+def=$(echo "${P}/efiboot/loader/entries/"01-*.conf)
+grep -q intel_iommu "${def}" && die "default live entry has intel_iommu (breaks Apple iGPU)" || true
+test ! -f "${P}/efiboot/loader/entries/00-cicada-amnesic.conf" || die "amnesic must not be 00- (sorts first)"
+test -f "${P}/efiboot/loader/entries/04-cicada-amnesic.conf" || die "amnesic entry 04 missing"
 test -x "${P}/airootfs/usr/local/bin/chromium" || die "chromium wrapper not 755"
 if [[ -e "${P}/airootfs/usr/local/bin/cicada-crypt" ]]; then
   die "cicada-crypt should be a hook not /usr/local/bin"
@@ -194,6 +281,9 @@ else
   die "every boot entry is copytoram — 8GB Air will OOM"
 fi
 say "assemble deep checks"
+
+echo "==> amnesic verify"
+CICADA_PROFILE_DIR="${P}" bash "${ROOT}/tests/amnesic-verify.sh" || die "amnesic-verify"
 
 echo "==> seal (again)"
 bash "${ROOT}/tests/seal.sh" >/dev/null && say "seal chain+tamper"

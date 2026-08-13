@@ -6,13 +6,25 @@ table inet cicada_ks {
     oif "lo" accept
     oifname "wg0" accept
     udp dport 51820 accept
-    ct state established,related accept
+    # NOTE: deliberately no `ct state established,related accept` here.
+    # Output is the exfiltration path, and a conntrack exemption defeats the
+    # whole switch twice over:
+    #   1. flows opened on wlan0 *before* the tunnel came up stay permitted;
+    #   2. when the tunnel dies (`ip link del wg0`) existing flows fail over to
+    #      the physical interface and are waved through — the exact scenario
+    #      tests/killswitch.sh is written to catch.
+    # Every legitimate egress path is already covered explicitly: tunnel
+    # traffic leaves via wg0, the handshake is udp/51820, local is lo. DNS is
+    # covered because wg-quick points resolved at the tunnel resolver, so
+    # queries route out wg0.
   }
   chain input {
     type filter hook input priority 100; policy drop;
     iif "lo" accept
     iifname "wg0" accept
     udp sport 51820 accept
+    # Return path only. Inbound cannot exfiltrate on its own, and dropping this
+    # would break long-lived tunnel sessions across a rekey.
     ct state established,related accept
   }
   chain forward {

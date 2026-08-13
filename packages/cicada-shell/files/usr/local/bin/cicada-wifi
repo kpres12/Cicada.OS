@@ -1,54 +1,143 @@
 #!/usr/bin/env bash
-# One-click Wi-Fi: unblock radio, pick a network, connect.
+# Phone-shaped Wi-Fi: toggle the radio, pick from a scan list, type a password.
+# Never open nm-connection-editor as the default path.
 set -uo pipefail
 
 notify() { notify-send "Cicada Wi-Fi" "$1" 2>/dev/null || true; }
 
-rfkill unblock wifi 2>/dev/null || true
-command -v nmcli >/dev/null 2>&1 || {
-  exec nm-connection-editor 2>/dev/null || exec kitty --title CICADA-NET -e iwctl
+radio_on() {
+  rfkill unblock wifi 2>/dev/null || true
+  nmcli radio wifi on >/dev/null 2>&1 || true
 }
 
-nmcli radio wifi on >/dev/null 2>&1 || true
-nmcli device wifi rescan >/dev/null 2>&1 || true
-sleep 2
+radio_off() {
+  nmcli radio wifi off >/dev/null 2>&1 || true
+  rfkill block wifi 2>/dev/null || true
+}
 
+wifi_is_on() {
+  nmcli -t radio wifi 2>/dev/null | grep -qi '^enabled$'
+}
+
+current_ssid() {
+  nmcli -t -f NAME,TYPE connection show --active 2>/dev/null \
+    | awk -F: '$2 ~ /wireless|wifi/ {print $1; exit}'
+}
+
+scan_rows() {
+  nmcli device wifi rescan >/dev/null 2>&1 || true
+  sleep 3
+  nmcli -t -f SIGNAL,SSID,SECURITY device wifi list 2>/dev/null \
+    | awk -F: '
+        NF >= 2 && $2 != "" && $2 != "--" {
+          sig=$1; sec=$NF; ssid=$2
+          if (NF > 3) {
+            ssid=""
+            for (i=2; i<NF; i++) ssid = ssid (i==2 ? "" : ":") $i
+          }
+          if (!seen[ssid]++) printf "%s\t%s\t%s\n", sig, ssid, sec
+        }' | sort -nr
+}
+
+pick_network() {
+  local rows sig ssid sec
+  rows="$(scan_rows)"
+  if [[ -z "${rows}" ]]; then
+    zenity --error --title="Cicada Wi-Fi" --width=400 \
+      --text="No networks in range.\n\nRadio is on. Wait a few seconds and try again.\nBroadcom MBA: the next ISO uses wpa_supplicant (not iwd)."
+    return 1
+  fi
+  local args=()
+  while IFS=$'\t' read -r sig ssid sec; do
+    [[ -z "${ssid}" ]] && continue
+    args+=("${sig}%" "${ssid}" "${sec:-open}")
+  done <<< "${rows}"
+  zenity --list --title="Cicada Wi-Fi" \
+    --text="Pick a network" \
+    --column="Signal" --column="Network" --column="Security" \
+    --hide-column=3 --print-column=2 \
+    --width=480 --height=440 \
+    "${args[@]}"
+}
+
+connect_ssid() {
+  local ssid="$1" sec="$2"
+  if [[ "$(current_ssid)" == "${ssid}" ]]; then
+    notify "Already on ${ssid}"
+    return 0
+  fi
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${ssid}"; then
+    if nmcli connection up "${ssid}"; then
+      notify "Connected to ${ssid}"
+      command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+      return 0
+    fi
+  fi
+  if [[ -z "${sec}" || "${sec}" == "--" || "${sec}" == "open" ]]; then
+    if nmcli device wifi connect "${ssid}"; then
+      notify "Connected to ${ssid}"
+      command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+      return 0
+    fi
+  fi
+  local pass
+  pass="$(zenity --password --title="Password for ${ssid}")" || return 1
+  if nmcli device wifi connect "${ssid}" password "${pass}"; then
+    notify "Connected to ${ssid}"
+    command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+    return 0
+  fi
+  zenity --error --title="Cicada Wi-Fi" --width=320 --text="Could not join ${ssid}."
+  return 1
+}
+
+if ! command -v nmcli >/dev/null 2>&1; then
+  zenity --error --title="Cicada Wi-Fi" --text="NetworkManager is not running." 2>/dev/null || true
+  exit 1
+fi
 if ! command -v zenity >/dev/null 2>&1; then
-  exec nm-connection-editor
-fi
-
-ssids=()
-while IFS= read -r line; do
-  [[ -z "${line}" ]] && continue
-  ssids+=("${line}")
-done < <(nmcli -t -f SSID device wifi list 2>/dev/null | awk 'NF && $0 != "--" && !seen[$0]++')
-
-if [[ ${#ssids[@]} -eq 0 ]]; then
-  zenity --error --title="Cicada Wi-Fi" --width=360 \
-    --text="No networks found.\n\nWi-Fi radio is on. If this MacBook has no scan results, the Broadcom driver may still be missing."
+  echo "cicada-wifi needs zenity" >&2
   exit 1
 fi
 
-ssid="$(zenity --list --title="Cicada Wi-Fi" --text="Select a network" \
-  --column="Network" --width=420 --height=400 "${ssids[@]}")" || exit 0
-[[ -n "${ssid}" ]] || exit 0
+state="off"
+wifi_is_on && state="on"
+now="$(current_ssid)"
+text="Wi-Fi is ${state}."
+[[ -n "${now}" ]] && text="${text}\nConnected to: ${now}"
 
-if nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "${ssid}"; then
-  notify "Already on ${ssid}"
-  exit 0
-fi
-
-if nmcli device wifi connect "${ssid}" >/dev/null 2>&1; then
-  notify "Connected to ${ssid}"
-  cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
-  exit 0
-fi
-
-pass="$(zenity --password --title="Passphrase for ${ssid}")" || exit 0
-if nmcli device wifi connect "${ssid}" password "${pass}"; then
-  notify "Connected to ${ssid}"
-  cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+if [[ "${state}" == "on" ]]; then
+  action="$(zenity --list --title="Cicada Wi-Fi" --text="${text}" \
+    --column=Action --hide-header --width=400 --height=240 \
+    "Choose a network…" \
+    "Turn Wi-Fi off" \
+    2>/dev/null)" || exit 0
 else
-  zenity --error --title="Cicada Wi-Fi" --width=320 --text="Could not connect to ${ssid}."
-  exit 1
+  action="$(zenity --list --title="Cicada Wi-Fi" --text="${text}" \
+    --column=Action --hide-header --width=400 --height=200 \
+    "Turn Wi-Fi on" \
+    2>/dev/null)" || exit 0
 fi
+
+join_from_scan() {
+  radio_on
+  notify "Scanning for networks…"
+  ssid="$(pick_network)" || exit 1
+  [[ -n "${ssid}" ]] || exit 0
+  sec="$(nmcli -t -f SSID,SECURITY device wifi list 2>/dev/null | awk -F: -v s="${ssid}" '$1==s {print $2; exit}')"
+  connect_ssid "${ssid}" "${sec}"
+}
+
+case "${action}" in
+  "Turn Wi-Fi on")
+    join_from_scan
+    ;;
+  "Turn Wi-Fi off")
+    radio_off
+    notify "Wi-Fi off"
+    exit 0
+    ;;
+  "Choose a network…")
+    join_from_scan
+    ;;
+esac

@@ -15,10 +15,10 @@ You will see two different machines:
 
 1. Confirm the stick is the 250 GB **JACKSPARROW**, then flash (macOS will say the disk is unreadable — **Eject**, never Initialize).
 2. Air: hold **Option (⌥)** → Cicada.
-3. You are `cicada` with **no password**. Click the dock: terminal, files, web, Wi‑Fi.
-4. Radios start **off**. Click Wi‑Fi / NET (or Super+N), pick a network.
-5. Windows **tile**. Super+V floats one window if you need it.
-6. Super+/ — this cheat sheet on the live desktop (`/usr/share/cicada/FIRST-BOOT.txt`).
+3. You are `cicada` with **no password**. Click the dock or **SETTINGS** on the top bar.
+4. Radios start **off** (privacy). Click **WIFI**: turn it on, pick a network, type the password. No SSID forms.
+5. Windows **tile**. **CLOSE** on the bar or Alt+F4. Super+V floats one window.
+6. **SETTINGS** also has sound, brightness, displays, dock position, lock, screenshot.
 
 **Amnesic (Tails-shaped):** at the boot menu pick **Cicada.OS live (amnesic — copy to RAM)**. Needs more RAM. The stick can leave; yanking it force-reboots. Default live entry keeps the USB in (safer on 8GB Airs). Internal SSD is not mounted.
 
@@ -126,7 +126,7 @@ cicada-profile dispose work      # confirm dialog
 
 | Want | Do |
 |---|---|
-| Radios off | click RF / Super+Shift+R |
+| Radios off | click WIFI → Turn Wi-Fi off, or Super+Shift+R |
 | Lock | Super+L |
 | Kill the live session now | yank the boot USB, or `sudo cicada-panic` |
 | Browser broken after malloc | `sudo touch /etc/cicada/hardened-malloc-disable` and reboot |

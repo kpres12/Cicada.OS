@@ -1,21 +1,14 @@
 CICADA.OS  //  DESKTOP
 
-click the dock        terminal / files / web / wifi / look
-click desktop icons   same apps
-click NET or Wi-Fi    pick a network
-click MSG             notification center
-Super+V               float this window (optional)
-Super+J               togglesplit
-Super+Enter           terminal
+click SETTINGS        Wi-Fi, sound, brightness, dock, lock
+click WIFI            turn on, pick a network, password
+click CLOSE           close the focused window (or Alt+F4)
+click the dock        terminal, files, web, settings, wifi
+click desktop icons   same apps — they launch, they do not ask Execute
+Super+V               float this window
 Super+Space           launcher
 Super+L               lock
-Super+/               this sheet
-
-cicada-seal verify    tamper-evident log
-cicada-attest         Pixel pin / TPM quote
-cicada-beacon         Meshtastic duress (no radio → exit 2)
-cicada-backup         restic to USB (not this disk)
-cicada-profile        Work / Burner homes
-yank the live USB     panic reboot (amnesic entry = copy to RAM)
+Super+/               first-boot sheet
 
 Windows tile. You drive the machine by clicking.
+Radios stay off until you turn Wi-Fi on.

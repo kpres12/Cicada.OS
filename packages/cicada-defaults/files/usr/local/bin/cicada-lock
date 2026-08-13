@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 # MAGI-03 lock: block new USB while locked, restore policy on unlock.
 set -euo pipefail
+if pidof hyprlock >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Never raise a lock screen that cannot be dismissed. The live user ships with
+# an empty password, and hyprlock has no "no password set" affordance — the
+# result is a full input grab with no accepted input, on a 30-minute fuse to
+# cicada-locked-reboot. On live that is a lockout with no security benefit:
+# whoever holds the USB can read it regardless.
+# `passwd -S` reports NP (no password) for your own account without root, so the
+# check is live: run `passwd` and locking works again immediately, no reboot.
+# The firstboot marker is the fallback for when shadow-utils is unavailable.
+nopasswd=0
+case "$(passwd -S "$(id -un)" 2>/dev/null | awk '{print $2}')" in
+  NP) nopasswd=1 ;;
+esac
+if [[ -e /run/cicada/live-nopasswd ]]; then
+  nopasswd=1
+fi
+
+if [[ "${nopasswd}" -eq 1 ]] && [[ "${1:-}" != "--force" ]]; then
+  notify-send "Cicada" \
+    "Lock disabled: no password set on the live session. Run 'passwd' first." \
+    2>/dev/null || echo "cicada-lock: no password set on live; refusing to lock." >&2
+  exit 0
+fi
 usbguard set-parameter InsertedDevicePolicy block >/dev/null 2>&1 || true
 cicada-seal append session.lock "{}" >/dev/null 2>&1 || true
 hyprlock

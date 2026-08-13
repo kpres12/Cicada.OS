@@ -1,16 +1,18 @@
 window {
   background-color: #000000;
-  border: 1px solid #ffb000;
-  font-family: "JetBrainsMono Nerd Font", monospace;
-  font-size: 13px;
+  border: 2px solid #39ff14;
+  font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+  font-size: 15px;
 }
 
 #input {
-  background-color: #000000;
+  background-color: #0b0d10;
   color: #39ff14;
   border: none;
-  border-bottom: 1px solid #1a1f24;
-  padding: 8px 12px;
+  border-bottom: 1px solid #ffb000;
+  padding: 12px 16px;
+  margin: 0;
+  font-size: 15px;
 }
 
 #inner-box,
@@ -22,11 +24,20 @@ window {
 
 #text {
   color: #ffb000;
-  padding: 4px 12px;
+  padding: 8px 16px;
+}
+
+#img {
+  margin-left: 12px;
+}
+
+#entry {
+  padding: 4px 0;
 }
 
 #entry:selected {
   background-color: #0b0d10;
+  border-left: 3px solid #39ff14;
 }
 
 #entry:selected #text {

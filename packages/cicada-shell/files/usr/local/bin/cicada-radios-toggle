@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
+# Keep rfkill and NetworkManager radio in the same state.
 set -euo pipefail
-# Toggle soft-block for wifi + bluetooth
-wifi_soft=$(rfkill list wifi | grep -c "Soft blocked: yes" || true)
+wifi_soft=$(rfkill list wifi 2>/dev/null | grep -c "Soft blocked: yes" || true)
+wifi_soft="${wifi_soft:-0}"
 if [[ "${wifi_soft}" -gt 0 ]]; then
-  rfkill unblock wifi
-  rfkill unblock bluetooth
+  rfkill unblock wifi 2>/dev/null || true
+  rfkill unblock bluetooth 2>/dev/null || true
+  nmcli radio wifi on >/dev/null 2>&1 || true
   cicada-seal append rf.unblock "{}" >/dev/null 2>&1 || true
-  notify-send "Cicada RF" "Radios UNBLOCKED" 2>/dev/null || echo "Radios UNBLOCKED"
+  notify-send "Cicada" "Wi-Fi unblocked" 2>/dev/null || true
 else
-  rfkill block wifi
-  rfkill block bluetooth
+  nmcli radio wifi off >/dev/null 2>&1 || true
+  rfkill block wifi 2>/dev/null || true
+  rfkill block bluetooth 2>/dev/null || true
   cicada-seal append rf.block "{}" >/dev/null 2>&1 || true
-  notify-send "Cicada RF" "Radios BLOCKED" 2>/dev/null || echo "Radios BLOCKED"
+  notify-send "Cicada" "Wi-Fi blocked" 2>/dev/null || true
 fi

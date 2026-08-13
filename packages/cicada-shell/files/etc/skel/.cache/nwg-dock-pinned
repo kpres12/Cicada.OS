@@ -1,5 +1,6 @@
-kitty
-thunar
-chromium
-cicada-wifi
-nwg-look
+kitty.desktop
+pcmanfm-qt.desktop
+chromium.desktop
+cicada-settings.desktop
+cicada-wifi.desktop
+keepassxc.desktop

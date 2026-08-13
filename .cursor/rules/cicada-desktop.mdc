@@ -13,8 +13,7 @@ Must exist and be clickable with a mouse, no hidden keybinds required:
 
 - Wallpaper (hyprpaper and/or pcmanfm-qt desktop)
 - Persistent left dock with pinned + running app icons (`nwg-dock-hyprland`)
-- Desktop icons + drag-and-drop (`pcmanfm-qt --desktop`)
-- Real file manager windows (Thunar and/or pcmanfm-qt)
+- Desktop icons + drag-and-drop **and** file windows: `pcmanfm-qt` (one app, not a second file manager)
 - Notification center (`swaync`), not toast-only
 - One-click Wi-Fi, browser, files, settings
 - Windows **tile** by default. Super+V floats one window. Launching is click, not a keybind exam.

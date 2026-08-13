@@ -62,9 +62,6 @@ noto-fonts
 noto-fonts-emoji
 chromium
 xdg-utils
-thunar
-thunar-volman
-thunar-archive-plugin
 file-roller
 layer-shell-qt
 pcmanfm-qt
@@ -75,12 +72,9 @@ xdg-user-dirs
 papirus-icon-theme
 gnome-themes-extra
 swaync
-pavucontrol
 nwg-dock-hyprland
-nwg-look
 zenity
 nm-connection-editor
-network-manager-applet
 keepassxc
 gnupg
 age

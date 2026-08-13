@@ -150,9 +150,17 @@ case "${FILES}" in
 esac
 
 proxy_pid=""
+sock=""
 cleanup() {
   [[ -n "${proxy_pid}" ]] && kill "${proxy_pid}" 2>/dev/null || true
+  [[ -n "${sock}" ]] && rm -f "${sock}" 2>/dev/null || true
+  return 0
 }
+# Must be a trap, not a call after the exec line: `set -e` means a non-zero exit
+# from the sandboxed app aborts this script immediately, so any cleanup placed
+# after the bwrap invocation never runs and the proxy is orphaned holding a
+# live bus connection. Every app that exits non-zero used to leak one.
+trap cleanup EXIT INT TERM
 
 if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
   sock="${XDG_RUNTIME_DIR}/cicada-${APP_ID}.sock"
@@ -182,7 +190,9 @@ if [[ "${APP_ID}" == "org.cicada.helium" ]]; then
   set -- "$@" --disable-namespace-sandbox --disable-setuid-sandbox
 fi
 
-"${args[@]}" "$@"
-rc=$?
-cleanup
+# Not `exec` — that would replace this shell and the EXIT trap would never fire,
+# leaking the proxy again. `|| rc=$?` keeps set -e from aborting before we can
+# propagate the sandboxed app's real exit code; cleanup runs from the trap.
+rc=0
+"${args[@]}" "$@" || rc=$?
 exit "${rc}"
