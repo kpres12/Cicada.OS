@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Root systemd unit only. Do not run from Hyprland exec-once (polkit loop on live).
 set -euo pipefail
 MARKER=/var/lib/cicada/firstboot-done
 mkdir -p /var/lib/cicada
@@ -16,20 +17,29 @@ cat <<'EOF'
 ╚══════════════════════════════════════════════╝
 EOF
 
+if [[ ${EUID} -ne 0 ]]; then
+  echo "cicada-firstboot: not root — skip (Hyprland must not call this)" >&2
+  exit 0
+fi
+
 if [[ ! -d /run/archiso ]] && [[ -f /usr/lib/libhardened_malloc.so && ! -f /etc/cicada/hardened-malloc-disable ]]; then
   echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
 fi
 
-systemctl enable --now nftables.service 2>/dev/null || true
-systemctl enable --now cicada-radios-off.service 2>/dev/null || true
-systemctl enable --now cicada-locked-reboot.timer 2>/dev/null || true
-systemctl enable --now apparmor.service 2>/dev/null || true
+# Live ISO already has units enabled in the profile. enable --now as the
+# desktop user trips polkit and stalls tty1.
+if [[ ! -d /run/archiso ]]; then
+  systemctl enable --now nftables.service 2>/dev/null || true
+  systemctl enable --now cicada-radios-off.service 2>/dev/null || true
+  systemctl enable --now cicada-locked-reboot.timer 2>/dev/null || true
+  systemctl enable --now apparmor.service 2>/dev/null || true
 
-if command -v usbguard >/dev/null 2>&1; then
-  if [[ ! -s /etc/usbguard/rules.conf ]] || grep -q '^#' /etc/usbguard/rules.conf; then
-    usbguard generate-policy > /etc/usbguard/rules.conf 2>/dev/null || true
+  if command -v usbguard >/dev/null 2>&1; then
+    if [[ ! -s /etc/usbguard/rules.conf ]] || grep -q '^#' /etc/usbguard/rules.conf; then
+      usbguard generate-policy > /etc/usbguard/rules.conf 2>/dev/null || true
+    fi
+    systemctl enable --now usbguard.service 2>/dev/null || true
   fi
-  systemctl enable --now usbguard.service 2>/dev/null || true
 fi
 
 if command -v cicada-seal >/dev/null 2>&1; then
@@ -38,7 +48,6 @@ if command -v cicada-seal >/dev/null 2>&1; then
 fi
 command -v cicada-attest >/dev/null && cicada-attest >/dev/null 2>&1 || true
 
-# Live home is overlay+skel; copy if a rebuild omitted the rsync.
 if [[ ! -d /home/cicada/.config/hypr ]] && [[ -d /etc/skel/.config ]]; then
   rsync -a /etc/skel/ /home/cicada/ 2>/dev/null || true
   chown -R cicada:cicada /home/cicada 2>/dev/null || true

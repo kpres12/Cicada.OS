@@ -1,11 +1,14 @@
 [Unit]
 Description=Cicada first boot hooks
-After=multi-user.target
+After=local-fs.target
+Before=getty@tty1.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/cicada-firstboot
 RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

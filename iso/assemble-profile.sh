@@ -108,7 +108,9 @@ rm -f "${PROFILE}/airootfs/etc/systemd/system/dbus-org.freedesktop.network1.serv
 rm -f "${PROFILE}/airootfs/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
 rm -f "${PROFILE}/airootfs/etc/systemd/system/sockets.target.wants/systemd-networkd.socket"
 ln -sfn /usr/lib/systemd/system/NetworkManager.service "${wants}/NetworkManager.service"
-ln -sfn /usr/lib/systemd/system/usbguard.service "${wants}/usbguard.service"
+# USBGuard on live will block the Air's USB HID keyboard/trackpad if it
+# starts before they enumerate. Installed systems enable it in install-chroot.
+rm -f "${wants}/usbguard.service"
 ln -sfn /usr/lib/systemd/system/apparmor.service "${wants}/apparmor.service"
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants"
 ln -sfn /etc/systemd/system/cicada-locked-reboot.timer \
@@ -206,7 +208,8 @@ python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-extra = " intel_iommu=on iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+# igfx_off: Apple Intel iGPU + IOMMU otherwise never leaves the text console.
+extra = " intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 count = 0
 for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
     text = path.read_text()

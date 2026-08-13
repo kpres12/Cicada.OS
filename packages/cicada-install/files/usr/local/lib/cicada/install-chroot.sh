@@ -31,7 +31,7 @@ console-mode max
 editor no
 EOF
 
-CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw intel_iommu=on iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 if [[ -n "${CICADA_BTRFS_SUBVOL:-}" ]]; then
   CMDLINE="${CMDLINE} rootflags=subvol=${CICADA_BTRFS_SUBVOL}"
 fi

@@ -42,6 +42,8 @@ grep -q 'layoutmsg, togglesplit' "${hypr}" || die "missing layoutmsg togglesplit
 grep -q 'match:title' "${hypr}" || die "missing match: windowrules"
 grep -q 'layout = dwindle' "${hypr}" || die "tiling not default"
 grep -A2 'blur {' "${hypr}" | grep -q 'enabled = false' || die "blur not off"
+grep -q 'cicada-firstboot' "${hypr}" && die "hyprland must not exec-once firstboot" || true
+grep -q 'no_hardware_cursors = true' "${hypr}" || die "need software cursor on Intel"
 say "hyprland 0.56 / tile / no blur"
 
 echo "==> package policy"

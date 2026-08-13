@@ -5,5 +5,5 @@
   dock:       terminal · files · web · wifi
   wifi:       click the wifi icon, or Super+N
   keys:       Super+/
-  install:    archinstall     (external disk only)
+  install:    sudo cicada-install --target /dev/sdX   (external disk; Apple internal refused)
 
