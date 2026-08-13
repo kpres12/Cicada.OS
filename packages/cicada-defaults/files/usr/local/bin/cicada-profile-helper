@@ -21,7 +21,9 @@ case "${cmd}" in
       rsync -a /etc/skel/ "/home/${user}/"
       chown -R "${user}:${user}" "/home/${user}"
     fi
-    echo "created Unix user ${user} (not in wheel). Log in as ${user} — different UID, not a folder."
+    echo "Set a login password for ${user} (not in wheel, cannot sudo):"
+    passwd "${user}"
+    echo "created Unix user ${user}. Log in as ${user} — different UID, not a folder."
     ;;
   login)
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }

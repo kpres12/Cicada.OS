@@ -85,6 +85,9 @@ rsync -a "${ROOT}/packages/cicada-install/files/" "${PROFILE}/airootfs/"
 # Live user must get skel (dock, hypr, scopes). Overlay only ships .bash_profile.
 mkdir -p "${PROFILE}/airootfs/home/cicada"
 rsync -a "${PROFILE}/airootfs/etc/skel/" "${PROFILE}/airootfs/home/cicada/"
+mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
+cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
+cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/null || true
 
 # Releng enables mDNS; Cicada does not. Drop the archiso resolved drop-in if present.
 rm -f "${PROFILE}/airootfs/etc/systemd/resolved.conf.d/archiso.conf"

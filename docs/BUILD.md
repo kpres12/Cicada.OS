@@ -35,13 +35,12 @@ sudo pacman -S --needed archiso
 
 ## Flash + MBA
 
-1. External USB SSD — leave internal macOS alone
-2. Flash ISO to a USB stick
-3. MBA: hold **Option (⌥)** → EFI Cicada
-4. Live session autologins `cicada` and starts Hyprland (empty password)
-5. Install with `archinstall` onto the **external** disk, LUKS on
+See [docs/USER.md](USER.md) — that is the first-boot sheet (also Super+/ on the live desktop).
 
-Radios start **soft-blocked**. Unblock: `Super+Shift+R` or `cicada-radios-toggle`.
+1. Flash the ISO to JACKSPARROW (`diskutil list` — confirm 250 GB). macOS will say unreadable: **Eject**, not Initialize.
+2. Air: hold **Option (⌥)** → Cicada.
+3. Live autologin `cicada`, empty password. Radios blocked until you click Wi‑Fi.
+4. Install: `sudo cicada-install --target /dev/sdX` (not `archinstall`). Apple internal disks are refused.
 
 ## Upstream in this repo
 

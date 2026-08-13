@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Start here
+Comment=Cicada first-boot guide
+Exec=kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt
+Icon=help-about
+Terminal=false
