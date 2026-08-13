@@ -1,5 +1,6 @@
 # Packages pacstrap'd by cicada-install (official repos only).
-# Desktop + security baseline. Missing packages are skipped, not fatal.
+# Keep in sync with iso/packages.cicada.x86_64 (+ base/boot stack).
+# Missing packages are skipped, not fatal.
 base
 linux
 linux-hardened
@@ -16,10 +17,11 @@ cryptsetup
 tpm2-tools
 sbctl
 networkmanager
-iwd
+# iwd deliberately omitted — NM + wpa_supplicant is the MBA/Broadcom path
 nftables
 usbguard
 apparmor
+firejail
 bubblewrap
 xdg-dbus-proxy
 python
@@ -27,6 +29,7 @@ mesa
 vulkan-intel
 libva-intel-driver
 intel-media-driver
+libva-utils
 linux-firmware-broadcom
 iptables
 pipewire-jack
@@ -41,13 +44,16 @@ hypridle
 waybar
 wofi
 kitty
-foot
+# foot omitted — Kitty is the only terminal in the product UI
 grim
 slurp
 swappy
 wl-clipboard
 qt6-wayland
 qt6ct
+qt6-svg
+lxqt-qtplugin
+adwaita-cursors
 xorg-xwayland
 pipewire
 pipewire-pulse
@@ -83,7 +89,9 @@ keepassxc
 gnupg
 age
 wireguard-tools
+macchanger
 libnotify
+lynis
 restic
 flatpak
 tor

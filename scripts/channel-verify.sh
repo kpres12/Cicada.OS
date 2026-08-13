@@ -20,6 +20,8 @@ grep -Eq '^sha256=[0-9a-f]{64}$' "${lock}" || die "helium.lock sha256"
 say "helium.lock pinned"
 
 grep -q 'install-helium.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Helium"
+grep -q 'Public beta' "${ROOT}/site/index.html" || die "site home missing public beta banner"
+grep -q 'prepare-release\|RELEASE.md' "${ROOT}/docs/RELEASE.md" || die "RELEASE.md incomplete"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run default-deny missing"
 test -x "${ROOT}/scripts/channel-build-repo.sh" || test -f "${ROOT}/scripts/channel-build-repo.sh" || die "channel-build-repo.sh missing"
 test -f "${ROOT}/scripts/channel-sign.sh" || die "channel-sign.sh missing"

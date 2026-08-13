@@ -21,9 +21,11 @@ You will see two different machines:
 6. **SETTINGS** has sound, brightness, **App permissions** (scopes), **Camera & microphone** (software kill), **Profiles** (Work UID), dock, lock.
 7. **Web** is Helium. The launcher only shows Cicada apps — not the full Arch menu.
 
-**Amnesic (Tails-shaped):** at the boot menu pick **Cicada.OS live (amnesic — copy to RAM)**. Needs more RAM. The stick can leave; yanking it force-reboots. Default live entry keeps the USB in (safer on 8GB Airs). Internal SSD is not mounted.
+**Amnesic (Tails-shaped):** at the boot menu pick **Cicada.OS (copy to RAM)**. Needs more RAM. The stick can leave; yanking it force-reboots. Default **Cicada.OS** keeps the USB in (safer on 8GB Airs). Internal SSD is not mounted.
 
 Do **not** enroll duress or TPM on the live USB. There is no LUKS yet.
+
+When you want a real OS (files, wallpaper, Work UID): run **Install** — see §2. Live stays the beta/test stick.
 
 ---
 
@@ -129,6 +131,6 @@ Blocks sandboxed apps and unloads `uvcvideo`. Not a hardware kill switch; root c
 | Lock | Super+L |
 | Kill the live session now | yank the boot USB, or `sudo cicada-panic` |
 | Browser broken after malloc | `sudo touch /etc/cicada/hardened-malloc-disable` and reboot |
-| Wi‑Fi dead on hardened kernel | boot the default `linux` entry, not linux-hardened |
+| Wi‑Fi dead on hardened kernel | boot the default `linux` entry after install, not linux-hardened |
 
 Web is **Helium** (official tarball, `channel/helium.lock`). Arch Chromium is not on the ISO. Unknown apps are default-deny; see `docs/PRODUCT.md`.

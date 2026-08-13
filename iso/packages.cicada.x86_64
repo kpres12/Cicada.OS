@@ -28,6 +28,10 @@ slurp
 swappy
 wl-clipboard
 qt6-wayland
+qt6ct
+qt6-svg
+lxqt-qtplugin
+adwaita-cursors
 xorg-xwayland
 pipewire
 pipewire-pulse

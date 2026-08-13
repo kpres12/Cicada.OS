@@ -46,8 +46,11 @@ if [[ -z "${P}" || ! -d "${P}/efiboot/loader/entries" ]]; then
   }
 fi
 if [[ -n "${P}" && -d "${P}/efiboot/loader/entries" ]]; then
-  test -f "${P}/efiboot/loader/entries/04-cicada-amnesic.conf" || die "04-cicada-amnesic.conf missing"
-  grep -q copytoram "${P}/efiboot/loader/entries/04-cicada-amnesic.conf" || die "amnesic entry lacks copytoram"
+  test -f "${P}/efiboot/loader/entries/02-cicada-ram.conf" || die "02-cicada-ram.conf missing"
+  grep -q copytoram "${P}/efiboot/loader/entries/02-cicada-ram.conf" || die "amnesic entry lacks copytoram"
+  test ! -f "${P}/efiboot/loader/entries/03-cicada-hardened.conf" || die "hardened live entry must be gone"
+  n=$(find "${P}/efiboot/loader/entries" -name '*.conf' | wc -l | tr -d ' ')
+  [[ "${n}" -eq 2 ]] || die "expected 2 UEFI entries, got ${n}"
   def=$(echo "${P}/efiboot/loader/entries/"01-*.conf)
   grep -q copytoram "${def}" && die "default live is copytoram" || say "default live keeps USB (8GB Air)"
   test -L "${P}/airootfs/etc/systemd/system/multi-user.target.wants/cicada-yank-watch.service" \
@@ -61,7 +64,7 @@ echo "==> bulk_extractor procedure (USB must not keep the session)"
 CANARY_PREFIX="CICADA-CANARY"
 cat <<'PROC'
   On the Air (amnesic boot entry):
-    1. Pick "Cicada.OS live (amnesic — copy to RAM)".
+    1. Pick "Cicada.OS (copy to RAM)".
     2. CANARY="CICADA-CANARY-$(head -c 8 /dev/urandom | xxd -p)"
        echo "$CANARY" | tee /tmp/canary.txt ~/CANARY.txt
        # optional: paste it into a kitty window so it sits in RAM

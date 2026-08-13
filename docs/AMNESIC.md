@@ -28,7 +28,7 @@ Do not save to the live USB. Do not enable persistence. For files you want to ke
 
 Session data must not land on JACKSPARROW. Procedure is `tests/amnesic-verify.sh`.
 
-1. Boot **Cicada.OS live (amnesic — copy to RAM)**.
+1. Boot **Cicada.OS (copy to RAM)**.
 2. Create a canary only in RAM:
 
 ```bash
@@ -50,6 +50,7 @@ Zero hits = the overlay never wrote the canary to the USB. That is not a RAM wip
 
 ## Boot menu
 
-1. Cicada.OS live — daily-driver demo (USB stays in)
-2. Cicada.OS live **(amnesic — copy to RAM)** — Tails-shaped
-3. linux-hardened — extra
+1. **Cicada.OS** — default (USB stays in; safe on 8GB Airs)
+2. **Cicada.OS (copy to RAM)** — Tails-shaped amnesic
+
+`linux-hardened` is an installed-system boot entry after `cicada-install`, not on the live stick.

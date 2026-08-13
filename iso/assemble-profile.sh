@@ -138,7 +138,8 @@ cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/n
 # are sealed before firstboot runs (paths relative to PROFILE airootfs).
 mkdir -p "${PROFILE}/airootfs/usr/local/share/applications"
 for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desktop \
-            alacritty.desktop foot.desktop org.gnome.Nautilus.desktop; do
+            alacritty.desktop foot.desktop org.gnome.Nautilus.desktop \
+            nm-connection-editor.desktop; do
   cat > "${PROFILE}/airootfs/usr/local/share/applications/${base}" <<EOF
 [Desktop Entry]
 Hidden=true
@@ -276,6 +277,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-logs"]="0:0:755"
   ["/usr/local/bin/cicada-portal"]="0:0:755"
   ["/usr/local/bin/cicada-verify"]="0:0:755"
+  ["/usr/local/bin/cicada-wifi-diag"]="0:0:755"
   ["/usr/local/bin/cicada-status"]="0:0:755"
   ["/usr/local/bin/cicada-firstrun"]="0:0:755"
   ["/usr/local/bin/cicada-tor"]="0:0:755"
@@ -316,7 +318,7 @@ from pathlib import Path
 import sys
 root = Path(sys.argv[1])
 repls = (
-    ("Arch Linux install medium", "Cicada.OS live"),
+    ("Arch Linux install medium", "Cicada.OS"),
     ("Arch Linux", "Cicada.OS"),
 )
 count = 0
@@ -343,7 +345,7 @@ python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-extra = " init_on_alloc=1 init_on_free=1"
+extra = " init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 count = 0
 for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
     text = path.read_text()
@@ -360,54 +362,105 @@ for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() el
 print(f"==> zero-on-free cmdline on {count} UEFI entries")
 PY
 
-# Second boot entry: linux-hardened. Default entry stays `linux` so MBA Broadcom (broadcom-wl) works.
+# Live boot menu: two entries only.
+#   01 — Cicada.OS (default; stick stays mounted; MBA-safe linux + wl)
+#   02 — Cicada.OS (copy to RAM)
+# Drop Arch speech / memtest. linux-hardened stays packaged for *install*, not the live picker.
 python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
 entries = root / "efiboot/loader/entries"
-src = next(entries.glob("01-*.conf"), None) if entries.exists() else None
-if src is None:
-    print("==> no UEFI linux entry to clone for hardened kernel")
-else:
-    text = src.read_text()
-    text = text.replace("vmlinuz-linux\n", "vmlinuz-linux-hardened\n")
-    text = text.replace("initramfs-linux.img", "initramfs-linux-hardened.img")
-    text = text.replace("sort-key 01", "sort-key 03")
-    text = text.replace("Cicada.OS live", "Cicada.OS live (linux-hardened)")
-    if "lockdown=" not in text:
-        text = text.replace(
-            "archisosearchuuid=%ARCHISO_UUID%",
-            "archisosearchuuid=%ARCHISO_UUID% intel_iommu=on,igfx_off iommu.passthrough=0 ibt=on shstk=on lockdown=confidentiality",
-        )
-    dest = entries / "03-cicada-hardened.conf"
-    dest.write_text(text)
-    print(f"==> hardened boot entry {dest.name}")
+if not entries.exists():
+    print("==> no efiboot entries dir")
+    raise SystemExit(0)
 
-# Tails-shaped live: copy ISO into RAM so the stick can leave; yank still panic-reboots.
-src = next(entries.glob("01-*.conf"), None) if entries.exists() else None
-if src is not None:
-    text = src.read_text()
-    text = text.replace("sort-key 01", "sort-key 04")
-    text = text.replace("Cicada.OS live", "Cicada.OS live (amnesic — copy to RAM)")
-    if "copytoram" not in text:
-        text = text.replace(
+for pattern in (
+    "02-archiso-speech*.conf",
+    "03-archiso-memtest*.conf",
+    "*speech*.conf",
+    "*memtest*.conf",
+    "03-cicada-hardened.conf",
+    "04-cicada-amnesic.conf",
+):
+    for p in entries.glob(pattern):
+        p.unlink()
+        print(f"==> removed boot entry {p.name}")
+
+# Syslinux / GRUB often still list speech + memtest — strip those labels' menu items
+for folder in ("syslinux", "grub"):
+    base = root / folder
+    if not base.exists():
+        continue
+    for path in base.rglob("*"):
+        if not path.is_file() or path.suffix not in {".cfg", ".conf"}:
+            continue
+        text = path.read_text()
+        # Best-effort: drop speech/memtest LABEL blocks is fragile; hide via title prefix skip
+        # Releng syslinux uses INCLUDE — remove known includes if present
+        new = text
+        for line in (
+            "INCLUDE archiso_speech*.cfg",
+            "INCLUDE archiso_memtest*.cfg",
+        ):
+            pass
+        for drop in ("archiso_speech64.cfg", "archiso_speech32.cfg", "archiso_memtest.cfg", "memtest"):
+            # comment out include lines
+            lines = []
+            for ln in new.splitlines(True):
+                if drop in ln and not ln.lstrip().startswith("#"):
+                    lines.append("# cicada: " + ln)
+                else:
+                    lines.append(ln)
+            new = "".join(lines)
+        if new != text:
+            path.write_text(new)
+            print(f"==> scrubbed speech/memtest refs in {path.relative_to(root)}")
+
+src = next(entries.glob("01-*.conf"), None)
+if src is None:
+    print("==> no 01- live entry")
+else:
+    lines = src.read_text().splitlines(True)
+    for i, line in enumerate(lines):
+        if line.startswith("title"):
+            lines[i] = "title    Cicada.OS\n"
+            break
+    src.write_text("".join(lines))
+    print(f"==> default entry {src.name} → Cicada.OS")
+
+    amnesic_lines = src.read_text().splitlines(True)
+    out = []
+    for line in amnesic_lines:
+        if line.startswith("title"):
+            out.append("title    Cicada.OS (copy to RAM)\n")
+        elif line.startswith("sort-key"):
+            out.append("sort-key 02\n")
+        else:
+            out.append(line)
+    amnesic = "".join(out)
+    if "copytoram" not in amnesic:
+        amnesic = amnesic.replace(
             "archisosearchuuid=%ARCHISO_UUID%",
             "archisosearchuuid=%ARCHISO_UUID% copytoram cow_spacesize=2G",
         )
-    dest = entries / "04-cicada-amnesic.conf"
-    dest.write_text(text)
-    print(f"==> amnesic copytoram boot entry {dest.name}")
+    dest = entries / "02-cicada-ram.conf"
+    dest.write_text(amnesic)
+    print(f"==> amnesic entry {dest.name}")
 
 loader = root / "efiboot/loader/loader.conf"
 if loader.exists():
     text = loader.read_text()
-    text = text.replace("timeout 15", "timeout 8")
-    if "default 01-archiso-linux.conf" not in text:
-        # keep whatever default exists; do not point at 04- amnesic
-        pass
+    text = text.replace("timeout 15", "timeout 5")
+    text = text.replace("timeout 8", "timeout 5")
     loader.write_text(text)
-    print("==> loader timeout 8s, default stays 01-archiso-linux.conf")
+    print("==> loader timeout 5s; menu = Cicada.OS + copy-to-RAM only")
+
+# Sanity: at most two UEFI linux-ish entries + no speech/memtest/hardened
+left = sorted(p.name for p in entries.glob("*.conf"))
+print("==> UEFI entries:", ", ".join(left))
+if len(left) > 2:
+    print("==> WARNING: more than 2 UEFI entries remain:", left)
 PY
 
 chmod 755 "${PROFILE}/airootfs/usr/local/bin/"* 2>/dev/null || true

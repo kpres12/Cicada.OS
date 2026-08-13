@@ -53,7 +53,8 @@ done
 
 # Always hide the raw Arch terminals / file managers even if allowlist glitched.
 for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desktop \
-            alacritty.desktop foot.desktop org.gnome.Nautilus.desktop; do
+            alacritty.desktop foot.desktop org.gnome.Nautilus.desktop \
+            nm-connection-editor.desktop; do
   dest="${OVERRIDE}/${base}"
   if [[ ! -f "${dest}" ]] || ! grep -q 'Hidden=true' "${dest}" 2>/dev/null; then
     {

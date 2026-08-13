@@ -175,6 +175,17 @@ img, svg { max-width: 100%; display: block; }
   color: var(--muted);
   font-size: 0.9rem;
 }
+.beta-pill {
+  display: inline-block;
+  margin: 0 0 0.85rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--alert);
+  color: var(--alert);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(255, 59, 0, 0.45);
+}
 .cta-row {
   display: flex;
   flex-wrap: wrap;

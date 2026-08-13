@@ -122,11 +122,13 @@ set_gtk_key() {
 }
 
 appearance() {
-  local pick size
+  local pick size img stock
   pick="$(zenity --list --title="Appearance" \
-    --text="Theme and desktop icons. New windows pick this up immediately." \
+    --text="Theme, desktop icons, wallpaper. Changes apply to this session." \
     --column=Setting --column=Does --print-column=1 --hide-header \
-    --width=480 --height=320 \
+    --width=520 --height=400 \
+    "Wallpaper…" "Pick an image (saved under Pictures)" \
+    "Stock wallpaper" "Cicada default from /usr/share/cicada/wallpapers" \
     "Dark" "Black / amber (default)" \
     "Light" "Adwaita light" \
     "Icons small" "Desktop icons 48px" \
@@ -134,17 +136,44 @@ appearance() {
     "Icons large" "Desktop icons 72px" \
     2>/dev/null)" || return 0
   case "${pick}" in
+    "Wallpaper…")
+      mkdir -p "${HOME}/Pictures"
+      img="$(zenity --file-selection --title="Wallpaper" \
+        --filename="${HOME}/Pictures/" \
+        --file-filter="Images | *.png *.jpg *.jpeg *.webp *.PNG *.JPG *.JPEG *.WEBP" \
+        2>/dev/null)" || return 0
+      apply_wallpaper "${img}"
+      ;;
+    "Stock wallpaper")
+      stock="$(zenity --file-selection --title="Stock wallpaper" \
+        --filename="/usr/share/cicada/wallpapers/" \
+        --file-filter="Images | *.png *.jpg *.jpeg *.webp" \
+        2>/dev/null)" || return 0
+      apply_wallpaper "${stock}"
+      ;;
     Dark)
       set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-theme-name Adwaita-dark
       set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-application-prefer-dark-theme 1
       set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-theme-name Adwaita-dark
       set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme 1
+      mkdir -p "${HOME}/.config/qt6ct"
+      if [[ -f "${HOME}/.config/qt6ct/qt6ct.conf" ]]; then
+        grep -q '^color_scheme_path=' "${HOME}/.config/qt6ct/qt6ct.conf" \
+          && sed -i 's|^color_scheme_path=.*|color_scheme_path=/usr/share/cicada/qt6ct/cicada-dark.conf|' "${HOME}/.config/qt6ct/qt6ct.conf" \
+          || printf 'color_scheme_path=/usr/share/cicada/qt6ct/cicada-dark.conf\n' >> "${HOME}/.config/qt6ct/qt6ct.conf"
+      fi
       ;;
     Light)
       set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-theme-name Adwaita
       set_gtk_key "${HOME}/.config/gtk-3.0/settings.ini" gtk-application-prefer-dark-theme 0
       set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-theme-name Adwaita
       set_gtk_key "${HOME}/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme 0
+      mkdir -p "${HOME}/.config/qt6ct"
+      if [[ -f "${HOME}/.config/qt6ct/qt6ct.conf" ]]; then
+        grep -q '^color_scheme_path=' "${HOME}/.config/qt6ct/qt6ct.conf" \
+          && sed -i 's|^color_scheme_path=.*|color_scheme_path=/usr/share/cicada/qt6ct/cicada-light.conf|' "${HOME}/.config/qt6ct/qt6ct.conf" \
+          || printf 'color_scheme_path=/usr/share/cicada/qt6ct/cicada-light.conf\n' >> "${HOME}/.config/qt6ct/qt6ct.conf"
+      fi
       ;;
     "Icons small") size=48 ;;
     "Icons medium") size=56 ;;
@@ -160,6 +189,44 @@ appearance() {
     pkill -f '[p]cmanfm-qt --desktop' 2>/dev/null || true
     pcmanfm-qt --desktop >/dev/null 2>&1 &
   fi
+}
+
+apply_wallpaper() {
+  local img="$1" paper conf lock
+  [[ -f "${img}" ]] || { notify-send "Cicada" "Wallpaper file missing" 2>/dev/null || true; return 1; }
+  mkdir -p "${HOME}/Pictures" "${HOME}/.config/hypr" "$(dirname "${PCMAN_CONF}")"
+  # Keep a stable copy so sandboxed paths / USB mounts do not break the desk.
+  paper="${HOME}/Pictures/cicada-wallpaper.${img##*.}"
+  cp -f "${img}" "${paper}"
+  conf="${HOME}/.config/hypr/hyprpaper.conf"
+  cat > "${conf}" <<EOF
+preload = ${paper}
+wallpaper = ,${paper}
+EOF
+  # Desktop icons stay on a solid void layer; hyprpaper is the art plane.
+  mkdir -p "$(dirname "${PCMAN_CONF}")"
+  if [[ -f "${PCMAN_CONF}" ]]; then
+    grep -q '^WallpaperMode=' "${PCMAN_CONF}" \
+      && sed -i 's|^WallpaperMode=.*|WallpaperMode=color|' "${PCMAN_CONF}" \
+      || printf 'WallpaperMode=color\n' >> "${PCMAN_CONF}"
+    grep -q '^Wallpaper=' "${PCMAN_CONF}" \
+      && sed -i 's|^Wallpaper=.*|Wallpaper=|' "${PCMAN_CONF}" \
+      || true
+    grep -q '^BgColor=' "${PCMAN_CONF}" \
+      && sed -i 's|^BgColor=.*|BgColor=#000000|' "${PCMAN_CONF}" \
+      || printf 'BgColor=#000000\n' >> "${PCMAN_CONF}"
+  else
+    printf '[Desktop]\nWallpaper=\nWallpaperMode=color\nBgColor=#000000\n' > "${PCMAN_CONF}"
+  fi
+  lock="${HOME}/.config/hypr/hyprlock.conf"
+  if [[ -f "${lock}" ]]; then
+    sed -i "s|^[[:space:]]*path = .*|    path = ${paper}|" "${lock}" 2>/dev/null || true
+  fi
+  pkill -x hyprpaper 2>/dev/null || true
+  hyprpaper >/dev/null 2>&1 &
+  pkill -f '[p]cmanfm-qt --desktop' 2>/dev/null || true
+  pcmanfm-qt --desktop >/dev/null 2>&1 &
+  notify-send "Cicada" "Wallpaper updated" 2>/dev/null || true
 }
 
 screenshot() {
@@ -266,7 +333,7 @@ pick="$(zenity --list --title="Settings" \
   "Sound" "Volume, mute, headphones" \
   "Brightness" "Screen brightness" \
   "Displays" "How large the UI is" \
-  "Appearance" "Dark/light and desktop icon size" \
+  "Appearance" "Wallpaper, dark/light, desktop icon size" \
   "App permissions" "Scopes — network/files/camera per app" \
   "Camera & microphone" "Software kill — not a hardware switch" \
   "Profiles" "Work (UID) / Burner (folder) compartments" \

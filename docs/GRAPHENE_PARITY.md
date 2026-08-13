@@ -19,7 +19,7 @@ Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel 
 
 **Cicada:**
 - [x] `hardened_malloc` globally — GrapheneOS **tag 14** built in the ISO Docker builder (`scripts/build-hardened-malloc.sh`). Firstboot `/etc/ld.so.preload`. Opt-out: `/etc/cicada/hardened-malloc-disable`
-- [x] `linux-hardened` as extra boot entry (default `linux` for MBA `broadcom-wl`)
+- [x] `linux-hardened` packaged for **install** (boot entry after `cicada-install`; not on the live USB menu — MBA Broadcom + menu clutter)
 - [x] `lockdown=confidentiality` on the hardened entry only
 - [x] `ibt=on shstk=on` on live and installed cmdline (no-op on CPUs without CET; **not MTE**)
 - [ ] Forced module signing — **won't do without forking Arch's kernel** (violates official-repos-only for security-critical packages). Policy-OS ceiling does not include a custom signed kernel.

@@ -21,7 +21,7 @@
 
 - [x] Helium as default browser + Vanadium-like enterprise policy (`channel/helium.lock`)
 - [x] WireGuard + nftables kill switch (opt-in `cicada-vpn`; off until wg0.conf exists)
-- [x] `linux-hardened` extra boot entry (default `linux` for MBA `broadcom-wl`). `hardened_malloc` from GrapheneOS tag 14, not AUR.
+- [x] `linux-hardened` available after install (default live stays `linux` for MBA `broadcom-wl`). `hardened_malloc` from GrapheneOS tag 14, not AUR.
 - [x] USBGuard lock-screen policy (`cicada-lock`)
 - [x] Auto-reboot-when-locked timer (**30 min** default — AFU window)
 - [x] Update channel sketch (`channel/` lockfile from first ISO; blob repo later)
@@ -35,7 +35,16 @@
 - [x] Settings → App permissions + Profiles (Work UID / Burner)
 - [x] `cicada-profile`: Work / Personal / Burner (directory homes; `--encrypt` LUKS; `--user` Unix UID)
 - [x] Freeze / dispose (encrypted unmount; dispose is `cicada-auth` gated)
+- [x] Settings wallpaper picker; install-only first-run wizard (public beta path)
 - [ ] Signed `cicada-stable` pacman repo (lockfile + helium.lock today)
+
+## Phase 3b — Public beta release
+
+- [x] Site (GitHub Pages) + honest live vs install messaging
+- [x] `docs/RELEASE.md` + `scripts/prepare-release.sh`
+- [ ] First GitHub Release with ISO + sha256 (`prepare-release.sh`)
+- [ ] One successful `cicada-install` smoke on spare disk (human)
+- [ ] Hosted signed channel (blocks calling updates “done”)
 
 ## Phase 4 — Hard custom (ongoing)
 

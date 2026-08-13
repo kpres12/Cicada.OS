@@ -107,7 +107,33 @@ fi
 hdr "7. seal log"
 cicada-logs --verify >/dev/null 2>&1 && ok "seal chain intact" || no "seal chain broken or uninitialised"
 
-hdr "8. things only you can check"
+hdr "8. browser"
+# The Web icon launches /usr/local/bin/chromium, which picks the first
+# EXECUTABLE candidate. mkarchiso copies the profile airootfs with
+# --no-preserve=mode, so anything outside profiledef.sh's file_permissions
+# arrives 0644 — a browser that is fully installed and cannot be started, and
+# from a desktop click the failure is completely silent. Check the bit, not
+# just the path.
+if [[ -e /opt/helium/helium || -e /opt/helium/chrome ]]; then
+  helium_bin="$(readlink -f /opt/helium/chrome 2>/dev/null)"
+  [[ -f "${helium_bin}" ]] || helium_bin=/opt/helium/helium
+  if [[ -x "${helium_bin}" ]]; then
+    ok "Helium binary executable ($(cat /etc/cicada/helium.version 2>/dev/null || echo version-unknown))"
+  else
+    no "Helium is installed but NOT executable ($(stat -c %A "${helium_bin}" 2>/dev/null)) — the Web icon will do nothing"
+  fi
+  for extra in /opt/helium/helium-wrapper /opt/helium/helium_crashpad_handler; do
+    [[ -e "${extra}" ]] || continue
+    [[ -x "${extra}" ]] && ok "$(basename "${extra}") executable" \
+      || no "$(basename "${extra}") is not executable"
+  done
+else
+  no "no Helium at /opt/helium — install-helium.sh did not run for this build"
+fi
+[[ -x /usr/local/bin/cicada-wifi-diag ]] && ok "cicada-wifi-diag executable" \
+  || no "cicada-wifi-diag is not executable — run it with: bash /usr/local/bin/cicada-wifi-diag"
+
+hdr "9. things only you can check"
 cat <<'EOF'
     - Lock (Super+L). Type a WRONG passphrase: it must say DENIED, not freeze.
       Then unlock. Plug in a USB device AFTER unlocking; it should enumerate.

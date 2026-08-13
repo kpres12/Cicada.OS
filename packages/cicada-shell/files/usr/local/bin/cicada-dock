@@ -3,6 +3,16 @@
 set -euo pipefail
 pos=left
 f="${HOME}/.config/cicada/dock-position"
+pins="${HOME}/.config/cicada/dock-pinned"
+# Migrate from old cache path once
+if [[ ! -f "${pins}" && -f "${HOME}/.cache/nwg-dock-pinned" ]]; then
+  mkdir -p "$(dirname "${pins}")"
+  cp -a "${HOME}/.cache/nwg-dock-pinned" "${pins}"
+fi
+if [[ ! -f "${pins}" && -f /etc/skel/.config/cicada/dock-pinned ]]; then
+  mkdir -p "$(dirname "${pins}")"
+  cp -a /etc/skel/.config/cicada/dock-pinned "${pins}"
+fi
 if [[ -f "${f}" ]]; then
   pos="$(tr -d '[:space:]' < "${f}")"
 fi
@@ -22,4 +32,6 @@ command -v hyprctl >/dev/null && hyprctl keyword general:gaps_out "${gaps}" >/de
 
 pkill -x nwg-dock-hyprland 2>/dev/null || true
 sleep 0.2
-exec nwg-dock-hyprland -i 48 -ml 8 -p "${pos}" -x -c "cicada-wofi"
+dock_args=(-i 48 -ml 8 -p "${pos}" -x -c "cicada-wofi")
+[[ -f "${pins}" ]] && dock_args+=(-d "${pins}")
+exec nwg-dock-hyprland "${dock_args[@]}"

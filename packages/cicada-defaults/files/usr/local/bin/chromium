@@ -10,20 +10,58 @@ for cand in /usr/lib/libhardened_malloc.so /usr/lib/hardened_malloc/libhardened_
     break
   fi
 done
-if [[ -n "${HM}" && ! -f /etc/cicada/hardened-malloc-disable ]]; then
+# `cicada.nomalloc` is the escape hatch you can reach from the bootloader when
+# there is no writable filesystem to drop the disable file onto (cicada-firstboot
+# honours it for /etc/ld.so.preload). It has to be honoured here too: the browser
+# is the single most likely thing to be broken by an allocator regression, and an
+# escape hatch that leaves the browser preloading anyway is not an escape hatch.
+if [[ -n "${HM}" ]] \
+   && [[ ! -f /etc/cicada/hardened-malloc-disable ]] \
+   && ! grep -qw cicada.nomalloc /proc/cmdline 2>/dev/null; then
   export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
 fi
 
+# Launched from a desktop icon, stderr goes nowhere. A browser that exits 1 with
+# a message no one can see is indistinguishable from a click that did nothing —
+# which is exactly how a 0644 Helium binary went unnoticed for a whole build.
+# Every exit path from here on has to be visible on screen.
+die() {
+  echo "cicada: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+    if command -v zenity >/dev/null 2>&1; then
+      zenity --error --title="Cicada — browser" --width=460 --text="$1" 2>/dev/null || true
+    elif command -v notify-send >/dev/null 2>&1; then
+      notify-send "Cicada — browser" "$1" 2>/dev/null || true
+    fi
+  fi
+  exit 1
+}
+
 BIN=""
+found_unusable=""
 for cand in /opt/helium/chrome /opt/helium/helium /usr/bin/helium /usr/bin/helium-browser /usr/bin/chromium; do
   if [[ -x "${cand}" ]]; then
     BIN="${cand}"
     break
   fi
+  # Present but not executable is a build defect, not a missing browser. Say so:
+  # the two have completely different fixes and identical symptoms.
+  # Written as an `if`, not `[[ ... ]] && x=y`: under `set -e` a false test as
+  # the last command in the loop body would exit the script — silently, which
+  # is the exact failure mode this block exists to eliminate.
+  if [[ -e "${cand}" && -z "${found_unusable}" ]]; then
+    found_unusable="${cand}"
+  fi
 done
 if [[ -z "${BIN}" ]]; then
-  echo "cicada: no browser found (Helium / Chromium)" >&2
-  exit 1
+  if [[ -n "${found_unusable}" ]]; then
+    die "Helium is installed at ${found_unusable} but is not executable.
+
+This is a build defect (the exec bit was lost). Fix it on this machine with:
+  sudo chmod 755 /opt/helium/helium /opt/helium/helium-wrapper \\
+                 /opt/helium/helium_crashpad_handler"
+  fi
+  die "No browser found (Helium / Chromium)."
 fi
 
 if command -v cicada-run >/dev/null 2>&1; then

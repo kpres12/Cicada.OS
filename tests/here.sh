@@ -54,6 +54,16 @@ if [[ -f "${ROOT}/iso/overlay/airootfs/home/cicada/.bash_profile" ]]; then
   grep -q 'WLR_NO_HARDWARE_CURSORS' "${ROOT}/iso/overlay/airootfs/home/cicada/.bash_profile" && die "overlay bash_profile still forces software cursors" || true
 fi
 grep -q 'lock_cmd = pidof hyprlock || cicada-lock' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hypridle.conf" || die "hypridle must lock via cicada-lock"
+grep -q 'live-nopasswd' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hypridle.conf" || die "hypridle must skip lock spam on live"
+grep -q 'swappy' "${hypr}" || die "screenshot path should use swappy annotate"
+grep -q 'XF86AudioPlay' "${hypr}" || die "media keys must be bound (playerctl shipped)"
+grep -q 'XCURSOR_THEME' "${hypr}" || die "cursor theme must be set"
+grep -q 'WallpaperMode=color' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" || die "pcmanfm must not fight hyprpaper (use color desk)"
+grep -q 'dock-pinned' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-dock" || die "dock pins must live under ~/.config/cicada"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/.config/cicada/dock-pinned" || die "skel dock-pinned missing"
+grep -qx 'foot' "${ROOT}/packages/cicada-install/files/etc/cicada/install-packages.txt" && die "install must not ship foot (Kitty monopoly)" || true
+grep -qx 'iwd' "${ROOT}/packages/cicada-install/files/etc/cicada/install-packages.txt" && die "install must not ship iwd (NM+wpa for Broadcom)" || true
+grep -qx 'chromium' "${ROOT}/iso/packages.optional.x86_64" && die "optional ISO must not pull Arch chromium" || true
 grep -q 'nofocus on' "${hypr}" && die "pcmanfm nofocus makes desktop icons unclickable" || true
 grep -q 'bind = $mainMod, T, exec, cicada-run org.cicada.kitty' "${hypr}" || die "Super+T must open terminal via cicada-run"
 grep -q 'hyprctl keyword general:gaps_out' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-dock" || die "dock move must update Hyprland gaps"
@@ -76,8 +86,14 @@ grep -q 'create-locked work' "${ROOT}/packages/cicada-defaults/files/usr/local/b
 grep -q 'hide-arch-desktops' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" || die "firstboot must hide Arch desktops"
 grep -q 'Set Work password' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Set Work password"
 grep -q 'host/adb' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-scopes" || die "scopes must label Kitty as host/adb"
-grep -q 'App permissions' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing App permissions"
-grep -q 'Create Work (UID)' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Work UID profiles"
+grep -q 'Wallpaper' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing wallpaper picker"
+grep -q 'apply_wallpaper\|Pictures/cicada-wallpaper' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "wallpaper apply helper missing"
+grep -q 'run/archiso' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" || die "firstrun must skip live USB"
+grep -q 'public beta\|Public beta\|installed (public beta)' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" || die "firstrun missing public-beta welcome"
+test -f "${ROOT}/docs/RELEASE.md" || die "docs/RELEASE.md missing"
+test -f "${ROOT}/scripts/prepare-release.sh" || die "prepare-release.sh missing"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Pictures/.keep" || die "skel Pictures missing"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Downloads/.keep" || die "skel Downloads missing"
 grep -q 'custom/rf' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" && die "dead waybar custom/rf still defined" || true
 grep -q '%H:%M}Z' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" && die "waybar clock still appends Z to local time" || true
 grep -q 'cicada-settings brightness' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" || die "BRI click must open brightness, not full settings"
@@ -109,6 +125,9 @@ grep -qx 'thunar' "${pkgs}" && die "Thunar still in ISO extras (pcmanfm-qt is Fi
 grep -qx 'pavucontrol' "${pkgs}" && die "pavucontrol still in ISO extras" || true
 grep -qx 'nwg-look' "${pkgs}" && die "nwg-look still in ISO extras" || true
 grep -qx 'wdisplays' "${pkgs}" && die "wdisplays still in ISO extras" || true
+grep -qx 'lxqt-qtplugin' "${pkgs}" || die "lxqt-qtplugin required for qt6ct + pcmanfm-qt"
+grep -qx 'qt6-svg' "${pkgs}" || die "qt6-svg required for Papirus/Qt icons"
+grep -qx 'adwaita-cursors' "${pkgs}" || die "adwaita-cursors required"
 grep -qx 'cloud-init' "${ROOT}/iso/packages.exclude" || die "cloud-init not excluded"
 say "official repos / excludes"
 
@@ -703,7 +722,11 @@ grep -q 'cicada-firstboot' "${P}/airootfs/home/cicada/.config/hypr/hyprland.conf
 def=$(echo "${P}/efiboot/loader/entries/"01-*.conf)
 grep -q intel_iommu "${def}" && die "default live entry has intel_iommu (breaks Apple iGPU)" || true
 test ! -f "${P}/efiboot/loader/entries/00-cicada-amnesic.conf" || die "amnesic must not be 00- (sorts first)"
-test -f "${P}/efiboot/loader/entries/04-cicada-amnesic.conf" || die "amnesic entry 04 missing"
+test -f "${P}/efiboot/loader/entries/02-cicada-ram.conf" || die "copy-to-RAM entry 02 missing"
+test ! -f "${P}/efiboot/loader/entries/03-cicada-hardened.conf" || die "hardened must not clutter live boot menu"
+test ! -f "${P}/efiboot/loader/entries/04-cicada-amnesic.conf" || die "old 04-amnesic entry must be gone"
+n_entries=$(find "${P}/efiboot/loader/entries" -name '*.conf' | wc -l | tr -d ' ')
+[[ "${n_entries}" -eq 2 ]] || die "live UEFI menu must be exactly 2 entries (got ${n_entries})"
 test -x "${P}/airootfs/usr/local/bin/chromium" || die "chromium wrapper not 755"
 if [[ -e "${P}/airootfs/usr/local/bin/cicada-crypt" ]]; then
   die "cicada-crypt should be a hook not /usr/local/bin"
@@ -712,10 +735,11 @@ test -f "${P}/airootfs/usr/lib/initcpio/hooks/cicada-crypt" || die "crypt hook n
 test ! -e "${P}/airootfs/etc/ld.so.preload" || die "assembled live ships ld.so.preload"
 test -f "${P}/airootfs/home/cicada/Desktop/start-here.desktop" || die "start-here not in live home"
 grep -Rql copytoram "${P}/efiboot" || die "copytoram missing from UEFI entries"
-grep -Rql 'lockdown=confidentiality' "${P}/efiboot" || die "hardened lockdown missing"
-grep -Rql 'ibt=on' "${P}/efiboot" || die "CET cmdline missing"
+# lockdown stays on *installed* hardened entry (install-chroot), not the live picker
+grep -Rql 'lockdown=confidentiality' "${P}/efiboot" && die "live menu must not ship hardened lockdown entry" || true
+grep -Rql 'ibt=on' "${P}/efiboot" || die "CET cmdline missing on live"
 amnesic=$(grep -l copytoram "${P}/efiboot/loader/entries/"*.conf 2>/dev/null | wc -l | tr -d ' ')
-[[ "${amnesic}" -ge 1 ]] || die "no amnesic entry"
+[[ "${amnesic}" -eq 1 ]] || die "expected exactly one copytoram entry"
 if grep -L copytoram "${P}/efiboot/loader/entries/"*.conf 2>/dev/null | grep -q .; then
   say "low-RAM live entry exists (no copytoram)"
 else
