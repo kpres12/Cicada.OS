@@ -1,0 +1,14 @@
+# Maintainer: Cicada.OS
+pkgname=cicada-run
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cicada app launcher — enforces MAGI-02 scopes via bubblewrap"
+arch=('any')
+license=('GPL-3.0-or-later')
+depends=('bubblewrap' 'libcap')
+source=()
+sha256sums=()
+
+package() {
+  cp -a "${startdir}/files/." "${pkgdir}/"
+}

@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# Install Cicada onto a REMOVABLE disk only (external SSD). Never the internal Apple drive.
+# v0: partition + LUKS2 + btrfs, then pacstrap. Requires network on the live ISO.
+set -euo pipefail
+
+MIN_GIB=16
+HOSTNAME_DEFAULT=cicada
+
+die() { echo "cicada-install: $*" >&2; exit 1; }
+need_root() { [[ ${EUID} -eq 0 ]] || die "run as root"; }
+
+is_removable() {
+  local name="$1"
+  local rem="/sys/block/${name}/removable"
+  [[ -f "${rem}" ]] && [[ "$(cat "${rem}")" == "1" ]]
+}
+
+is_usb() {
+  local name="$1"
+  readlink -f "/sys/block/${name}" 2>/dev/null | grep -q '/usb'
+}
+
+is_apple_internal() {
+  local dev="$1"
+  # 2015–2017 MBA internal is NVMe or Apple AHCI, never removable USB.
+  [[ "${dev}" == /dev/nvme* ]] && return 0
+  lsblk -ndo MODEL "${dev}" 2>/dev/null | grep -qi 'APPLE SSD' && return 0
+  return 1
+}
+
+live_src() {
+  findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null || true
+}
+
+list_candidates() {
+  local d name
+  echo "CANDIDATES (removable / USB only):"
+  echo
+  lsblk -dnp -o NAME,SIZE,MODEL,TRAN,RM | while read -r line; do
+    echo "  ${line}"
+  done
+  echo
+}
+
+confirm_target() {
+  local dev="$1"
+  local name
+  name="$(basename "${dev}")"
+  [[ -b "${dev}" ]] || die "not a block device: ${dev}"
+  is_apple_internal "${dev}" && die "refusing Apple internal disk ${dev}"
+  if ! is_removable "${name}" && ! is_usb "${name}"; then
+    die "refusing ${dev} (not removable USB). Cicada v0 installs to an external SSD only."
+  fi
+  local live
+  live="$(live_src)"
+  if [[ -n "${live}" ]]; then
+    local live_base
+    live_base="$(lsblk -no PKNAME "${live}" 2>/dev/null || true)"
+    [[ "${live_base}" == "${name}" ]] && die "refusing live USB ${dev}"
+  fi
+  local bytes gib
+  bytes="$(lsblk -nbdo SIZE "${dev}")"
+  gib=$((bytes / 1024 / 1024 / 1024))
+  (( gib >= MIN_GIB )) || die "${dev} is ${gib}G; need >= ${MIN_GIB}G"
+}
+
+usage() {
+  cat <<'EOF'
+cicada-install — LUKS2 Cicada onto an external SSD
+
+  cicada-install --list
+  cicada-install --target /dev/sdX --hostname cicada
+
+Will DESTROY the target. Internal Apple disks are refused.
+Needs network (pacstrap). Connect Wi-Fi first (dock icon / Super+N).
+
+Duress keyslot is not enrolled here (timing-safe hook is not done).
+EOF
+}
+
+TARGET=""
+HOST="${HOSTNAME_DEFAULT}"
+DRY=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --list) list_candidates; exit 0 ;;
+    --target) TARGET="${2:?}"; shift 2 ;;
+    --hostname) HOST="${2:?}"; shift 2 ;;
+    --dry-run) DRY=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown arg: $1" ;;
+  esac
+done
+
+need_root
+[[ -n "${TARGET}" ]] || { usage; list_candidates; die "pass --target /dev/sdX"; }
+confirm_target "${TARGET}"
+
+echo
+echo "THIS WILL WIPE ${TARGET}"
+lsblk "${TARGET}"
+echo
+read -r -p "Type the device path to continue: " typed
+[[ "${typed}" == "${TARGET}" ]] || die "aborted"
+
+read -r -s -p "LUKS passphrase: " p1; echo
+read -r -s -p "Again: " p2; echo
+[[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
+[[ ${#p1} -ge 8 ]] || die "passphrase too short"
+
+if [[ "${DRY}" == 1 ]]; then
+  echo "dry-run: would LUKS+btrfs+pacstrap ${TARGET} hostname=${HOST}"
+  exit 0
+fi
+
+command -v sgdisk >/dev/null || die "sgdisk missing (gptfdisk)"
+command -v cryptsetup >/dev/null || die "cryptsetup missing"
+command -v pacstrap >/dev/null || die "pacstrap missing (arch-install-scripts)"
+
+sgdisk --zap-all "${TARGET}"
+sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "${TARGET}"
+sgdisk -n 2:0:0 -t 2:8309 -c 2:CICADA "${TARGET}"
+sleep 1
+if [[ "${TARGET}" == /dev/nvme* ]]; then
+  ESP="${TARGET}p1"
+  ROOTP="${TARGET}p2"
+else
+  ESP="${TARGET}1"
+  ROOTP="${TARGET}2"
+fi
+[[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
+
+mkfs.fat -F32 -n CICADAESP "${ESP}"
+printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 --batch-mode "${ROOTP}" -
+printf '%s' "${p1}" | cryptsetup open "${ROOTP}" cicada -
+mkfs.btrfs -L CICADA /dev/mapper/cicada
+mount /dev/mapper/cicada /mnt
+mkdir -p /mnt/boot
+mount "${ESP}" /mnt/boot
+
+echo "==> pacstrap (this needs network and takes a while)"
+pacstrap -K /mnt base linux linux-firmware btrfs-progs cryptsetup sudo networkmanager iwd intel-ucode
+genfstab -U /mnt >> /mnt/etc/fstab
+
+cat > /mnt/etc/hostname <<EOF
+${HOST}
+EOF
+
+mkdir -p /mnt/etc/cicada
+cat > /mnt/etc/cicada/install-stamp <<EOF
+installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+target=${TARGET}
+note=v0 pacstrap; copy cicada-shell from live with rsync next
+EOF
+
+# Carry the live product layer into the install
+if [[ -d /etc/skel ]]; then
+  rsync -a /etc/skel/ /mnt/etc/skel/
+fi
+if [[ -d /usr/share/cicada ]]; then
+  mkdir -p /mnt/usr/share/cicada
+  rsync -a /usr/share/cicada/ /mnt/usr/share/cicada/
+fi
+if [[ -d /usr/local/bin ]]; then
+  rsync -a /usr/local/bin/cicada-* /mnt/usr/local/bin/ 2>/dev/null || true
+fi
+
+echo
+echo "Base is on ${TARGET}. Next inside arch-chroot /mnt:"
+echo "  ln -sf /usr/share/zoneinfo/UTC /etc/localtime"
+echo "  hwclock --systohc"
+echo "  passwd"
+echo "  bootctl install   # or grub-install"
+echo "  echo 'cicada UUID=<luks-uuid> none luks' >> /etc/crypttab"
+echo
+echo "cicada-install v0 stops before bootloader on purpose — confirm disk/UUID by hand once."
+echo "Unmount: umount -R /mnt && cryptsetup close cicada"
+unset p1 p2

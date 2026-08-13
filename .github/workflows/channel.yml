@@ -1,0 +1,20 @@
+name: cicada-stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: lockfile stem (cicada-stable-YYYY.MM.DD)
+        required: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check lockfile exists
+        run: test -f "channel/${{ github.event.inputs.snapshot }}.pkglist.txt"
+      - name: Promote CURRENT
+        run: ./scripts/channel-promote.sh "${{ github.event.inputs.snapshot }}"
+      - name: Note
+        run: echo "Blob repo (repo-add) is not wired. This only moves the pin pointer."

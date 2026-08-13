@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Install Cicada
+Exec=kitty --title CICADA-INSTALL -e sudo cicada-install --list
+Icon=drive-harddisk
+Terminal=false

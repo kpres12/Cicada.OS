@@ -1,0 +1,14 @@
+# Maintainer: Cicada.OS
+pkgname=cicada-install
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cicada installer — LUKS2 onto removable disks only"
+arch=('any')
+license=('GPL-3.0-or-later')
+depends=('arch-install-scripts' 'cryptsetup' 'gptfdisk' 'btrfs-progs' 'dosfstools' 'rsync')
+source=()
+sha256sums=()
+
+package() {
+  cp -a "${startdir}/files/." "${pkgdir}/"
+}

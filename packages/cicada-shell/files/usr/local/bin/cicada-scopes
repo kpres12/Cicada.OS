@@ -83,7 +83,7 @@ HDR
 
   [1] HELIUM   [2] KEEPASSXC   [3] KITTY
   toggle:  n net   f files   c camera   m mic   u usb   s sensors
-  q quit   (store only — cicada-run will enforce)
+  q quit   (enforced by cicada-run on launch)
 
 FTR
 }

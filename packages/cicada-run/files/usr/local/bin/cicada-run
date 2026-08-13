@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# cicada-run — the only launcher. Reads MAGI-02 scopes and applies bwrap.
+# Weaker than Android UIDs: escape from bwrap is still this user.
+set -euo pipefail
+
+usage() {
+  echo "usage: cicada-run <app-id> -- <command> [args...]" >&2
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+APP_ID="$1"
+shift
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+[[ $# -ge 1 ]] || usage
+
+STORE="${CICADA_SCOPES_ROOT:-${HOME}/.local/share/cicada/scopes}"
+ENVF="${STORE}/${APP_ID}.env"
+NETWORK=allow
+FILES=portal
+CAMERA=deny
+MIC=deny
+USB=deny
+SENSORS=deny
+if [[ -f "${ENVF}" ]]; then
+  # shellcheck disable=SC1090
+  source "${ENVF}"
+fi
+
+if ! command -v bwrap >/dev/null 2>&1; then
+  echo "cicada-run: bubblewrap missing; running unsandboxed (fail open is forbidden — abort)." >&2
+  exit 78
+fi
+
+# Identity for portals / future cgroup policy
+export CICADA_APP_ID="${APP_ID}"
+
+args=(
+  bwrap
+  --die-with-parent
+  --unshare-pid
+  --bind / /
+  --proc /proc
+)
+
+if [[ "${CAMERA}" == "allow" ]]; then
+  args+=(--dev-bind /dev /dev)
+else
+  args+=(--dev /dev)
+fi
+
+case "${NETWORK}" in
+  deny)
+    args+=(--unshare-net)
+    ;;
+  vpn-only)
+    if ! ip link show wg0 >/dev/null 2>&1; then
+      args+=(--unshare-net)
+    fi
+    ;;
+esac
+
+if [[ "${FILES}" == "deny" ]]; then
+  args+=(--tmpfs "${HOME}")
+  if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
+    args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
+  fi
+fi
+
+exec "${args[@]}" "$@"

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Refuse to enroll until the unlock path is timing-safe. Fail closed.
+set -euo pipefail
+echo "cicada-duress-enroll: not implemented." >&2
+echo "A duress slot that *looks* different from a wrong password is worse than none." >&2
+exit 1

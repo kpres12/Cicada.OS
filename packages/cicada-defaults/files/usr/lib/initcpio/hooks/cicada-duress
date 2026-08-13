@@ -1,0 +1,8 @@
+#!/usr/bin/ash
+# mkinitcpio hook: duress LUKS slot.
+# NOT enrolled in v0. Must not change unlock timing or error text vs a wrong passphrase.
+# When implemented: second keyslot whose keyfile is derived the same way as a miss;
+# success path for duress is cryptsetup luksErase AFTER an indistinguishable delay.
+run_hook() {
+  return 0
+}

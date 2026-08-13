@@ -12,4 +12,7 @@ done
 if [[ -n "${HM}" ]]; then
   export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
 fi
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.cicada.helium -- /usr/bin/chromium "$@"
+fi
 exec /usr/bin/chromium "$@"
