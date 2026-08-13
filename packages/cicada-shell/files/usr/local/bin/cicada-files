@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Files through cicada-run. Network deny; home visible (this is the file manager).
+# Files — real folder tree via pcmanfm-qt (host launch: USB, trash, gvfs).
 set -euo pipefail
 if command -v cicada-run >/dev/null 2>&1; then
   exec cicada-run org.cicada.files -- pcmanfm-qt "$@"

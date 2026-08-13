@@ -10,10 +10,13 @@ build() {
   add_binary mount
   add_binary umount
   add_binary poweroff
+  add_binary mkdir
+  add_binary rm
+  add_binary cat
   # Locating a USB key token by filesystem label when udev has not populated
-  # /dev/disk/by-label yet.
+  # /dev/disk/by-label yet. Also used to find the ESP for the fail counter.
   add_binary blkid
-  # Filesystems a key token might be formatted with.
+  # Filesystems a key token / ESP might use.
   add_module 'ext4'
   add_module 'vfat'
 
@@ -23,6 +26,19 @@ build() {
   if [[ -f /etc/cicada/keyfile.env ]]; then
     add_file /etc/cicada/keyfile.env /cicada-keyfile.env 600
   fi
+
+  # Attempt cap (wrong LUKS guesses → wipe). Default 20. 0 = unlimited.
+  local max=20
+  if [[ -f /etc/cicada/defaults.env ]]; then
+    # shellcheck disable=SC1091
+    max="$(set +e; set -a; . /etc/cicada/defaults.env; set +a; echo "${CICADA_LUKS_MAX_FAIL:-20}")"
+  fi
+  case "${max}" in
+    ''|*[!0-9]*) max=20 ;;
+  esac
+  printf '%s\n' "${max}" > /tmp/cicada-luks-max-fail.$$
+  add_file /tmp/cicada-luks-max-fail.$$ /cicada-luks-max-fail 644
+  rm -f /tmp/cicada-luks-max-fail.$$
 
   add_runscript
 }
@@ -34,11 +50,13 @@ Cicada LUKS unlock.
 Real passphrase boots. Duress passphrase erases all keyslots, pads to the same
 delay as a wrong passphrase, then powers off.
 
+After CICADA_LUKS_MAX_FAIL wrong guesses (default 20; 0 = off), the same wipe
+runs. The fail count is stored on the ESP when a vfat EFI partition is found.
+
 If a USB key token has been enrolled (cicada-keyfile-enroll):
   or  mode - the token alone unlocks; passphrase remains a fallback.
   and mode - the secret is passphrase||keyfile, so both are required.
 
-Re-run mkinitcpio -P after enrolling or revoking a token: the mode is baked
-into the initramfs because the encrypted root cannot be read before unlock.
+Re-run mkinitcpio -P after enrolling a token or changing CICADA_LUKS_MAX_FAIL.
 EOF
 }

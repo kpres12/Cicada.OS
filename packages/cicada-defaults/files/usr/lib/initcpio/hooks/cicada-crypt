@@ -3,8 +3,13 @@
 # Wrong passphrase and duress both wait CICADA_DURESS_BUDGET seconds, then
 # print the same line. Real unlock returns immediately (daily driver).
 # Duress: luksErase + header smash + poweroff (keys gone).
+# After CICADA_LUKS_MAX_FAIL wrong guesses (default 20), same wipe — Graphene-
+# shaped attempt cap. Counter persists on the ESP across reboots when possible.
+# Session lock (hyprlock) does NOT wipe — typos while logged in stay recoverable.
 
 CICADA_DURESS_BUDGET=12
+# Overridden by /cicada-luks-max-fail baked into the initramfs (see install hook).
+CICADA_LUKS_MAX_FAIL=20
 
 _pad() {
   local start="$1"
@@ -29,6 +34,80 @@ _parse_cryptdevice() {
   done
 }
 
+ESPMNT=/cicada-esp
+_mount_esp() {
+  local cand
+  mkdir -p "${ESPMNT}"
+  # Already mounted from a previous try in this boot?
+  if grep -q " ${ESPMNT} " /proc/mounts 2>/dev/null; then
+    return 0
+  fi
+  if command -v blkid >/dev/null 2>&1; then
+    for cand in $(blkid -t TYPE=vfat -o device 2>/dev/null); do
+      if mount -t vfat -o rw "${cand}" "${ESPMNT}" 2>/dev/null; then
+        if [ -d "${ESPMNT}/EFI" ] || [ -d "${ESPMNT}/loader" ] || [ -d "${ESPMNT}/cicada" ]; then
+          mkdir -p "${ESPMNT}/cicada"
+          return 0
+        fi
+        umount "${ESPMNT}" 2>/dev/null
+      fi
+    done
+  fi
+  return 1
+}
+
+_fail_path() {
+  echo "${ESPMNT}/cicada/luks-fail.count"
+}
+
+_read_fails() {
+  local f n=0
+  if _mount_esp; then
+    f="$(_fail_path)"
+    if [ -f "${f}" ]; then
+      n="$(cat "${f}" 2>/dev/null)"
+    fi
+  fi
+  # Also track in-memory for this boot if ESP is missing.
+  [ -n "${CICADA_FAILS_MEM:-}" ] && n="${CICADA_FAILS_MEM}"
+  case "${n}" in
+    ''|*[!0-9]*) n=0 ;;
+  esac
+  echo "${n}"
+}
+
+_write_fails() {
+  local n="$1" f
+  CICADA_FAILS_MEM="${n}"
+  if _mount_esp; then
+    f="$(_fail_path)"
+    mkdir -p "${ESPMNT}/cicada"
+    echo "${n}" > "${f}" 2>/dev/null || true
+  fi
+}
+
+_reset_fails() {
+  CICADA_FAILS_MEM=0
+  if _mount_esp; then
+    rm -f "$(_fail_path)" 2>/dev/null || true
+    # leave max-fail override alone
+  fi
+}
+
+_wipe_disk() {
+  local start="$1"
+  cryptsetup close "${CRYPTNAME}" 2>/dev/null
+  cryptsetup luksErase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 \
+    || cryptsetup erase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 || true
+  dd if=/dev/zero of="${CRYPTDEV}" bs=1M count=4 conv=notrunc >/dev/null 2>&1 || true
+  _reset_fails
+  umount "${KEYMNT}" 2>/dev/null
+  umount "${ESPMNT}" 2>/dev/null
+  _pad "${start}"
+  echo "Invalid passphrase"
+  poweroff -f
+}
+
 # A USB key token, if one was enrolled. Mounted read-only, unmounted before we
 # do anything else, and never copied anywhere.
 KEYMNT=/cicada-token
@@ -49,8 +128,24 @@ run_hook() {
   [ -n "${CRYPTDEV}" ] && [ -n "${CRYPTNAME}" ] || return 0
   [ "${CRYPTDEV#UUID=}" != "${CRYPTDEV}" ] && CRYPTDEV="/dev/disk/by-uuid/${CRYPTDEV#UUID=}"
 
-  local pass rc start got want
+  local pass rc start got want fails max
   local kf_mode="" kf_label="CICADA-KEY" kf_name="cicada.key" kf=""
+
+  if [ -f /cicada-luks-max-fail ]; then
+    max="$(cat /cicada-luks-max-fail 2>/dev/null)"
+    case "${max}" in
+      ''|*[!0-9]*) ;;
+      *) CICADA_LUKS_MAX_FAIL="${max}" ;;
+    esac
+  fi
+  # ESP override (no mkinitcpio rebuild): /EFI…/cicada/max-fail
+  if _mount_esp && [ -f "${ESPMNT}/cicada/max-fail" ]; then
+    max="$(cat "${ESPMNT}/cicada/max-fail" 2>/dev/null)"
+    case "${max}" in
+      ''|*[!0-9]*) ;;
+      *) CICADA_LUKS_MAX_FAIL="${max}" ;;
+    esac
+  fi
 
   # /etc/cicada/keyfile.env lives on the encrypted root, so it cannot be read
   # before unlock. cicada-keyfile-enroll therefore also stamps the mode into the
@@ -72,6 +167,7 @@ run_hook() {
     # Token alone is a full factor in --or mode: no prompt at all.
     if cryptsetup open --type luks --key-file "${kf}" "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1; then
       umount "${KEYMNT}" 2>/dev/null
+      _reset_fails
       echo "Unlocked with Cicada key token."
       return 0
     fi
@@ -107,24 +203,29 @@ run_hook() {
           want="$(cat /cicada-check/etc/cicada/duress.sha256)"
           if [ "${got}" = "${want}" ]; then
             umount /cicada-check 2>/dev/null
-            cryptsetup close "${CRYPTNAME}" 2>/dev/null
-            cryptsetup luksErase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 \
-              || cryptsetup erase --batch-mode "${CRYPTDEV}" >/dev/null 2>&1 || true
-            dd if=/dev/zero of="${CRYPTDEV}" bs=1M count=4 conv=notrunc >/dev/null 2>&1 || true
-            pass=""
-            _pad "${start}"
-            echo "Invalid passphrase"
-            poweroff -f
+            _wipe_disk "${start}"
           fi
         fi
         umount /cicada-check 2>/dev/null
       fi
       pass=""
       umount "${KEYMNT}" 2>/dev/null
+      _reset_fails
       return 0
     fi
 
     pass=""
+    fails="$(_read_fails)"
+    fails=$((fails + 1))
+    _write_fails "${fails}"
+
+    # 0 = unlimited. Otherwise wipe at the threshold (same look as a wrong guess).
+    if [ "${CICADA_LUKS_MAX_FAIL}" -gt 0 ] 2>/dev/null; then
+      if [ "${fails}" -ge "${CICADA_LUKS_MAX_FAIL}" ]; then
+        _wipe_disk "${start}"
+      fi
+    fi
+
     _pad "${start}"
     echo "Invalid passphrase"
   done

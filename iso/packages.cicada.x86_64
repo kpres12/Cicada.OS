@@ -68,6 +68,10 @@ nwg-dock-hyprland
 zenity
 networkmanager
 nm-connection-editor
+# Doom runtime (engine built by scripts/install-doom.sh; not AUR)
+sdl2
+sdl2_mixer
+sdl2_net
 
 # --- privacy / security baseline ---
 python

@@ -23,6 +23,12 @@ RUN sed -i \
       git \
       gcc \
       make \
+      cmake \
+      pkgconf \
+      unzip \
+      sdl2 \
+      sdl2_mixer \
+      sdl2_net \
       reflector \
  && reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist \
  && pacman -Sy --noconfirm \

@@ -685,14 +685,27 @@ hook="${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt
 grep -q 'Invalid passphrase' "${hook}" || die "hook missing same error text"
 grep -q 'luksErase' "${hook}" || die "hook missing luksErase"
 grep -q 'CICADA_DURESS_BUDGET' "${hook}" || die "hook missing pad budget"
-say "duress hook has pad + same error + erase"
+grep -q 'CICADA_LUKS_MAX_FAIL' "${hook}" || die "hook missing attempt-cap wipe"
+grep -q 'luks-fail.count' "${hook}" || die "hook must persist fail count on ESP"
+grep -q 'CICADA_LUKS_MAX_FAIL=20' "${ROOT}/packages/cicada-defaults/files/etc/cicada/defaults.env" || die "defaults missing LUKS max fail=20"
+grep -q 'cicada-luks-max-fail' "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/install/cicada-crypt" || die "initramfs must bake max-fail"
+say "duress hook has pad + same error + erase + 20-fail wipe"
+
+echo "==> LUKS max-fail behavioral + product spine"
+bash "${ROOT}/tests/luks-max-fail.sh" || die "luks-max-fail (run tests/luks-max-fail.sh for detail)"
+say "attempt-cap wired: install→hook→ESP; session typos safe; daily-driver intact"
+
+echo "==> Tirimid OS checklist (Wi-Fi + Helium wiring)"
+bash "${ROOT}/tests/tirimid.sh" || die "tirimid (run tests/tirimid.sh for detail)"
+say "Tirimid items 2+7 wired in tree"
 
 echo "==> desktop launchers"
-for f in web.desktop wifi.desktop files.desktop start-here.desktop term.desktop settings.desktop; do
+for f in web.desktop wifi.desktop files.desktop start-here.desktop term.desktop settings.desktop doom.desktop; do
   test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/${f}" || die "missing ${f}"
 done
 grep -q '/usr/local/bin/chromium' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/web.desktop" || die "web.desktop not wrapped"
 grep -q 'cicada-files' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/files.desktop" || die "Files must go through cicada-files"
+grep -q 'cicada-doom' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/doom.desktop" || die "doom.desktop must launch cicada-doom"
 grep -q 'inode/directory=cicada-files.desktop' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/mimeapps.list" || die "directories must open via cicada-files.desktop"
 grep -q 'Hidden=true' "${ROOT}/packages/cicada-shell/files/usr/local/share/applications/kitty.desktop" || die "Arch kitty.desktop must be hidden"
 grep -q 'Hidden=true' "${ROOT}/packages/cicada-shell/files/usr/local/share/applications/pcmanfm-qt.desktop" || die "Arch pcmanfm desktop must be hidden"

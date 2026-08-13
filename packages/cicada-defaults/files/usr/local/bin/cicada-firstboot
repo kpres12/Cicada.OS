@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # Root systemd unit only. Do not run from Hyprland exec-once (polkit loop on live).
 set -euo pipefail
+
+# Always (before the firstboot marker): repair Helium modes lost to mkarchiso
+# --no-preserve=mode. A 0644 /opt/helium/helium makes every Web click a no-op.
+# Must run on live AND installed, every boot, or a bad stick stays broken after
+# the one-shot marker is written.
+if [[ ${EUID} -eq 0 && -x /usr/local/lib/cicada/heal-helium.sh ]]; then
+  /usr/local/lib/cicada/heal-helium.sh || true
+fi
+
 MARKER=/var/lib/cicada/firstboot-done
 mkdir -p /var/lib/cicada
 if [[ -f "${MARKER}" ]]; then

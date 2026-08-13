@@ -62,6 +62,7 @@ Graphene: auto-reboot after lock (10m–72h, default 18h); memory zeroed on free
 - [x] systemd timer: reboot after N seconds locked (default **30 min** — AFU window; `CICADA_LOCK_REBOOT_SEC`)
 - [x] `init_on_free=1 init_on_alloc=1` on live **and** installed cmdline
 - [x] LUKS duress keyslot + `cicada-crypt` initramfs hook: duress and wrong PIN both wait ~12s then print `Invalid passphrase`; duress then `luksErase` + poweroff. Real unlock is not padded. `cicada-duress-enroll` on the installed volume.
+- [x] Attempt cap: after `CICADA_LUKS_MAX_FAIL` (default **20**) wrong boot unlocks → same wipe. Counter on ESP. Session lock does not wipe.
 
 ## 5. Fingerprint / PIN hardening
 
@@ -69,8 +70,8 @@ Graphene: PIN scramble, fingerprint+PIN 2FA, 5 fingerprint attempts, 128-char pa
 
 **Cicada:**
 - [ ] PAM: fingerprint as second factor (`fprintd`)
-- [ ] Tight attempt caps
-- [ ] LUKS passphrases already unbounded (no 16-char ceiling)
+- [x] Tight attempt caps at **LUKS boot** (default 20 → wipe)
+- [x] LUKS passphrases already unbounded (no 16-char ceiling)
 
 ## 6. Sandboxing / permissions — largest engineering piece
 

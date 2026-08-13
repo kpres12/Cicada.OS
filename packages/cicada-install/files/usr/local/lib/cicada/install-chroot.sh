@@ -102,6 +102,16 @@ for u in vboxservice vmtoolsd vmware-vmblock-fuse qemu-guest-agent ModemManager;
 done
 systemctl enable cicada-memwipe.service || true
 
+# ESP dir for LUKS fail counter (initramfs writes cicada/luks-fail.count).
+mkdir -p /boot/cicada
+echo "${CICADA_LUKS_MAX_FAIL:-20}" > /boot/cicada/max-fail 2>/dev/null || true
+# Prefer value from defaults if present on the live stick being copied.
+if [[ -f /etc/cicada/defaults.env ]]; then
+  # shellcheck disable=SC1091
+  . /etc/cicada/defaults.env
+  echo "${CICADA_LUKS_MAX_FAIL:-20}" > /boot/cicada/max-fail
+fi
+
 # Launcher monopoly + channel pin on the installed root.
 if [[ -x /usr/local/lib/cicada/hide-arch-desktops.sh ]]; then
   /usr/local/lib/cicada/hide-arch-desktops.sh || true

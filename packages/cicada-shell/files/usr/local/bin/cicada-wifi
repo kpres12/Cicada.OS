@@ -44,7 +44,7 @@ pick_network() {
   rows="$(scan_rows)"
   if [[ -z "${rows}" ]]; then
     zenity --error --title="Cicada Wi-Fi" --width=400 \
-      --text="No networks in range.\n\nRadio is on. Wait a few seconds and try again.\nBroadcom MBA: the next ISO uses wpa_supplicant (not iwd)."
+      --text="No networks in range.\n\nRadio is on. Wait a few seconds and try again.\nIf this never fills in, the driver is the problem, not the network:\nrun  cicada-wifi-diag  and read the first two sections."
     return 1
   fi
   local args=()
@@ -60,6 +60,93 @@ pick_network() {
     "${args[@]}"
 }
 
+joined() {
+  local ssid="$1"
+  notify "Connected to ${ssid}"
+  command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+}
+
+# nmcli says exactly why a join failed — wrong secret, unsupported security,
+# no DHCP lease — and every one of those has a different fix. Throwing that on
+# the floor and printing "Could not join" turns a 10-second diagnosis into a
+# rebuild-and-guess loop. Keep the text; it goes in the failure dialog.
+nm_error=""
+nm_rc=0
+
+# zenity renders --text as Pango markup, so an SSID containing & or < (perfectly
+# legal, and common enough: "Bob & Alice") makes the dialog fail to parse rather
+# than display — a silent failure inside the code path whose entire job is to
+# stop failing silently.
+esc() {
+  local s="$1"
+  s="${s//&/&amp;}"
+  s="${s//</&lt;}"
+  s="${s//>/&gt;}"
+  printf '%s' "${s}"
+}
+
+nm_connect() {
+  local ssid="$1" pass="${2:-}"
+  if [[ -n "${pass}" ]]; then
+    nm_error="$(nmcli device wifi connect "${ssid}" password "${pass}" 2>&1)"
+  else
+    nm_error="$(nmcli device wifi connect "${ssid}" 2>&1)"
+  fi
+  nm_rc=$?
+}
+
+# Hardware-specific reading of that error. The Air's BCM4360 is driven by the
+# proprietary `wl` module, which predates WPA3 entirely and is known to refuse
+# MAC address changes on some chips — so on this machine the two most likely
+# causes of "everything scans, nothing joins" are a WPA3 access point and our
+# own connection-time MAC randomization, neither of which looks like itself in
+# NetworkManager's wording.
+join_hint() {
+  local sec="$1" hint=""
+  case "${nm_error}" in
+    *"Secrets were required"*|*"secrets were required"*)
+      hint="The access point rejected the password, or refused the association
+before it got that far. On WPA3 networks this Air cannot associate at all
+(see below) and NetworkManager reports it the same way."
+      ;;
+    *"IP configuration could not be reserved"*|*"IP configuration"*|*"timed out"*)
+      hint="Associated, but no address arrived (DHCP). The Wi-Fi part worked;
+this is the network handing out a lease, or the firewall dropping the reply."
+      ;;
+  esac
+  if [[ "${sec}" == *SAE* || "${sec}" == *WPA3* ]]; then
+    hint="${hint:+${hint}
+
+}This network offers WPA3 (${sec}). The BCM4360 in this MacBook Air cannot do
+WPA3 — the driver predates it. Set the router to WPA2, or to WPA2/WPA3 mixed
+mode with protected management frames NOT required."
+  fi
+  printf '%s' "${hint}"
+}
+
+# Retry without MAC randomization — offered, never automatic. Randomization is
+# the property that keeps this laptop from being tracked across every AP it has
+# ever seen; dropping it silently to make a connection succeed would trade away
+# the reason the setting exists. Failing visibly and letting the owner choose is
+# the rule ("degrade visibly on anything that only reduces protection").
+retry_permanent_mac() {
+  local ssid="$1" pass="$2"
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${ssid}"; then
+    nmcli connection modify "${ssid}" 802-11-wireless.cloned-mac-address permanent >/dev/null 2>&1 || return 1
+  elif [[ -n "${pass}" ]]; then
+    nmcli connection add type wifi con-name "${ssid}" ssid "${ssid}" \
+      802-11-wireless-security.key-mgmt wpa-psk \
+      802-11-wireless-security.psk "${pass}" \
+      802-11-wireless.cloned-mac-address permanent >/dev/null 2>&1 || return 1
+  else
+    nmcli connection add type wifi con-name "${ssid}" ssid "${ssid}" \
+      802-11-wireless.cloned-mac-address permanent >/dev/null 2>&1 || return 1
+  fi
+  nm_error="$(nmcli connection up "${ssid}" 2>&1)"
+  nm_rc=$?
+  return "${nm_rc}"
+}
+
 connect_ssid() {
   local ssid="$1" sec="$2"
   if [[ "$(current_ssid)" == "${ssid}" ]]; then
@@ -68,35 +155,72 @@ connect_ssid() {
   fi
   if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${ssid}"; then
     if nmcli connection up "${ssid}"; then
-      notify "Connected to ${ssid}"
-      command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+      joined "${ssid}"
       return 0
     fi
   fi
+  local pass=""
   if [[ -z "${sec}" || "${sec}" == "--" || "${sec}" == "open" ]]; then
-    if nmcli device wifi connect "${ssid}"; then
-      notify "Connected to ${ssid}"
-      command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
-      return 0
-    fi
+    nm_connect "${ssid}"
+  else
+    pass="$(zenity --password --title="Password for ${ssid}")" || return 1
+    nm_connect "${ssid}" "${pass}"
   fi
-  local pass
-  pass="$(zenity --password --title="Password for ${ssid}")" || return 1
-  if nmcli device wifi connect "${ssid}" password "${pass}"; then
-    notify "Connected to ${ssid}"
-    command -v cicada-seal >/dev/null && cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+  if [[ "${nm_rc}" -eq 0 ]]; then
+    joined "${ssid}"
     return 0
   fi
-  zenity --error --title="Cicada Wi-Fi" --width=320 --text="Could not join ${ssid}."
+
+  local hint
+  hint="$(join_hint "${sec}")"
+  command -v cicada-seal >/dev/null \
+    && cicada-seal append wifi.fail "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
+
+  if zenity --question --title="Cicada Wi-Fi" --width=520 \
+      --ok-label="Retry with real MAC" --cancel-label="Close" \
+      --text="Could not join $(esc "${ssid}").
+
+$(esc "${nm_error}")
+${hint:+
+${hint}}
+
+Cicada joins networks with a randomized MAC address. The Broadcom driver in
+this Air rejects that on some chips. Retrying with your real hardware MAC
+tells this network the Air's permanent identifier — it can then recognise
+this machine every time it comes back."; then
+    if retry_permanent_mac "${ssid}" "${pass}"; then
+      joined "${ssid}"
+      zenity --warning --title="Cicada Wi-Fi" --width=460 \
+        --text="Connected to $(esc "${ssid}") using the REAL MAC address of this Air.
+
+MAC randomization is off for this network only. Undo it with:
+  nmcli connection modify \"$(esc "${ssid}")\" 802-11-wireless.cloned-mac-address random" \
+        2>/dev/null || true
+      return 0
+    fi
+    zenity --error --title="Cicada Wi-Fi" --width=520 \
+      --text="Still could not join $(esc "${ssid}") — so the MAC address was not the problem.
+
+$(esc "${nm_error}")" 2>/dev/null || true
+  fi
   return 1
 }
 
 if ! command -v nmcli >/dev/null 2>&1; then
-  zenity --error --title="Cicada Wi-Fi" --text="NetworkManager is not running." 2>/dev/null || true
+  msg="NetworkManager (nmcli) is missing.
+
+Wi-Fi cannot work without it. This usually means an old ISO build
+(before NetworkManager was on the live image). Rebuild/reflash, or on
+this stick install networkmanager + zenity and enable NetworkManager."
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Cicada Wi-Fi" --width=480 --text="${msg}" 2>/dev/null || true
+  else
+    echo "cicada-wifi: ${msg}" >&2
+  fi
   exit 1
 fi
 if ! command -v zenity >/dev/null 2>&1; then
-  echo "cicada-wifi needs zenity" >&2
+  echo "cicada-wifi needs zenity (GUI picker). Install zenity or use: nmcli device wifi" >&2
   exit 1
 fi
 

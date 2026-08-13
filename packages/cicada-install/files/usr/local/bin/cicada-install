@@ -127,6 +127,22 @@ copy_product() {
   if [[ -d /opt/helium ]]; then
     mkdir -p "${mnt}/opt"
     rsync -a /opt/helium "${mnt}/opt/"
+    # mkarchiso may have left live binaries 0644; do not copy that defect to disk.
+    for name in helium chrome helium-wrapper chrome-wrapper \
+                helium_crashpad_handler chrome_crashpad_handler chromedriver; do
+      f="${mnt}/opt/helium/${name}"
+      [[ -f "${f}" && ! -L "${f}" ]] || continue
+      chmod 755 "${f}" || true
+    done
+  fi
+  if [[ -d /opt/cicada-doom ]]; then
+    mkdir -p "${mnt}/opt"
+    rsync -a /opt/cicada-doom "${mnt}/opt/"
+    chmod 755 "${mnt}/opt/cicada-doom/bin/"* 2>/dev/null || true
+  fi
+  if [[ -d /usr/share/doom ]]; then
+    mkdir -p "${mnt}/usr/share"
+    rsync -a /usr/share/doom "${mnt}/usr/share/"
   fi
   if [[ -e /usr/bin/helium ]]; then
     mkdir -p "${mnt}/usr/bin"

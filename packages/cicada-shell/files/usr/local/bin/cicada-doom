@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Tirimid item 6: one-click Doom (Chocolate Doom + Freedoom IWAD).
+# Official upstream pins via channel/doom.lock — not AUR.
+set -euo pipefail
+
+die() {
+  echo "cicada-doom: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Cicada — Doom" --width=420 --text="$1" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+BIN=""
+for cand in /opt/cicada-doom/bin/chocolate-doom /usr/bin/chocolate-doom; do
+  if [[ -x "${cand}" ]]; then
+    BIN="${cand}"
+    break
+  fi
+done
+[[ -n "${BIN}" ]] || die "Chocolate Doom is not installed.
+
+Rebuild the ISO (scripts/install-doom.sh) or install from channel/doom.lock."
+
+IWAD=""
+for cand in /usr/share/doom/freedoom1.wad /usr/share/doom/freedoom2.wad \
+            "${HOME}/freedoom1.wad" "${HOME}/freedoom2.wad"; do
+  if [[ -f "${cand}" ]]; then
+    IWAD="${cand}"
+    break
+  fi
+done
+[[ -n "${IWAD}" ]] || die "No Doom IWAD found.
+
+Expected /usr/share/doom/freedoom1.wad (Freedoom)."
+
+export DOOMWADDIR="${DOOMWADDIR:-/usr/share/doom}"
+
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.cicada.doom -- "${BIN}" -iwad "${IWAD}" "$@"
+fi
+exec "${BIN}" -iwad "${IWAD}" "$@"

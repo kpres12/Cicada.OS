@@ -1,0 +1,10 @@
+# Official Chocolate Doom + Freedoom — not AUR.
+# Tirimid checklist item 6: Run a game (Doom).
+# Engine: https://github.com/chocolate-doom/chocolate-doom
+# IWAD:  https://github.com/freedoom/freedoom (BSD free Doom content)
+engine_version=3.1.1
+engine_url=https://github.com/chocolate-doom/chocolate-doom/archive/refs/tags/chocolate-doom-3.1.1.tar.gz
+engine_sha256=1edcc41254bdc194beb0d33e267fae306556c4d24110a1d3d3f865717f25da23
+wad_version=0.13.0
+wad_url=https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+wad_sha256=3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59

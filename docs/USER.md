@@ -84,8 +84,11 @@ Allow the zenity prompt. Type a duress passphrase (not your real one). cryptsetu
 | At boot you type | Screen | Result |
 |---|---|---|
 | Real LUKS passphrase | Unlock, then `cicada` login | Normal |
-| Wrong passphrase | ~12s, `Invalid passphrase` | Try again |
+| Wrong passphrase | ~12s, `Invalid passphrase` | Try again (count toward wipe) |
+| **20 wrong guesses** (default) | Same wait, same text | Disk keys wiped, poweroff |
 | Duress passphrase | Same wait, same text | Disk keys wiped, poweroff |
+
+Change the cap after install: edit `CICADA_LUKS_MAX_FAIL` in `/etc/cicada/defaults.env` (or `/boot/cicada/max-fail`), then `sudo mkinitcpio -P`. Set `0` to disable. This is **boot unlock only** — wrong passwords at the lock screen do not wipe.
 
 **Super+L (hyprlock) does not take duress.** Session lock ≠ disk. Under coercion, reboot (or wait 30 minutes locked) so you are at LUKS again.
 

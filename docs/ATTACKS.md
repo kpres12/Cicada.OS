@@ -22,7 +22,7 @@ Laptop attacks are the same primitives. Cicada answers them in software where th
 | Browser 0-day | Helium + JIT-off later; v0 Chromium + `cicada-run` net deny | Yes | Partial |
 | VPN leak | `cicada-vpn` nftables kill switch + `tests/killswitch.sh` | Yes | Code; needs endpoint |
 | Supply chain (AUR) | Official repos only; `docs/aur-audit.md` | Yes | Policy |
-| LUKS brute force | LUKS2 **Argon2id**; TPM2 lockout on machines that have a real TPM | Weak/no SE | Installer Argon2id; no Titan-class throttle |
+| LUKS brute force | LUKS2 **Argon2id**; TPM2 lockout on machines that have a real TPM | Weak/no SE | Argon2id + boot attempt cap (default 20 → `luksErase`); no Titan-class throttle |
 | Evil maid (bootkit) | Secure Boot + measured boot (sbctl / Heads) | **No** (Apple EFI) | Hook no-ops until enrolled; Heads = tier 3 |
 | Cold boot (RAM remnant) | `init_on_free=1`; reboot-to-rest; TME/SME where CPU has it | Broadwell: no TME | Cmdline + timer; not RAM encryption |
 | DMA / Thunderbolt | `intel_iommu=on iommu.passthrough=0`; USBGuard when locked | Air has no TB3; VT-d if firmware allows | Cmdline + lock USB |

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Doom
+Comment=Chocolate Doom + Freedoom
+Exec=/usr/local/bin/cicada-doom
+Icon=applications-games
+Terminal=false
+StartupNotify=false
+Categories=Game;

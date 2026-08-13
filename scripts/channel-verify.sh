@@ -19,7 +19,17 @@ grep -q '^url=https://github.com/imputnet/helium-linux/' "${lock}" || die "heliu
 grep -Eq '^sha256=[0-9a-f]{64}$' "${lock}" || die "helium.lock sha256"
 say "helium.lock pinned"
 
+doom="${ROOT}/channel/doom.lock"
+test -f "${doom}" || die "doom.lock missing"
+grep -q '^engine_version=' "${doom}" || die "doom.lock engine_version"
+grep -q '^engine_url=https://github.com/chocolate-doom/' "${doom}" || die "doom.lock engine_url"
+grep -Eq '^engine_sha256=[0-9a-f]{64}$' "${doom}" || die "doom.lock engine_sha256"
+grep -q '^wad_url=https://github.com/freedoom/' "${doom}" || die "doom.lock wad_url"
+grep -Eq '^wad_sha256=[0-9a-f]{64}$' "${doom}" || die "doom.lock wad_sha256"
+say "doom.lock pinned (Chocolate Doom + Freedoom)"
+
 grep -q 'install-helium.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Helium"
+grep -q 'install-doom.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Doom"
 grep -q 'Public beta' "${ROOT}/site/index.html" || die "site home missing public beta banner"
 grep -q 'prepare-release\|RELEASE.md' "${ROOT}/docs/RELEASE.md" || die "RELEASE.md incomplete"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run default-deny missing"

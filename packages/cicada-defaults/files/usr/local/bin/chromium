@@ -39,7 +39,9 @@ die() {
 
 BIN=""
 found_unusable=""
-for cand in /opt/helium/chrome /opt/helium/helium /usr/bin/helium /usr/bin/helium-browser /usr/bin/chromium; do
+# Prefer helium-wrapper: it sets LD_LIBRARY_PATH=$HERE before exec.
+for cand in /opt/helium/helium-wrapper /opt/helium/chrome /opt/helium/helium \
+            /usr/bin/helium /usr/bin/helium-browser /usr/bin/chromium; do
   if [[ -x "${cand}" ]]; then
     BIN="${cand}"
     break
@@ -53,6 +55,18 @@ for cand in /opt/helium/chrome /opt/helium/helium /usr/bin/helium /usr/bin/heliu
     found_unusable="${cand}"
   fi
 done
+if [[ -z "${BIN}" ]]; then
+  # Last chance: heal modes then retry (NOPASSWD on live/installed wheel).
+  if [[ -n "${found_unusable}" ]] && [[ -x /usr/local/lib/cicada/heal-helium.sh ]]; then
+    sudo -n /usr/local/lib/cicada/heal-helium.sh 2>/dev/null || true
+    for cand in /opt/helium/helium-wrapper /opt/helium/chrome /opt/helium/helium; do
+      if [[ -x "${cand}" ]]; then
+        BIN="${cand}"
+        break
+      fi
+    done
+  fi
+fi
 if [[ -z "${BIN}" ]]; then
   if [[ -n "${found_unusable}" ]]; then
     die "Helium is installed at ${found_unusable} but is not executable.

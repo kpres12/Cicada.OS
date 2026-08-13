@@ -301,9 +301,18 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/lib/cicada/hide-arch-desktops.sh"]="0:0:755"
   ["/usr/local/lib/cicada/cicada-channel-enable.sh"]="0:0:755"
   ["/usr/local/lib/cicada/strip-setuid.sh"]="0:0:755"
+  ["/usr/local/lib/cicada/heal-helium.sh"]="0:0:755"
   ["/etc/sudoers.d/cicada-profile"]="0:0:440"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"
+  ["/home/cicada/Desktop/web.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/wifi.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/files.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/settings.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/term.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/start-here.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/doom.desktop"]="1000:1000:755"
+  ["/usr/local/bin/cicada-doom"]="0:0:755"
 )'''
 if needle not in text:
     raise SystemExit("profiledef.sh file_permissions block changed upstream")

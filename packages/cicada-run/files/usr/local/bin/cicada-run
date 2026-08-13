@@ -19,7 +19,7 @@ fi
 # Owner/admin UI talks to host services (NM, polkit, tty). Still an app-id —
 # just not boxed. Everything else is default-deny until its scopes file says so.
 case "${APP_ID}" in
-  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start)
+  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start|org.cicada.files|org.cicada.doom)
     export CICADA_APP_ID="${APP_ID}"
     exec "$@"
     ;;

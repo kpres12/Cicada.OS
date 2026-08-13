@@ -6,3 +6,8 @@ for f in "${HOME}/Desktop/"*.desktop; do
   chmod +x "${f}" 2>/dev/null || true
   gio set "${f}" metadata::trusted true 2>/dev/null || true
 done
+# Session-side belt: if firstboot has not healed Helium yet (or the unit was
+# skipped), repair via the NOPASSWD helper so Web works on this boot.
+if [[ -x /usr/local/lib/cicada/heal-helium.sh ]]; then
+  sudo -n /usr/local/lib/cicada/heal-helium.sh 2>/dev/null || true
+fi

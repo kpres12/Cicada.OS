@@ -32,6 +32,9 @@ fi
 # Chromium is no longer the product browser.
 "${ROOT}/scripts/install-helium.sh" "${PROFILE}/airootfs"
 
+# Official Chocolate Doom + Freedoom (hash-pinned). Tirimid item 6 — required.
+"${ROOT}/scripts/install-doom.sh" "${PROFILE}/airootfs"
+
 echo "==> mkarchiso  work=${WORK}/mkarchiso  out=${OUT}"
 rm -rf "${WORK}/mkarchiso"
 mkdir -p "${WORK}/mkarchiso"

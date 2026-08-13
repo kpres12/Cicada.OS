@@ -17,7 +17,10 @@ cryptsetup
 tpm2-tools
 sbctl
 networkmanager
+wpa_supplicant
 # iwd deliberately omitted — NM + wpa_supplicant is the MBA/Broadcom path
+# Proprietary wl driver for BCM4360 (2013–2015 Air). Firmware alone is not enough.
+broadcom-wl
 nftables
 usbguard
 apparmor
@@ -85,6 +88,10 @@ swaync
 nwg-dock-hyprland
 zenity
 nm-connection-editor
+# Doom runtime (Chocolate Doom built at ISO time from channel/doom.lock)
+sdl2
+sdl2_mixer
+sdl2_net
 keepassxc
 gnupg
 age
