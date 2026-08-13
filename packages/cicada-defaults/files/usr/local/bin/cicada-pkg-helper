@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Root helper for cicada-pkg. Official repos only. No AUR. No -U local files.
+set -euo pipefail
+[[ ${EUID} -eq 0 ]] || { echo "cicada-pkg-helper: root only" >&2; exit 1; }
+
+usage() { echo "usage: cicada-pkg-helper install <pkg>" >&2; exit 1; }
+[[ $# -ge 2 ]] || usage
+cmd="$1"
+pkg="$2"
+shift 2 || true
+
+[[ "${cmd}" == "install" ]] || usage
+[[ "${pkg}" =~ ^[a-zA-Z0-9@._+-]+$ ]] || { echo "invalid package name" >&2; exit 1; }
+
+# Refuse anything that looks like a path or URL.
+case "${pkg}" in
+  */*|*:*|*.pkg.tar*) echo "refusing path/url install" >&2; exit 1 ;;
+esac
+
+export LANG=C
+pacman -Sy --noconfirm --needed "${pkg}"

@@ -82,31 +82,62 @@ sound() {
 }
 
 displays() {
-  local pick scale name
+  local pick scale name mode args=() cur
   name="$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2; exit}')"
-  [[ -n "${name}" ]] || name=""
+  [[ -n "${name}" ]] || name="eDP-1"
+  cur="$(hyprctl monitors 2>/dev/null | awk '/^[ \t]+[0-9]+x[0-9]+@/{print $1; exit}' | tr -d '\t ')"
   pick="$(zenity --list --title="Displays" \
-    --text="This Air has one panel. Pick a scale if text looks tiny or huge." \
+    --text="Resolution and UI scale for ${name}${cur:+ (now ${cur})}." \
     --column=Setting --column=Does --print-column=1 --hide-header \
-    --width=480 --height=320 \
-    "100%" "Native pixels" \
-    "125%" "Slightly larger" \
-    "150%" "Larger UI" \
-    "200%" "Largest" \
+    --width=520 --height=360 \
+    "Resolution…" "Pick a panel mode (Tirimid item 2)" \
+    "100% scale" "Native pixels" \
+    "125% scale" "Slightly larger UI" \
+    "150% scale" "Larger UI" \
+    "200% scale" "Largest UI" \
     2>/dev/null)" || return 0
   case "${pick}" in
-    "100%") scale=1 ;;
-    "125%") scale=1.25 ;;
-    "150%") scale=1.5 ;;
-    "200%") scale=2 ;;
+    "Resolution…")
+      while IFS= read -r mode; do
+        [[ -n "${mode}" ]] || continue
+        args+=("${mode}" "Apply ${mode}")
+      done < <(hyprctl monitors 2>/dev/null | awk '
+        BEGIN{m=0}
+        /^Monitor /{m=1; next}
+        m && /availableModes:/{
+          sub(/^.*availableModes:[ \t]*/,"");
+          n=split($0,a,/[[:space:]]+/);
+          for(i=1;i<=n;i++) if(a[i] ~ /^[0-9]+x[0-9]+/) print a[i];
+          exit
+        }')
+      if [[ "${#args[@]}" -eq 0 ]]; then
+        for mode in 1920x1080@60 1600x900@60 1440x900@60 1280x800@60 1280x720@60; do
+          args+=("${mode}" "Try ${mode}")
+        done
+      fi
+      mode="$(zenity --list --title="Resolution" \
+        --text="Choose a mode. Some panels only accept the native mode." \
+        --column=Mode --column=Note --print-column=1 --hide-header \
+        --width=480 --height=400 \
+        "${args[@]}" 2>/dev/null)" || return 0
+      [[ -n "${mode}" ]] || return 0
+      mode="${mode%%Hz*}"
+      mode="${mode%% *}"
+      mkdir -p "$(dirname "${MON_FILE}")"
+      printf 'monitor=%s,%s,auto,1\n' "${name}" "${mode}" > "${MON_FILE}"
+      hyprctl keyword monitor "${name},${mode},auto,1" >/dev/null 2>&1 \
+        || zenity --error --title="Displays" --text="Could not apply ${mode}." 2>/dev/null || true
+      ;;
+    "100% scale") scale=1 ;;
+    "125% scale") scale=1.25 ;;
+    "150% scale") scale=1.5 ;;
+    "200% scale") scale=2 ;;
     *) return 0 ;;
   esac
-  mkdir -p "$(dirname "${MON_FILE}")"
-  if [[ -n "${name}" ]]; then
+  if [[ -n "${scale:-}" ]]; then
+    mkdir -p "$(dirname "${MON_FILE}")"
     printf 'monitor=%s,preferred,auto,%s\n' "${name}" "${scale}" > "${MON_FILE}"
     hyprctl keyword monitor "${name},preferred,auto,${scale}" >/dev/null 2>&1 || true
-  else
-    printf 'monitor=,preferred,auto,%s\n' "${scale}" > "${MON_FILE}"
   fi
 }
 
@@ -318,6 +349,8 @@ case "${1:-}" in
   brightness|Brightness) brightness; exit 0 ;;
   displays|Displays) displays; exit 0 ;;
   appearance|Appearance) appearance; exit 0 ;;
+  pkg|install|"Install software") exec cicada-pkg ;;
+  power|Power) exec cicada-power ;;
   scopes|Scopes) exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
   profiles|Profiles) profiles; exit 0 ;;
   av|camera|mic|"Camera & microphone") av_kill; exit 0 ;;
@@ -332,8 +365,9 @@ pick="$(zenity --list --title="Settings" \
   "Wi-Fi" "Pick a network from a scan" \
   "Sound" "Volume, mute, headphones" \
   "Brightness" "Screen brightness" \
-  "Displays" "How large the UI is" \
+  "Displays" "Resolution and UI scale" \
   "Appearance" "Wallpaper, dark/light, desktop icon size" \
+  "Install software…" "Official Arch package (pacman)" \
   "App permissions" "Scopes — network/files/camera per app" \
   "Camera & microphone" "Software kill — not a hardware switch" \
   "Profiles" "Work (UID) / Burner (folder) compartments" \
@@ -342,6 +376,7 @@ pick="$(zenity --list --title="Settings" \
   "Dock bottom" "Move the dock to the bottom" \
   "Dock right" "Move the dock to the right" \
   "Lock" "Lock the screen now" \
+  "Power" "Reboot or shut down" \
   "Screenshot" "Select a region, save to Desktop" \
   "Start here" "First-boot cheat sheet" \
   2>/dev/null)" || exit 0
@@ -352,6 +387,7 @@ case "${pick}" in
   Brightness) brightness ;;
   Displays) displays ;;
   Appearance) appearance ;;
+  "Install software…") exec cicada-pkg ;;
   "App permissions") exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
   "Camera & microphone") av_kill ;;
   Profiles) profiles ;;
@@ -360,6 +396,7 @@ case "${pick}" in
   "Dock bottom") restart_dock bottom ;;
   "Dock right") restart_dock right ;;
   Lock) exec cicada-lock ;;
+  Power) exec cicada-power ;;
   Screenshot) screenshot ;;
   "Start here") exec cicada-run org.cicada.start -- kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt ;;
 esac

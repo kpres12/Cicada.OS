@@ -101,3 +101,7 @@ chrony
 meek
 torsocks
 zram-generator
+
+# Tirimid: editor + compile toolchain
+nano
+base-devel

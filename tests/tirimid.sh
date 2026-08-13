@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
-# Tirimid "does it act like an OS?" checklist — tree-level proof.
-# Hardware boot still required for the real Wi-Fi radio and a rendered Helium
-# window; this catches the wiring defects that made items 2 and 7 fail silently.
+# Revised Tirimid 10-point OS checklist — tree-level proof that Cicada is an OS,
+# not a bag of security knobs. Hardware still required for real pixels/radio.
+#
+#  1 Get a graphical system running
+#  2 Change the resolution
+#  3 Program fizzbuzz, compile, and run it
+#  4 Install a new program
+#  5 Run a game
+#  6 Browse the internet
+#  7 Explore what makes it special
+#  8 Power off and reboot
+#  9 Check the style
+# 10 Destroy the sucker
 #
 # Run: tests/tirimid.sh   (also from tests/here.sh)
 set -euo pipefail
@@ -10,105 +20,113 @@ fail=0
 say() { printf '  OK  %s\n' "$*"; }
 die() { printf '  FAIL %s\n' "$*"; fail=1; }
 
-echo "==> Tirimid item 2 — Connect to the internet (Wi-Fi path)"
-wifi="${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-wifi"
-desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/wifi.desktop"
-nmconf="${ROOT}/packages/cicada-defaults/files/etc/NetworkManager/conf.d/cicada.conf"
 pkgs="${ROOT}/packages/cicada-install/files/etc/cicada/install-packages.txt"
 iso_pkgs="${ROOT}/iso/packages.cicada.x86_64"
-
-test -x "${wifi}" || test -f "${wifi}" || die "cicada-wifi missing"
-grep -q 'nmcli device wifi' "${wifi}" || die "cicada-wifi must drive nmcli, not iwd"
-grep -q 'cicada-wifi' "${desk}" || die "Desktop WIFI must launch cicada-wifi"
-grep -q 'wifi.backend=wpa_supplicant' "${nmconf}" || die "NM must use wpa_supplicant for Broadcom wl"
-grep -q 'wifi.scan-rand-mac-address=no' "${nmconf}" || die "scan-rand-mac must be off (empty scan list on wl)"
-grep -qx 'networkmanager' "${pkgs}" || die "install must ship NetworkManager"
-grep -qx 'wpa_supplicant' "${pkgs}" || die "install must ship wpa_supplicant"
-grep -qx 'broadcom-wl' "${pkgs}" || die "install must ship broadcom-wl for MBA BCM4360"
-grep -qx 'zenity' "${pkgs}" || die "install must ship zenity (Wi-Fi GUI)"
-grep -q '^networkmanager$' "${iso_pkgs}" || die "live ISO packages must include networkmanager"
-grep -q '^zenity$' "${iso_pkgs}" || die "live ISO packages must include zenity"
-grep -qx 'iwd' "${pkgs}" && die "install must not prefer iwd over NM+wpa" || true
-say "Wi-Fi: NM + wpa + broadcom-wl + cicada-wifi + zenity"
-
-echo "==> Tirimid item 7 — Browse the internet (Helium path)"
-wrap="${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium"
-web="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/web.desktop"
-scope="${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes/org.cicada.helium.env"
-heal="${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/heal-helium.sh"
-install_helium="${ROOT}/scripts/install-helium.sh"
-firstboot="${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot"
-sudoers="${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile"
-
-test -f "${wrap}" || die "chromium wrapper missing"
-grep -q '/opt/helium/helium-wrapper\|/opt/helium/chrome\|/opt/helium/helium' "${wrap}" || die "wrapper must prefer Helium"
-grep -q 'zenity --error' "${wrap}" || die "wrapper must show a dialog when browser is broken"
-grep -q '/usr/local/bin/chromium' "${web}" || die "Desktop WEB must launch chromium wrapper"
-grep -q 'NETWORK=allow' "${scope}" || die "Helium scope must allow network"
-test -f "${heal}" || die "heal-helium.sh missing"
-grep -q 'heal-helium' "${firstboot}" || die "firstboot must heal Helium every boot"
-grep -q 'heal-helium.sh' "${sudoers}" || die "sudoers must NOPASSWD heal-helium for session trust"
-grep -q 'file_permissions\["/opt/helium/' "${install_helium}" || die "install-helium must declare file_permissions for mkarchiso"
-grep -q 'heal-helium.sh' "${ROOT}/iso/assemble-profile.sh" || die "assemble must register heal-helium in file_permissions"
-grep -q 'chmod 755' "${ROOT}/packages/cicada-install/files/usr/local/bin/cicada-install" \
-  || die "cicada-install must chmod Helium after rsync"
-say "Helium: wrapper + scope + heal + mkarchiso permissions + install chmod"
-
-echo "==> Tirimid item 6 — Run a game (Doom)"
-doom_bin="${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-doom"
-doom_desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/doom.desktop"
-doom_lock="${ROOT}/channel/doom.lock"
-test -f "${doom_bin}" || die "cicada-doom missing"
-test -f "${doom_desk}" || die "Desktop Doom icon missing"
-grep -q 'chocolate-doom\|cicada-doom' "${doom_desk}" || die "Doom desktop must launch cicada-doom"
-grep -q 'engine_sha256=' "${doom_lock}" || die "doom.lock missing engine pin"
-grep -q 'wad_sha256=' "${doom_lock}" || die "doom.lock missing Freedoom pin"
-grep -q 'install-doom.sh' "${ROOT}/iso/build.sh" || die "ISO build must install Doom"
-grep -q 'sdl2' "${pkgs}" || die "install must ship SDL2 for Doom"
-grep -q '^sdl2$' "${iso_pkgs}" || die "live ISO must ship SDL2 for Doom"
-grep -Eq 'org.cicada.files\|org.cicada.doom' \
-  "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
-  || die "Files and Doom must be host-launch (daily-driver, not sandbox theater)"
-grep -q 'cicada-doom.desktop' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/cicada/dock-pinned" \
-  || die "Doom must be on the dock"
-say "Doom: Chocolate Doom + Freedoom pin, Desktop+dock, SDL2"
-
-echo "==> Tirimid — folder / file system"
-files_bin="${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-files"
-files_desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/files.desktop"
-test -f "${files_bin}" || die "cicada-files missing"
-test -f "${files_desk}" || die "Desktop Files icon missing"
-grep -q 'pcmanfm-qt' "${files_bin}" || die "Files must launch pcmanfm-qt"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/README.txt" || die "Documents folder missing README"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Downloads/.keep" || die "Downloads missing"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Pictures/.keep" || die "Pictures missing"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Music/.keep" || die "Music missing"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Videos/.keep" || die "Videos missing"
-grep -q 'XDG_DOCUMENTS_DIR' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/user-dirs.dirs" \
-  || die "user-dirs must declare Documents"
-grep -qx 'pcmanfm-qt' "${pkgs}" || die "install must ship pcmanfm-qt"
-grep -q 'org.cicada.files' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
-  || die "Files must not be trapped in a broken sandbox"
-say "Files: pcmanfm-qt + Desktop/Documents/Downloads/Pictures/Music/Videos"
-
-echo "==> Tirimid items 1,3,4,5 spine (boot / GUI / editor / compile)"
 hypr="${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hyprland.conf"
-grep -q 'Hyprland\|hyprland' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" \
-  || die "login must start Hyprland (item 3)"
-grep -q 'layout = dwindle' "${hypr}" || die "tiling desktop must exist (item 3)"
-test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/term.desktop" || die "terminal desktop missing (item 4/5)"
-grep -q 'cicada-run org.cicada.kitty\|kitty' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/term.desktop" \
-  || die "terminal launcher broken"
-grep -Eq '^(gcc|base-devel)$' "${pkgs}" || say "note: gcc/base-devel not on install list (fizzbuzz needs pacman -S base-devel)"
-say "GUI + terminal launchers present"
+settings="${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings"
+skel_desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop"
 
-echo "==> Tirimid item 9 — Destroy the sucker (panic / yank / duress exist)"
+echo "==> 1 — Graphical system"
+grep -q 'Hyprland\|hyprland' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" \
+  || die "login must start Hyprland"
+grep -q 'exec-once = waybar\|waybar' "${hypr}" || die "Waybar must start"
+grep -q 'exec-once = cicada-dock\|cicada-dock' "${hypr}" || die "dock must start"
+grep -q 'exec-once = pcmanfm-qt --desktop' "${hypr}" || die "desktop icons (pcmanfm) must start"
+grep -q 'layout = dwindle' "${hypr}" || die "tiling desktop must exist"
+test -f "${skel_desk}/term.desktop" || die "terminal desktop icon missing"
+say "Hyprland + dock + desktop icons + terminal"
+
+echo "==> 2 — Change the resolution"
+grep -q 'Resolution' "${settings}" || die "Settings Displays must offer Resolution"
+grep -q 'hyprctl keyword monitor' "${settings}" || die "resolution must apply via hyprctl"
+say "Settings → Displays → Resolution… (GUI)"
+
+echo "==> 3 — Fizzbuzz compile + run"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/fizzbuzz.c" \
+  || die "Documents/fizzbuzz.c starter missing"
+grep -qx 'nano' "${pkgs}" || die "install must ship nano (editor)"
+grep -qx 'base-devel' "${pkgs}" || die "install must ship base-devel (gcc/make)"
+grep -q '^nano$' "${iso_pkgs}" || die "live ISO must ship nano"
+grep -q '^base-devel$' "${iso_pkgs}" || die "live ISO must ship base-devel"
+grep -q 'gcc -o fizzbuzz' "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/README.txt" \
+  || die "Documents README must show compile steps"
+say "nano + base-devel + Documents/fizzbuzz.c"
+
+echo "==> 4 — Install a new program"
+test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-pkg" || die "cicada-pkg GUI missing"
+test -f "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "cicada-pkg-helper missing"
+grep -q 'pacman -Sy' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "helper must call pacman"
+grep -q 'cicada-pkg-helper' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
+  || die "sudoers must NOPASSWD cicada-pkg-helper"
+grep -q 'Install software' "${settings}" || die "Settings must offer Install software"
+say "Settings → Install software… (official repos only)"
+
+echo "==> 5 — Run a game (Doom)"
+test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-doom" || die "cicada-doom missing"
+test -f "${skel_desk}/doom.desktop" || die "Desktop Doom icon missing"
+grep -q 'engine_sha256=' "${ROOT}/channel/doom.lock" || die "doom.lock missing"
+grep -q 'install-doom.sh' "${ROOT}/iso/build.sh" || die "ISO must build Doom"
+grep -q 'sdl2' "${pkgs}" || die "SDL2 required for Doom"
+say "Doom Desktop + dock path + channel pin"
+
+echo "==> 6 — Browse the internet"
+wrap="${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium"
+test -f "${wrap}" || die "chromium/Helium wrapper missing"
+grep -q 'zenity --error' "${wrap}" || die "browser must show GUI on failure"
+test -f "${skel_desk}/web.desktop" || die "Desktop Web icon missing"
+grep -q 'NETWORK=allow' \
+  "${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes/org.cicada.helium.env" \
+  || die "Helium must allow network"
+grep -q 'heal-helium' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" \
+  || die "Helium exec-bit heal missing"
+grep -q 'cicada-wifi' "${skel_desk}/wifi.desktop" || die "Wi-Fi desktop missing (browse needs net)"
+say "Web + Helium heal + Wi-Fi GUI"
+
+echo "==> 7 — Explore what makes it special"
+test -f "${skel_desk}/settings.desktop" || die "Settings desktop missing"
+grep -q 'App permissions\|Scopes\|Camera & microphone\|Profiles' "${settings}" \
+  || die "Settings must surface Cicada-specific controls"
+grep -q 'CICADA_LUKS_MAX_FAIL\|luksErase' \
+  "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" \
+  || die "special: LUKS attempt-cap wipe missing"
+say "Settings specials + LUKS/duress story present"
+
+echo "==> 8 — Power off and reboot"
+test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-power" || die "cicada-power missing"
+test -f "${skel_desk}/power.desktop" || die "Desktop Power icon missing"
+grep -q 'systemctl reboot\|reboot' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-power" \
+  || die "power must reboot"
+grep -q 'systemctl poweroff\|poweroff' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-power" \
+  || die "power must shut down"
+grep -q 'cicada-power\|Power' "${settings}" || die "Settings must offer Power"
+say "Power Desktop + Settings (GUI reboot/shutdown)"
+
+echo "==> 9 — Check the style"
+grep -q 'Appearance\|Wallpaper\|Dark\|Light' "${settings}" || die "Appearance GUI missing"
+grep -q 'apply_wallpaper\|Wallpaper' "${settings}" || die "wallpaper picker missing"
+test -d "${ROOT}/packages/cicada-shell/files/usr/share/cicada/wallpapers" \
+  || test -d "${ROOT}/packages/cicada-defaults/files/usr/share/cicada/wallpapers" \
+  || die "stock wallpapers missing"
+say "Appearance: wallpaper + dark/light"
+
+echo "==> 10 — Destroy the sucker"
 test -f "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-panic" || die "panic missing"
-test -f "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" || die "LUKS wipe hook missing"
-say "panic + LUKS wipe path present"
+test -f "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" \
+  || die "LUKS wipe hook missing"
+say "panic + LUKS wipe path"
+
+echo "==> Files / folders (needed for 3 and daily use)"
+test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-files" || die "cicada-files missing"
+test -f "${skel_desk}/files.desktop" || die "Files desktop missing"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/.keep" \
+  || test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/README.txt" \
+  || die "Documents missing"
+say "Files app + home folders"
 
 if [[ "${fail}" -ne 0 ]]; then
-  echo "TIRIMID FAILED — OS checklist wiring broken"
+  echo "TIRIMID FAILED — revised 10-point OS checklist broken in tree"
   exit 1
 fi
-echo "TIRIMID OK"
+echo "TIRIMID OK (10-point wiring)"

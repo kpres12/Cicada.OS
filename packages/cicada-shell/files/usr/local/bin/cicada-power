@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Power off / reboot — Tirimid item 8. Mouse path, not a keybind exam.
+set -euo pipefail
+
+pick="$(zenity --list --title="Power" \
+  --text="Shut down or reboot this machine." \
+  --column=Action --column=Does --print-column=1 --hide-header \
+  --width=420 --height=260 \
+  "Reboot" "Restart Cicada.OS" \
+  "Power off" "Shut down completely" \
+  "Cancel" "Do nothing" \
+  2>/dev/null)" || exit 0
+
+case "${pick}" in
+  Reboot)
+    zenity --question --title="Reboot?" --text="Reboot now?" --ok-label="Reboot" --cancel-label="Cancel" \
+      2>/dev/null || exit 0
+    systemctl reboot || reboot
+    ;;
+  "Power off")
+    zenity --question --title="Power off?" --text="Shut down now?" --ok-label="Power off" --cancel-label="Cancel" \
+      2>/dev/null || exit 0
+    systemctl poweroff || poweroff
+    ;;
+  *) exit 0 ;;
+esac

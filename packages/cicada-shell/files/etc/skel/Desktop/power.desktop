@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Power
+Comment=Reboot or shut down
+Exec=/usr/local/bin/cicada-power
+Icon=system-shutdown
+Terminal=false
+StartupNotify=false

@@ -312,7 +312,11 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/home/cicada/Desktop/term.desktop"]="1000:1000:755"
   ["/home/cicada/Desktop/start-here.desktop"]="1000:1000:755"
   ["/home/cicada/Desktop/doom.desktop"]="1000:1000:755"
+  ["/home/cicada/Desktop/power.desktop"]="1000:1000:755"
   ["/usr/local/bin/cicada-doom"]="0:0:755"
+  ["/usr/local/bin/cicada-power"]="0:0:755"
+  ["/usr/local/bin/cicada-pkg"]="0:0:755"
+  ["/usr/local/bin/cicada-pkg-helper"]="0:0:755"
 )'''
 if needle not in text:
     raise SystemExit("profiledef.sh file_permissions block changed upstream")

@@ -700,12 +700,13 @@ bash "${ROOT}/tests/tirimid.sh" || die "tirimid (run tests/tirimid.sh for detail
 say "Tirimid items 2+7 wired in tree"
 
 echo "==> desktop launchers"
-for f in web.desktop wifi.desktop files.desktop start-here.desktop term.desktop settings.desktop doom.desktop; do
+for f in web.desktop wifi.desktop files.desktop start-here.desktop term.desktop settings.desktop doom.desktop power.desktop; do
   test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/${f}" || die "missing ${f}"
 done
 grep -q '/usr/local/bin/chromium' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/web.desktop" || die "web.desktop not wrapped"
 grep -q 'cicada-files' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/files.desktop" || die "Files must go through cicada-files"
 grep -q 'cicada-doom' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/doom.desktop" || die "doom.desktop must launch cicada-doom"
+grep -q 'cicada-power' "${ROOT}/packages/cicada-shell/files/etc/skel/Desktop/power.desktop" || die "power.desktop must launch cicada-power"
 grep -q 'inode/directory=cicada-files.desktop' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/mimeapps.list" || die "directories must open via cicada-files.desktop"
 grep -q 'Hidden=true' "${ROOT}/packages/cicada-shell/files/usr/local/share/applications/kitty.desktop" || die "Arch kitty.desktop must be hidden"
 grep -q 'Hidden=true' "${ROOT}/packages/cicada-shell/files/usr/local/share/applications/pcmanfm-qt.desktop" || die "Arch pcmanfm desktop must be hidden"
