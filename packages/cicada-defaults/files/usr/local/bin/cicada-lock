@@ -2,5 +2,7 @@
 # MAGI-03 lock: block new USB while locked, restore policy on unlock.
 set -euo pipefail
 usbguard set-parameter InsertedDevicePolicy block >/dev/null 2>&1 || true
+cicada-seal append session.lock "{}" >/dev/null 2>&1 || true
 hyprlock
+cicada-seal append session.unlock "{}" >/dev/null 2>&1 || true
 usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true

@@ -18,11 +18,11 @@ North star is Graphene *intent*. Claims stay honest about hardware.
 Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel allocators, forced kernel module signing, kernel lockdown, CFI.
 
 **Cicada:**
-- [ ] `hardened_malloc` globally (including Flatpaks) — portable, already used by secureblue
-- [ ] `linux-hardened` (or equivalent patch set)
-- [ ] `lockdown=confidentiality`
+- [ ] `hardened_malloc` globally — **AUR**, not extra; wrapper no-op until `docs/aur-audit.md`
+- [x] `linux-hardened` as extra boot entry (default `linux` for MBA `broadcom-wl`)
+- [x] `lockdown=confidentiality` on the hardened entry only
 - [ ] Forced module signing
-- [ ] Secure Boot chain (sbctl / Lanzaboote-class on supported firmware)
+- [ ] Secure Boot chain (sbctl hook shipped; inert until enrolled)
 - [ ] Intel CET / AMD shadow stack + stronger ASLR as the MTE substitute
 
 **Gap:** MTE has no x86 equivalent. Do not list it as done.
@@ -33,7 +33,8 @@ Graphene: NFC/BT/UWB off by default; USB-C modes including charging-only-when-lo
 
 **Cicada:**
 - [x] Wi-Fi / Bluetooth soft-blocked at boot (`cicada-radios-off`)
-- [ ] USBGuard whitelist; block new enumeration when session is locked
+- [x] USBGuard; new inserts blocked while `cicada-lock` / hyprlock runs
+- [x] Randomized MAC (NetworkManager cloned-mac + iwd AddressRandomization); LLMNR/mDNS off
 - [ ] Optional rfkill NFC where hardware exposes it
 
 **Gap:** almost no laptop vendor exposes Graphene-style hardware USB controller lockout. USBGuard is policy-level.
@@ -43,20 +44,22 @@ Graphene: NFC/BT/UWB off by default; USB-C modes including charging-only-when-lo
 Graphene: enhanced verified boot, signed fs-verity for app updates, hardware attestation, Auditor app.
 
 **Cicada:**
+- [x] Device Ed25519 key + hash-chained seal log (`cicada-seal`); high-impact actions gated by `cicada-auth` ([docs/SEAL.md](SEAL.md))
+- [x] `cicada-attest`: TPM2 quote if `/dev/tpmrm0` exists; otherwise export pubkey for a Pixel to pin ([docs/ATTEST.md](ATTEST.md))
 - [ ] UEFI Secure Boot + signed UKI where firmware allows
 - [ ] Measured boot / PCR sealing on TPM2 machines
-- [ ] Later: a Cicada Auditor (TPM2 quotes) — we would build this, not adopt Graphene's
+- [ ] Later: Pixel verifies laptop `tpm2_quote` (not Graphene Auditor)
 
-**Gap:** Apple EFI on the prototype MBA cannot match Pixel+Titan verified boot. Auditor-class remote attestation is the biggest true gap.
+**Gap:** Apple EFI on the prototype MBA cannot match Pixel+Titan verified boot. The Pixel pin is an identity for the seal log, not a Titan substitute.
 
 ## 4. Auto reboot / duress / memory clearing
 
 Graphene: auto-reboot after lock (10m–72h, default 18h); memory zeroed on free; duress PIN irreversible wipe, no reboot, cannot interrupt.
 
 **Cicada:**
-- [ ] systemd timer: reboot after N minutes locked
-- [ ] `page_poison` / kernel zero-on-free + hardened_malloc
-- [ ] LUKS duress keyslot + initramfs hook (`luksErase` / header wipe) with timing parity vs wrong PIN
+- [x] systemd timer: reboot after N seconds locked (default **30 min** — AFU window; `CICADA_LOCK_REBOOT_SEC`)
+- [x] `init_on_free=1 init_on_alloc=1` on live boot cmdline
+- [ ] LUKS duress keyslot + initramfs hook (`luksErase`) with timing parity vs wrong PIN — enroll refuses until tests exist
 
 ## 5. Fingerprint / PIN hardening
 
@@ -72,9 +75,9 @@ Graphene: PIN scramble, fingerprint+PIN 2FA, 5 fingerprint attempts, 128-char pa
 Graphene: per-app network permission (network-down, not crash), Sensors, Storage Scopes, Contact Scopes.
 
 **Cicada (approximate, not equal):**
+- [x] `cicada-run` + MAGI scopes: Helium `NETWORK=allow` (camera/mic deny); KeePassXC `NETWORK=deny`
 - [ ] Profile compartments (`cicada-profile`) as the UX analog of Graphene users
 - [ ] Flatpak + xdg-desktop-portal for fs/camera/mic scopes
-- [ ] bubblewrap / Firejail netns for per-app network kill
 - [ ] AppArmor profiles per shipped app
 
 See [docs/SANDBOX.md](docs/SANDBOX.md) for how Cicada Scopes will approximate Graphene per-app permissions (and what we will not claim).
@@ -84,8 +87,9 @@ See [docs/SANDBOX.md](docs/SANDBOX.md) for how Cicada Scopes will approximate Gr
 Graphene: DNS leak on VPN crash, multicast bypass block, no cross-profile tunnel leak.
 
 **Cicada:**
-- [ ] WireGuard + nftables kill switch (no leak window at boot)
-- [ ] Drop multicast unless explicitly allowed
+- [x] WireGuard + nftables kill switch (`cicada-vpn on`; off is `cicada-auth` gated)
+- [x] LLMNR/mDNS disabled; inbound multicast not accepted on the baseline nft table
+- [ ] Kill switch loaded at boot (would black-hole first Wi-Fi — stays opt-in)
 - [ ] Per-profile netns if/when profiles are real
 
 ## 8. Hardened browser
@@ -94,7 +98,8 @@ Graphene Vanadium: JIT off by default with per-site toggle, strict site isolatio
 
 **Cicada:**
 - [ ] Helium (ungoogled-Chromium) as default when packaged
-- [ ] Enterprise policy: JIT off, DRM off, WebGPU off, 3P cookies off
+- [x] Managed policy: 3P cookies session-only, WebRTC non-proxied UDP off, DoH off (use resolved), Privacy Sandbox off, HTTPS-Only, DDG search
+- [x] Recommended policy: JIT off, WebGPU off (user-overridable — daily-driver escape hatch)
 - [ ] Per-site JIT toggle is custom policy work, not inherited
 
 v0 ISO ships no browser extras unless `CICADA_FULL=1` (Chromium/Firefox fallback).
@@ -104,9 +109,10 @@ v0 ISO ships no browser extras unless `CICADA_FULL=1` (Chromium/Firefox fallback
 Graphene: Seedvault; user-controlled logs; memory-corruption crash detection from hardened_malloc/MTE.
 
 **Cicada:**
+- [x] Hash-chained signed seal log (user-local, no upload) — [docs/SEAL.md](SEAL.md)
 - [ ] restic or borg to encrypted local/cloud
 - [ ] systemd-coredump + a small hardened_malloc crash correlator
-- [ ] No automatic crash upload
+- [x] No automatic crash upload
 
 ## Hardware tiers (repeat)
 

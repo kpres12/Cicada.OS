@@ -82,7 +82,12 @@ rsync -a "${ROOT}/packages/cicada-profiles/files/" "${PROFILE}/airootfs/"
 rsync -a "${ROOT}/packages/cicada-run/files/" "${PROFILE}/airootfs/"
 rsync -a "${ROOT}/packages/cicada-install/files/" "${PROFILE}/airootfs/"
 
-# Privacy: do not expose SSH on the live image
+# Live user must get skel (dock, hypr, scopes). Overlay only ships .bash_profile.
+mkdir -p "${PROFILE}/airootfs/home/cicada"
+rsync -a "${PROFILE}/airootfs/etc/skel/" "${PROFILE}/airootfs/home/cicada/"
+
+# Releng enables mDNS; Cicada does not. Drop the archiso resolved drop-in if present.
+rm -f "${PROFILE}/airootfs/etc/systemd/resolved.conf.d/archiso.conf"
 rm -f "${PROFILE}/airootfs/etc/systemd/system/multi-user.target.wants/sshd.service"
 ln -sfn /dev/null "${PROFILE}/airootfs/etc/systemd/system/sshd.service"
 
@@ -140,7 +145,12 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-run"]="0:0:755"
   ["/usr/local/bin/cicada-install"]="0:0:755"
   ["/usr/local/bin/cicada-duress-enroll"]="0:0:755"
+  ["/usr/local/bin/cicada-seal"]="0:0:755"
+  ["/usr/local/bin/cicada-attest"]="0:0:755"
+  ["/usr/local/bin/cicada-beacon"]="0:0:755"
+  ["/usr/local/bin/cicada-auth"]="0:0:755"
   ["/usr/local/bin/chromium"]="0:0:755"
+  ["/usr/local/bin/keepassxc"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"
 )'''
@@ -176,6 +186,28 @@ for folder in ("efiboot", "syslinux", "grub"):
             path.write_text(new)
             count += 1
 print(f"==> rebranded {count} bootloader files")
+PY
+
+# IOMMU + zero-on-free on every live entry. lockdown only on the hardened clone (breaks some out-of-tree modules).
+python3 - "${PROFILE}" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+extra = " intel_iommu=on iommu.passthrough=0 init_on_alloc=1 init_on_free=1"
+count = 0
+for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
+    text = path.read_text()
+    if "archisosearchuuid=%ARCHISO_UUID%" not in text:
+        continue
+    if "intel_iommu=" in text:
+        continue
+    path.write_text(text.replace(
+        "archisosearchuuid=%ARCHISO_UUID%",
+        "archisosearchuuid=%ARCHISO_UUID%" + extra,
+        1,
+    ))
+    count += 1
+print(f"==> DMA/zero-on-free cmdline on {count} UEFI entries")
 PY
 
 # Second boot entry: linux-hardened. Default entry stays `linux` so MBA Broadcom (broadcom-wl) works.

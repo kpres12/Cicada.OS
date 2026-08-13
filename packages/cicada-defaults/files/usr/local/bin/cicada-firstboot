@@ -27,4 +27,16 @@ if command -v usbguard >/dev/null 2>&1; then
   systemctl enable --now usbguard.service 2>/dev/null || true
 fi
 
+if command -v cicada-seal >/dev/null 2>&1; then
+  cicada-seal init >/dev/null 2>&1 || true
+  cicada-seal append boot.first "{}" >/dev/null 2>&1 || true
+fi
+command -v cicada-attest >/dev/null && cicada-attest >/dev/null 2>&1 || true
+
+# Live home is overlay+skel; copy if a rebuild omitted the rsync.
+if [[ ! -d /home/cicada/.config/hypr ]] && [[ -d /etc/skel/.config ]]; then
+  rsync -a /etc/skel/ /home/cicada/ 2>/dev/null || true
+  chown -R cicada:cicada /home/cicada 2>/dev/null || true
+fi
+
 touch "${MARKER}"

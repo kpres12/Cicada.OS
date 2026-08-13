@@ -22,12 +22,15 @@ case "${1:-}" in
     need_conf
     wg-quick up wg0
     nft -f "${KS}"
+    cicada-seal append vpn.on "{}" >/dev/null 2>&1 || true
     logger -t cicada "VPN up, kill switch on"
     notify-send "Cicada VPN" "Tunnel up · kill switch on" 2>/dev/null || true
     ;;
   off)
+    cicada-auth confirm vpn.off
     nft delete table inet cicada_ks 2>/dev/null || true
     wg-quick down wg0 2>/dev/null || true
+    cicada-seal append vpn.off "{}" >/dev/null 2>&1 || true
     logger -t cicada "VPN down, kill switch off"
     notify-send "Cicada VPN" "Tunnel down · kill switch off" 2>/dev/null || true
     ;;

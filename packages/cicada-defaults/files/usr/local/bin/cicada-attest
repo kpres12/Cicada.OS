@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# TPM2 quote if a TPM exists. MBA Apple EFI usually has none — then we export
+# the seal-log device pubkey for a Graphene Pixel to pin later (attestation root).
+set -euo pipefail
+command -v cicada-seal >/dev/null && cicada-seal init >/dev/null 2>&1 || true
+
+if [[ -c /dev/tpmrm0 ]] && command -v tpm2_quote >/dev/null 2>&1; then
+  out=/var/lib/cicada/tpm-quote
+  mkdir -p "$(dirname "${out}")"
+  tpm2_createek --ek-context "${out}.ek" --key-algorithm rsa 2>/dev/null || true
+  tpm2_quote --key-context "${out}.ek" --qualification "cicada" --message "${out}.msg" --signature "${out}.sig" --pcr-list sha256:0,1,2,3,7 \
+    && cicada-seal append tpm.quote "{\"pcrs\":\"0,1,2,3,7\"}" \
+    && echo "quote wrote ${out}.msg" \
+    && exit 0
+fi
+
+echo "no TPM2 quote (expected on Apple EFI MBA)."
+echo "Pin this Ed25519 device pubkey on your Pixel (Auditor-style root):"
+echo
+cicada-seal pubkey
+cicada-seal append tpm.absent "{}" >/dev/null
+echo
+echo "Later: laptop tpm2_quote → Pixel verifies against this pin. See docs/ATTEST.md"

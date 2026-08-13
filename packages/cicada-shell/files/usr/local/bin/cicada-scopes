@@ -12,18 +12,18 @@ APPS=(
   "org.cicada.kitty|KITTY|terminal"
 )
 
-DEFAULTS='NETWORK=deny
-FILES=portal
-CAMERA=deny
-MIC=deny
-USB=deny
-SENSORS=deny'
+# Browser/terminal need the net; secrets default-deny. Camera/mic stay off until toggled.
+defaults_for() {
+  local net=allow
+  [[ "$1" == "org.keepassxc.KeePassXC" ]] && net=deny
+  printf 'NETWORK=%s\nFILES=portal\nCAMERA=deny\nMIC=deny\nUSB=deny\nSENSORS=deny\n' "${net}"
+}
 
 ensure_app() {
   local id="$1"
   local f="${STORE}/${id}.env"
   if [[ ! -f "${f}" ]]; then
-    printf '%s\n' "${DEFAULTS}" >"${f}"
+    defaults_for "${id}" >"${f}"
   fi
 }
 

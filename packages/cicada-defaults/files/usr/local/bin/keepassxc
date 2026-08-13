@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# KeePassXC through cicada-run so NETWORK=deny is the default (no phish-phone-home).
+set -euo pipefail
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.keepassxc.KeePassXC -- /usr/bin/keepassxc "$@"
+fi
+exec /usr/bin/keepassxc "$@"

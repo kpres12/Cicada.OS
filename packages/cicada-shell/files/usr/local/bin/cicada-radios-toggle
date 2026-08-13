@@ -5,9 +5,11 @@ wifi_soft=$(rfkill list wifi | grep -c "Soft blocked: yes" || true)
 if [[ "${wifi_soft}" -gt 0 ]]; then
   rfkill unblock wifi
   rfkill unblock bluetooth
+  cicada-seal append rf.unblock "{}" >/dev/null 2>&1 || true
   notify-send "Cicada RF" "Radios UNBLOCKED" 2>/dev/null || echo "Radios UNBLOCKED"
 else
   rfkill block wifi
   rfkill block bluetooth
+  cicada-seal append rf.block "{}" >/dev/null 2>&1 || true
   notify-send "Cicada RF" "Radios BLOCKED" 2>/dev/null || echo "Radios BLOCKED"
 fi

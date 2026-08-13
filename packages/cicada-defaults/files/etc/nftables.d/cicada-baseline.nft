@@ -5,11 +5,11 @@ flush ruleset
 table inet cicada {
   chain input {
     type filter hook input priority filter; policy drop;
+    ct state invalid drop
     ct state established,related accept
     iif "lo" accept
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept
-    # SSH closed by default on laptop images
   }
 
   chain forward {

@@ -14,7 +14,7 @@
 - [x] ISO boots on Intel MBA (EFI)
 - [x] Firewall + rfkill defaults live
 - [x] OT/Eva shell readable as Cicada in first 5 seconds
-- [ ] Calamares or scripted install → external SSD
+- [ ] Calamares or scripted install → external SSD (`cicada-install` exists; stops before bootloader)
 - [ ] Broadcom Wi‑Fi documented/working (NM picker + firmware + broadcom-wl on default `linux`)
 
 ## Phase 2 — Daily-driver alpha (2–4 weeks)
@@ -23,12 +23,14 @@
 - [x] WireGuard + nftables kill switch (opt-in `cicada-vpn`; off until wg0.conf exists)
 - [x] `linux-hardened` extra boot entry (default `linux` for MBA `broadcom-wl`). `hardened_malloc` is AUR — not on ISO; see `docs/aur-audit.md`
 - [x] USBGuard lock-screen policy (`cicada-lock`)
-- [x] Auto-reboot-when-locked timer (6h default)
+- [x] Auto-reboot-when-locked timer (**30 min** default — AFU window)
 - [x] Update channel sketch (`channel/` lockfile from first ISO; blob repo later)
 - [x] Telemetry cut: NM connectivity off, Chromium managed policy, `docs/network-calls.md`
+- [x] Seal log + `cicada-auth` gates; Pixel attest stub; Meshtastic beacon stub (`docs/SEAL.md`)
 
 ## Phase 3 — Profiles + sandbox (largest engineering)
 
+- [x] `cicada-run` wraps Helium + KeePassXC (bwrap net deny when scoped)
 - [ ] `cicada-profile`: Work / Personal / Burner
 - [ ] Separate home + clipboard + network policy
 - [ ] Per-app netns kill + Flatpak/portal scopes

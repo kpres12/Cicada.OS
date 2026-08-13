@@ -40,12 +40,14 @@ fi
 
 if nmcli device wifi connect "${ssid}" >/dev/null 2>&1; then
   notify "Connected to ${ssid}"
+  cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
   exit 0
 fi
 
 pass="$(zenity --password --title="Passphrase for ${ssid}")" || exit 0
 if nmcli device wifi connect "${ssid}" password "${pass}"; then
   notify "Connected to ${ssid}"
+  cicada-seal append wifi.connect "{\"ssid\":\"${ssid}\"}" >/dev/null 2>&1 || true
 else
   zenity --error --title="Cicada Wi-Fi" --width=320 --text="Could not connect to ${ssid}."
   exit 1

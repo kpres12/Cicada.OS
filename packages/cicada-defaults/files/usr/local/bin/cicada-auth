@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Heli.OS-shaped gate: confirm + signed seal for high-impact actions only.
+# Wi-Fi, radios, lock, and the duress beacon are NOT gated (daily-driver / coercion speed).
+set -euo pipefail
+
+usage() {
+  echo "usage: cicada-auth confirm ACTION" >&2
+  echo "gated: install  vpn.off  duress.enroll" >&2
+  exit 1
+}
+
+gated() {
+  case "$1" in
+    install|vpn.off|duress.enroll) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+confirm() {
+  local action="$1"
+  gated "${action}" || { echo "cicada-auth: not gated: ${action}" >&2; exit 1; }
+
+  local ok=0
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    if zenity --question --title="Cicada authorize" \
+      --text="Allow ${action}?\nThis is signed into the seal log."; then
+      ok=1
+    fi
+  elif [[ -t 0 ]]; then
+    read -r -p "Authorize ${action}? type ALLOW: " ans
+    [[ "${ans}" == "ALLOW" ]] && ok=1
+  else
+    echo "cicada-auth: no UI and not a TTY — refuse ${action}" >&2
+    cicada-seal append auth.deny "{\"action\":\"${action}\",\"reason\":\"no-ui\"}" >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  if [[ "${ok}" -eq 1 ]]; then
+    cicada-seal append auth.allow "{\"action\":\"${action}\"}" >/dev/null 2>&1 || true
+    exit 0
+  fi
+  cicada-seal append auth.deny "{\"action\":\"${action}\"}" >/dev/null 2>&1 || true
+  exit 1
+}
+
+[[ "${1:-}" == "confirm" ]] || usage
+[[ -n "${2:-}" ]] || usage
+confirm "$2"

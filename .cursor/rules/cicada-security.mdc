@@ -17,6 +17,6 @@ Every hardening feature must **degrade gracefully**. If it breaks browser, VPN, 
 
 **Tier 3 — do not build:** hardware attestation, MTE, kernel per-app sandbox matching Android.
 
-## Tests
+**Auto-reboot-to-rest must fire before an adversary can inhibit it** (GrayKey Preserve / Inseyets Safeguard). Default 30 minutes locked, `systemctl reboot --force`. A 6–18h AFU window is a known fail against that class. USB inserts are blocked for the whole lock. This is still userspace — not Titan.
 
-Tier 1 items need tests in `docs/test-results.md`, not "it should work." Kill-switch test is packets on the physical NIC, not a disconnected icon.
+Do not claim Cellebrite-matrix “no access” on MBA hardware.

@@ -11,16 +11,21 @@
 
 - Network / telemetry abuse reduction
 - Drive-by browser compromise containment (sandbox + profiles)
-- Disk encryption at rest (LUKS)
-- Casual physical access (lock screen, encrypted volumes)
+- Disk encryption at rest (LUKS2 Argon2id)
+- Casual physical access (lock screen, USB blocked while locked, reboot-to-rest)
 - User error (radios on, leaky browser defaults)
+- DMA reduction (IOMMU on) and AFU window reduction (fast reboot-to-rest)
 
 ## Out of scope (for MBA-class hardware)
 
+- Cellebrite/GrayKey-class extraction resistance equivalent to current GrapheneOS on Pixel+Titan
 - Evil maid with firmware implant (no trustworthy measured boot on Apple EFI)
-- PIN brute-force resistance equivalent to Titan M2
+- PIN brute-force resistance equivalent to Titan M2 (1/day after 140)
+- Cold-boot with TME/SME (Broadwell has neither)
 - Intel ME neutralization guarantees
 - Nation-state firmware interdiction
+
+See [docs/ATTACKS.md](ATTACKS.md) for the forensic/laptop mapping.
 
 ## Adversaries
 

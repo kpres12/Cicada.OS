@@ -53,4 +53,4 @@ Scaffold / pre-alpha. Not a daily driver yet. See [docs/ROADMAP.md](docs/ROADMAP
 
 ## Threat model
 
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/GRAPHENE_PARITY.md](docs/GRAPHENE_PARITY.md), [docs/SANDBOX.md](docs/SANDBOX.md), and [docs/DESIGN.md](docs/DESIGN.md).
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/ATTACKS.md](docs/ATTACKS.md), [docs/GRAPHENE_PARITY.md](docs/GRAPHENE_PARITY.md), [docs/SANDBOX.md](docs/SANDBOX.md), and [docs/DESIGN.md](docs/DESIGN.md).

@@ -13,7 +13,8 @@ Hardware under test: Intel MacBook Air 2015–2017 live USB unless noted.
 | USB insert while hyprlock | pending | | InsertedDevicePolicy=block |
 | `cicada-vpn on` without wg0.conf fails closed, Wi-Fi still works | pending | | |
 | Kill switch: `cicada-vpn on` then `ip link del wg0`; tcpdump on wlan0 shows no leak | pending | | needs a real endpoint |
-| Locked 6h reboot-to-rest | pending | | timer 1 min; default 21600s. Shorten `CICADA_LOCK_REBOOT_SEC` to test |
+| Locked 30 min reboot-to-rest | pending | | timer 1 min; default 1800s. Set `CICADA_LOCK_REBOOT_SEC=60` to test |
+| `cicada-seal verify` after boot/lock/wifi events | pending | | next ISO; `tests/seal.sh` passes on the builder |
 | linux-hardened boot entry | pending | | Option 2 in systemd-boot. Default stays `linux` for `broadcom-wl` |
 | LUKS2 pull-the-drive | n/a live | | install-time |
 | TPM2 fail-to-passphrase | n/a live | | MBA Apple EFI: no Cicada TPM story |

@@ -80,7 +80,7 @@ Graphene's trick is the **settings page**, not the kernel. Cicada Scopes is that
 - Deny looks like "network down", not a crash — wrappers return ENETUNREACH / empty portal
 - Changing a scope restarts that sandbox only
 
-v0 ships the panel and the store (`~/.local/share/cicada/scopes/`). Enforcement lands when `cicada-run` wraps the first apps (Helium, KeePassXC).
+v0 ships the panel, the store (`~/.local/share/cicada/scopes/`), and enforcement on Helium (`chromium` wrapper) and KeePassXC. Helium defaults `NETWORK=allow` so the browser still works; camera/mic stay deny. KeePassXC defaults `NETWORK=deny`.
 
 ## What we will not do
 

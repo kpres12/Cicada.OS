@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Meshtastic duress beacon. Sends the seal-log tip. No radio → exit 2 (not a fake success).
+set -euo pipefail
+command -v cicada-seal >/dev/null && cicada-seal init >/dev/null 2>&1 || true
+tip="$(cicada-seal tip 2>/dev/null || echo none)"
+msg="CICADA DURESS ${tip}"
+
+if command -v meshtastic >/dev/null 2>&1; then
+  meshtastic --sendtext "${msg}"
+  cicada-seal append duress.beacon "{\"via\":\"meshtastic\"}" >/dev/null
+  echo "beacon sent"
+  exit 0
+fi
+
+for dev in /dev/ttyUSB0 /dev/ttyACM0 /dev/ttyUSB1; do
+  if [[ -c "${dev}" ]] && command -v python3 >/dev/null; then
+    echo "meshtastic CLI missing; device ${dev} present. install meshtastic after AUR audit."
+    cicada-seal append duress.beacon "{\"via\":\"none\",\"dev\":\"${dev}\"}" >/dev/null
+    exit 2
+  fi
+done
+
+echo "no Meshtastic radio"
+cicada-seal append duress.beacon "{\"via\":\"none\"}" >/dev/null
+exit 2

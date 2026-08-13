@@ -3,4 +3,5 @@ Description=Cicada reboot-to-rest check (locked session)
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/cicada/defaults.env
 ExecStart=/usr/local/bin/cicada-locked-reboot

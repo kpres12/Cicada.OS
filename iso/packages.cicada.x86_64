@@ -69,6 +69,7 @@ nm-connection-editor
 network-manager-applet
 
 # --- privacy / security baseline ---
+python
 nftables
 usbguard
 apparmor

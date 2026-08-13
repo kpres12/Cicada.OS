@@ -14,7 +14,8 @@ Anything not on this list is a bug. NetworkManager connectivity checks are disab
 Explicitly disabled:
 
 - NetworkManager connectivity HTTP probe (`connectivity.enabled=false`)
-- Chromium metrics / sync / url-keyed anonymized data (managed policy)
+- Chromium metrics / sync / url-keyed anonymized data / Google DoH (managed policy)
+- LLMNR and mDNS (`systemd-resolved` Cicada drop-in)
 - cloud-init (stripped from releng)
 - sshd (masked)
 - inbound unsolicited (nftables `cicada` table policy drop)

@@ -103,6 +103,7 @@ lsblk "${TARGET}"
 echo
 read -r -p "Type the device path to continue: " typed
 [[ "${typed}" == "${TARGET}" ]] || die "aborted"
+command -v cicada-auth >/dev/null && cicada-auth confirm install
 
 read -r -s -p "LUKS passphrase: " p1; echo
 read -r -s -p "Again: " p2; echo
@@ -132,7 +133,9 @@ fi
 [[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
 
 mkfs.fat -F32 -n CICADAESP "${ESP}"
-printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 --batch-mode "${ROOTP}" -
+printf '%s' "${p1}" | cryptsetup luksFormat --type luks2 \
+  --pbkdf argon2id --pbkdf-memory 262144 --pbkdf-parallel 4 --iter-time 4000 \
+  --batch-mode "${ROOTP}" -
 printf '%s' "${p1}" | cryptsetup open "${ROOTP}" cicada -
 mkfs.btrfs -L CICADA /dev/mapper/cicada
 mount /dev/mapper/cicada /mnt

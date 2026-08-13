@@ -11,4 +11,8 @@ Super+Space           launcher
 Super+L               lock
 Super+/               this sheet
 
+cicada-seal verify    tamper-evident log
+cicada-attest         Pixel pin / TPM quote
+cicada-beacon         Meshtastic duress (no radio → exit 2)
+
 Windows tile. You drive the machine by clicking.
