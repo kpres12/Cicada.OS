@@ -1,0 +1,22 @@
+---
+description: Cicada is a full desktop shell; Hyprland is the engine underneath
+alwaysApply: true
+---
+
+# Desktop shell, not a Hyprland rice
+
+Do not pattern-match "Hyprland" to r/unixporn (keyboard-only, no dock, no icons, mod+key or nothing). That is the community default. Cicada is the opposite.
+
+**Product:** GNOME/macOS-level *discoverability* (dock, desktop icons, click-to-Wi-Fi, notification center), with Hyprland **tiling as the default window layout**. Mouse launches and finds things. Keyboard tiling is there if you want it (go ham). Do not float every window. Do not make Super+key the only way to open an app.
+
+Must exist and be clickable with a mouse, no hidden keybinds required:
+
+- Wallpaper (hyprpaper and/or pcmanfm-qt desktop)
+- Persistent left dock with pinned + running app icons (`nwg-dock-hyprland`)
+- Desktop icons + drag-and-drop (`pcmanfm-qt --desktop`)
+- Real file manager windows (Thunar and/or pcmanfm-qt)
+- Notification center (`swaync`), not toast-only
+- One-click Wi-Fi, browser, files, settings
+- Windows **tile** by default. Super+V floats one window. Launching is click, not a keybind exam.
+
+Never ship a black canvas + terminals and call it a desktop. Never tell the user to "just use Super+Enter." Change skel/overlay and rebuild the ISO. Official repos only.

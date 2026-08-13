@@ -14,7 +14,8 @@ window#waybar {
 
 #custom-term,
 #custom-web,
-#custom-files {
+#custom-files,
+#custom-swaync {
   padding: 0 10px;
   color: #ffb000;
   border-left: 1px solid #1a1f24;

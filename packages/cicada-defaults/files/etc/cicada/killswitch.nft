@@ -1,0 +1,21 @@
+#!/usr/sbin/nft -f
+# Loaded only by `cicada-vpn on`. Drops traffic that is not loopback, wg0, or WG handshake.
+table inet cicada_ks {
+  chain output {
+    type filter hook output priority 100; policy drop;
+    oif "lo" accept
+    oifname "wg0" accept
+    udp dport 51820 accept
+    ct state established,related accept
+  }
+  chain input {
+    type filter hook input priority 100; policy drop;
+    iif "lo" accept
+    iifname "wg0" accept
+    udp sport 51820 accept
+    ct state established,related accept
+  }
+  chain forward {
+    type filter hook forward priority 100; policy drop;
+  }
+}

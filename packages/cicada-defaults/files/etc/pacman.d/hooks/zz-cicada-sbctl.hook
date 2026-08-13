@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = File
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/systemd/boot/efi/*.efi
+Target = usr/lib/fwupd/efi/*.efi
+
+[Action]
+Description = Cicada: re-sign EFI binaries (sbctl)
+When = PostTransaction
+Exec = /usr/local/bin/cicada-sbctl-sign

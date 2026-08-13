@@ -1,0 +1,32 @@
+---
+description: Cicada.OS mission, Arch base, and anti-goals
+alwaysApply: true
+---
+
+# Cicada.OS
+
+Codename: **Cicada.OS**. Repo: `/Users/kpres12/Downloads/Cicada.OS`.
+GrapheneOS philosophy, Hyprland execution. Arch is the engine. Cicada is the product layer.
+
+This is a **daily driver**, not a rice or a research OS. Dev tools, browser, terminal, files, Wi-Fi must work without a fight.
+
+## Base (do not reopen)
+
+- Arch Linux, official repos only for security-critical packages (kernel, crypto, boot).
+- Hyprland from Arch extra — pin/package versions, never `-git` on the ISO.
+- systemd, LUKS2, greetd later. **No NixOS rebase. No BlueBuild/secureblue rebase.**
+- AUR is untrusted. Do not add AUR packages. If one is ever required, stop, read the PKGBUILD, and log it in `docs/aur-audit.md`.
+- Reproducibility stand-in: `channel/` lockfiles (`cicada-stable`), not Nix.
+
+## Hardware honesty
+
+Intel MBA 2015–2017 is the prototype. Do not claim Graphene-class boot/PIN/attestation on Apple EFI. That is Tier 3 / out of scope.
+
+## Anti-goals
+
+- Do not reinvent Vanadium, Helium, or `hardened_malloc`.
+- Do not let blur/animation/transparency add input lag.
+- Do not ship a security control a normal day of work will force the user to disable.
+- Fail **closed** on encryption/auth. Never fail open.
+- Do not oversell Flatpak/Firejail as Android-class sandboxing.
+- Do not implement Auditor-class attestation or MTE on this hardware.

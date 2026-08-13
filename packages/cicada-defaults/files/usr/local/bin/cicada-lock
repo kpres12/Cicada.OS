@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# MAGI-03 lock: block new USB while locked, restore policy on unlock.
+set -euo pipefail
+usbguard set-parameter InsertedDevicePolicy block >/dev/null 2>&1 || true
+hyprlock
+usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true

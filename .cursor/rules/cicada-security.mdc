@@ -1,0 +1,22 @@
+---
+description: Cicada.OS security tiers and graceful-degrade rule
+alwaysApply: true
+---
+
+# Security order
+
+Every hardening feature must **degrade gracefully**. If it breaks browser, VPN, files, or dev tools, it needs an explicit opt-out — never a silent failure that makes the user nuke the whole subsystem.
+
+## Ship order (do not skip ahead)
+
+**Now (desktop):** left dock, Waybar with glanceable RF state, Wofi, mako, Thunar, one-click Wi-Fi, wallpaper, Hyprland 0.56-valid config. Radios stay rfkill-blocked at boot; enabling them is a deliberate click.
+
+**Tier 1 (before "daily driver ready"):** LUKS2 + TPM2-with-passphrase-fallback; sbctl Secure Boot + pacman re-sign hook; WireGuard nftables kill switch (tcpdump-tested); `linux-hardened` + `hardened_malloc` actually preloaded; duress LUKS slot with no timing tell; auto-reboot-when-locked; `docs/network-calls.md` telemetry audit.
+
+**Tier 2:** USBGuard while locked; Helium (AUR review required) + JIT-off policy; Flatpak portals with honest docs; Firejail/netns for a short untrusted-app list; restic/borg with a tested restore.
+
+**Tier 3 — do not build:** hardware attestation, MTE, kernel per-app sandbox matching Android.
+
+## Tests
+
+Tier 1 items need tests in `docs/test-results.md`, not "it should work." Kill-switch test is packets on the physical NIC, not a disconnected icon.

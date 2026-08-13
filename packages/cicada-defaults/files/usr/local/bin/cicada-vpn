@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# WireGuard up/down with nftables kill switch. Off by default — no endpoint means no tunnel.
+# Kill switch is NOT loaded at boot; that would black-hole Wi-Fi setup.
+set -euo pipefail
+CONF=/etc/wireguard/wg0.conf
+KS=/etc/cicada/killswitch.nft
+
+usage() {
+  echo "usage: cicada-vpn on|off|status"
+  echo "copy /etc/wireguard/wg0.conf.example to wg0.conf first"
+}
+
+need_conf() {
+  if [[ ! -f "${CONF}" ]] || ! grep -q '^PrivateKey' "${CONF}"; then
+    echo "cicada-vpn: no real wg0.conf (only the example). Wi-Fi still works; tunnel is opt-in." >&2
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+  on)
+    need_conf
+    wg-quick up wg0
+    nft -f "${KS}"
+    logger -t cicada "VPN up, kill switch on"
+    notify-send "Cicada VPN" "Tunnel up · kill switch on" 2>/dev/null || true
+    ;;
+  off)
+    nft delete table inet cicada_ks 2>/dev/null || true
+    wg-quick down wg0 2>/dev/null || true
+    logger -t cicada "VPN down, kill switch off"
+    notify-send "Cicada VPN" "Tunnel down · kill switch off" 2>/dev/null || true
+    ;;
+  status)
+    if ip link show wg0 >/dev/null 2>&1; then
+      echo "vpn: up"
+    else
+      echo "vpn: down"
+    fi
+    if nft list table inet cicada_ks >/dev/null 2>&1; then
+      echo "killswitch: on"
+    else
+      echo "killswitch: off"
+    fi
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

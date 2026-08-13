@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Chromium wrapper. Loads Graphene's hardened_malloc when present (AUR — not on the ISO).
+# Official-repo ISO uses stock glibc malloc until docs/aur-audit.md clears the PKGBUILD.
+set -euo pipefail
+HM=""
+for cand in /usr/lib/libhardened_malloc.so /usr/lib/hardened_malloc/libhardened_malloc.so; do
+  if [[ -f "${cand}" ]]; then
+    HM="${cand}"
+    break
+  fi
+done
+if [[ -n "${HM}" ]]; then
+  export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
+fi
+exec /usr/bin/chromium "$@"

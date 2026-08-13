@@ -12,20 +12,20 @@
 ## Phase 1 — Bootable v0 (1–2 weeks focused)
 
 - [x] ISO boots on Intel MBA (EFI)
+- [x] Firewall + rfkill defaults live
+- [x] OT/Eva shell readable as Cicada in first 5 seconds
 - [ ] Calamares or scripted install → external SSD
-- [ ] Broadcom Wi‑Fi documented/workdiring
-- [ ] Firewall + rfkill defaults live
-- [ ] OT/Eva shell readable as Cicada in first 5 seconds
+- [ ] Broadcom Wi‑Fi documented/working (NM picker + firmware + broadcom-wl on default `linux`)
 
 ## Phase 2 — Daily-driver alpha (2–4 weeks)
 
 - [ ] Helium as default browser + Vanadium-like enterprise policy
-- [ ] WireGuard + nftables kill switch (multicast drop)
-- [ ] `hardened_malloc` + `linux-hardened` + `lockdown=confidentiality`
-- [ ] USBGuard lock-screen policy
-- [ ] Auto-reboot-when-locked timer
+- [x] WireGuard + nftables kill switch (opt-in `cicada-vpn`; off until wg0.conf exists)
+- [x] `linux-hardened` extra boot entry (default `linux` for MBA `broadcom-wl`). `hardened_malloc` is AUR — not on ISO; see `docs/aur-audit.md`
+- [x] USBGuard lock-screen policy (`cicada-lock`)
+- [x] Auto-reboot-when-locked timer (6h default)
 - [x] Update channel sketch (`channel/` lockfile from first ISO; blob repo later)
-- [ ] First-boot wizard (radios, VPN, profile create)
+- [x] Telemetry cut: NM connectivity off, Chromium managed policy, `docs/network-calls.md`
 
 ## Phase 3 — Profiles + sandbox (largest engineering)
 

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Re-sign EFI payloads after kernel/bootloader updates. No-op if sbctl is not enrolled.
+set -euo pipefail
+if ! command -v sbctl >/dev/null 2>&1; then
+  exit 0
+fi
+if ! sbctl status 2>/dev/null | grep -qi 'installed:.*yes'; then
+  exit 0
+fi
+exec sbctl sign-all -g

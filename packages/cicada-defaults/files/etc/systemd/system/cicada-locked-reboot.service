@@ -1,0 +1,6 @@
+[Unit]
+Description=Cicada reboot-to-rest check (locked session)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-locked-reboot

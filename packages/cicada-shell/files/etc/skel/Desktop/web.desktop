@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Web
+Exec=chromium
+Icon=web-browser
+Terminal=false

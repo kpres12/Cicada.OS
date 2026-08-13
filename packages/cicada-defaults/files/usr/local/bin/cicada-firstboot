@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# First-boot banner / hooks. Expand into a TUI wizard later.
 MARKER=/var/lib/cicada/firstboot-done
 mkdir -p /var/lib/cicada
 if [[ -f "${MARKER}" ]]; then
@@ -11,11 +10,21 @@ cat <<'EOF'
 ╔══════════════════════════════════════════════╗
 ║             C I C A D A . O S                ║
 ║         nimbus // channel:dev                ║
-║  radios soft-blocked · firewall baseline on  ║
-║  profiles: run `cicada-profile`              ║
+║  radios blocked · inbound deny · usbguard    ║
+║  wifi: dock icon or Super+N                  ║
 ╚══════════════════════════════════════════════╝
 EOF
 
 systemctl enable --now nftables.service 2>/dev/null || true
 systemctl enable --now cicada-radios-off.service 2>/dev/null || true
+systemctl enable --now cicada-locked-reboot.timer 2>/dev/null || true
+systemctl enable --now apparmor.service 2>/dev/null || true
+
+if command -v usbguard >/dev/null 2>&1; then
+  if [[ ! -s /etc/usbguard/rules.conf ]] || grep -q '^#' /etc/usbguard/rules.conf; then
+    usbguard generate-policy > /etc/usbguard/rules.conf 2>/dev/null || true
+  fi
+  systemctl enable --now usbguard.service 2>/dev/null || true
+fi
+
 touch "${MARKER}"

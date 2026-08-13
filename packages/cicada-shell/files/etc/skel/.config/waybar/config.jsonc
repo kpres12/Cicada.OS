@@ -5,7 +5,7 @@
   "spacing": 0,
   "modules-left": ["custom/cicada", "custom/term", "custom/web", "custom/files", "hyprland/workspaces", "custom/profile"],
   "modules-center": ["hyprland/window"],
-  "modules-right": ["custom/scopes", "custom/rf", "network", "pulseaudio", "tray", "battery", "clock"],
+  "modules-right": ["custom/swaync", "custom/scopes", "custom/rf", "network", "pulseaudio", "tray", "battery", "clock"],
   "custom/cicada": {
     "format": "CICADA // MAGI-01",
     "tooltip": "click: launcher",
@@ -35,6 +35,12 @@
     "format": "USR {}",
     "interval": 10,
     "tooltip": false
+  },
+  "custom/swaync": {
+    "format": "MSG",
+    "tooltip": "notification center",
+    "interval": "once",
+    "on-click": "swaync-client -t -sw"
   },
   "custom/scopes": {
     "exec": "test -d \"$HOME/.local/share/cicada/scopes\" && echo SCOPES || echo SCOPES INIT",

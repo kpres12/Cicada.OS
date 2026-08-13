@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# If hyprlock has been running longer than CICADA_LOCK_REBOOT_SEC (default 6h), reboot to rest.
+# Unlocked sessions reset the timer. Does not reboot a machine that is in use.
+set -euo pipefail
+MAX="${CICADA_LOCK_REBOOT_SEC:-21600}"
+STAMP=/run/cicada/locked-since
+mkdir -p /run/cicada
+
+if pgrep -x hyprlock >/dev/null 2>&1; then
+  if [[ ! -f "${STAMP}" ]]; then
+    date +%s > "${STAMP}"
+  fi
+  start="$(cat "${STAMP}")"
+  now="$(date +%s)"
+  if (( now - start >= MAX )); then
+    logger -t cicada "locked ${MAX}s — rebooting to rest (LUKS)"
+    systemctl reboot
+  fi
+else
+  rm -f "${STAMP}"
+fi

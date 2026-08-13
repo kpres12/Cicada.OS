@@ -97,6 +97,11 @@ rm -f "${PROFILE}/airootfs/etc/systemd/system/dbus-org.freedesktop.network1.serv
 rm -f "${PROFILE}/airootfs/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
 rm -f "${PROFILE}/airootfs/etc/systemd/system/sockets.target.wants/systemd-networkd.socket"
 ln -sfn /usr/lib/systemd/system/NetworkManager.service "${wants}/NetworkManager.service"
+ln -sfn /usr/lib/systemd/system/usbguard.service "${wants}/usbguard.service"
+ln -sfn /usr/lib/systemd/system/apparmor.service "${wants}/apparmor.service"
+mkdir -p "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants"
+ln -sfn /etc/systemd/system/cicada-locked-reboot.timer \
+  "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants/cicada-locked-reboot.timer"
 
 # Brand the ISO metadata without rewriting releng bootloader machinery
 python3 - "${PROFILE}/profiledef.sh" <<'PY'
@@ -126,6 +131,11 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-profile"]="0:0:755"
   ["/usr/local/bin/cicada-scopes"]="0:0:755"
   ["/usr/local/bin/cicada-wifi"]="0:0:755"
+  ["/usr/local/bin/cicada-lock"]="0:0:755"
+  ["/usr/local/bin/cicada-vpn"]="0:0:755"
+  ["/usr/local/bin/cicada-locked-reboot"]="0:0:755"
+  ["/usr/local/bin/cicada-sbctl-sign"]="0:0:755"
+  ["/usr/local/bin/chromium"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/home/cicada"]="1000:1000:750"
 )'''
@@ -161,6 +171,31 @@ for folder in ("efiboot", "syslinux", "grub"):
             path.write_text(new)
             count += 1
 print(f"==> rebranded {count} bootloader files")
+PY
+
+# Second boot entry: linux-hardened. Default entry stays `linux` so MBA Broadcom (broadcom-wl) works.
+python3 - "${PROFILE}" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+entries = root / "efiboot/loader/entries"
+src = next(entries.glob("01-*.conf"), None) if entries.exists() else None
+if src is None:
+    print("==> no UEFI linux entry to clone for hardened kernel")
+else:
+    text = src.read_text()
+    text = text.replace("vmlinuz-linux\n", "vmlinuz-linux-hardened\n")
+    text = text.replace("initramfs-linux.img", "initramfs-linux-hardened.img")
+    text = text.replace("sort-key 01", "sort-key 03")
+    text = text.replace("Cicada.OS live", "Cicada.OS live (linux-hardened)")
+    if "lockdown=" not in text:
+        text = text.replace(
+            "archisosearchuuid=%ARCHISO_UUID%",
+            "archisosearchuuid=%ARCHISO_UUID% lockdown=confidentiality",
+        )
+    dest = entries / "03-cicada-hardened.conf"
+    dest.write_text(text)
+    print(f"==> hardened boot entry {dest.name}")
 PY
 
 chmod 755 "${PROFILE}/airootfs/usr/local/bin/"* 2>/dev/null || true

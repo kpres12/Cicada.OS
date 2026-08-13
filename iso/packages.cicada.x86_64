@@ -46,20 +46,23 @@ noto-fonts-emoji
 chromium
 xdg-utils
 
-# --- GUI files (click / drag / drop, not a desktop-icon metaphor) ---
+# --- desktop shell (mouse-first; Hyprland is the engine, not the UX) ---
 thunar
 thunar-volman
 thunar-archive-plugin
 file-roller
+layer-shell-qt
+pcmanfm-qt
 gvfs
 tumbler
 ffmpegthumbnailer
 xdg-user-dirs
 papirus-icon-theme
 gnome-themes-extra
-mako
+swaync
 pavucontrol
 nwg-dock-hyprland
+nwg-look
 zenity
 networkmanager
 nm-connection-editor
@@ -78,3 +81,10 @@ wireguard-tools
 macchanger
 libnotify
 lynis
+linux-hardened
+sbctl
+tpm2-tools
+hypridle
+qt6ct
+flatpak
+restic

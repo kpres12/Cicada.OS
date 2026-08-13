@@ -1,12 +1,14 @@
-CICADA.OS  //  MAGI KEYS
+CICADA.OS  //  DESKTOP
 
-click the dock        terminal / files / web / wifi
-click NET or Wi-Fi    pick a network (unblocks radio)
-Super+N               same Wi-Fi picker
+click the dock        terminal / files / web / wifi / look
+click desktop icons   same apps
+click NET or Wi-Fi    pick a network
+click MSG             notification center
+Super+V               float this window (optional)
+Super+J               togglesplit
 Super+Enter           terminal
 Super+Space           launcher
-Super+E               files
-Super+W               browser
-Super+Q               close window
 Super+L               lock
 Super+/               this sheet
+
+Windows tile. You drive the machine by clicking.

@@ -1,0 +1,14 @@
+{
+  "MetricsReportingEnabled": false,
+  "CloudReportingEnabled": false,
+  "SafeBrowsingExtendedReportingEnabled": false,
+  "ChromeCleanupEnabled": false,
+  "BackgroundModeEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "UrlKeyedAnonymizedDataCollectionEnabled": false,
+  "DefaultSearchProviderEnabled": true,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "PasswordManagerEnabled": false
+}
