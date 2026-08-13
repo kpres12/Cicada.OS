@@ -36,7 +36,7 @@
   "DefaultWebBluetoothGuardSetting": 2,
   "DefaultWebUsbGuardSetting": 2,
   "DefaultSerialGuardSetting": 2,
-  "DnsOverHttpsMode": "secure",
+  "DnsOverHttpsMode": "automatic",
   "QuicAllowed": false,
   "HttpsOnlyMode": "force_enabled",
   "SSLErrorOverrideAllowed": false,

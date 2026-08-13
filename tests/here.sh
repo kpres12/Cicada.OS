@@ -190,7 +190,9 @@ import json, sys, pathlib
 d = json.loads(pathlib.Path("${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/managed/cicada.json").read_text())
 # ECH is why DoH is worth having: without it TLS leaks the hostname in
 # cleartext SNI immediately after the encrypted lookup hid it.
-sys.exit(0 if d.get("DnsOverHttpsMode") == "secure"
+# "automatic" not "secure": secure has no fallback, so a blocked DoH endpoint
+# means the browser resolves nothing at all.
+sys.exit(0 if d.get("DnsOverHttpsMode") == "automatic"
          and "quad9" in d.get("DnsOverHttpsTemplates", "")
          and d.get("EncryptedClientHelloEnabled") is True else 1)
 PY
@@ -200,7 +202,7 @@ test -x "${pt}" || die "no captive-portal escape: strict DNS would brick hotel/c
 grep -q '/run/systemd/resolved.conf.d' "${pt}" || die "portal drop-in must live in /run so it cannot survive a reboot"
 grep -q 'setsid --fork' "${pt}" || die "portal mode does not self-revert"
 grep -qE 'mins <= 60' "${pt}" || die "portal mode has no upper bound"
-say "DNS: Quad9 DoT system-wide, strict DoH in browser, bounded portal escape"
+say "DNS: Quad9 DoT + DoH, degrades DoH->DoT->plain, bounded portal escape"
 python3 - <<PY
 import json, pathlib
 p = pathlib.Path("${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/managed/cicada.json")
@@ -210,7 +212,7 @@ assert d.get("CloudReportingEnabled") is False
 assert d.get("SyncDisabled") is True
 # Was "off" (plaintext to whatever the network hands you). Now strict DoH to
 # Quad9 — the campus resolver no longer sees the domains you visit.
-assert d.get("DnsOverHttpsMode") == "secure"
+assert d.get("DnsOverHttpsMode") == "automatic"
 print("  OK  chromium managed telemetry/sync/DoH")
 PY
 grep -q 'kernel.kptr_restrict = 2' "${ROOT}/packages/cicada-defaults/files/etc/sysctl.d/99-cicada.conf" || die "kptr_restrict"
@@ -501,10 +503,21 @@ echo "==> time is authenticated"
 ch="${ROOT}/packages/cicada-defaults/files/etc/chrony.conf"
 grep -qc 'nts' "${ch}" >/dev/null && [[ "$(grep -c 'iburst nts' "${ch}")" -ge 3 ]] \
   || die "fewer than 3 NTS sources: one operator could move the clock alone"
-grep -q '^authselectmode require' "${ch}" || die "chrony would fall back to unauthenticated time"
+# NOT `require`: NTS-KE (port 4460) is blocked on many campus/hotel/censored
+# networks, and requiring it there leaves the machine with no time at all —
+# which breaks every HTTPS site, pacman, and Tor. Prefer authenticated, accept
+# unauthenticated rather than none, and make the difference visible.
+grep -q '^authselectmode prefer' "${ch}" || die "chrony must prefer (not require) NTS, or a blocked port bricks the machine"
+grep -qE '^pool .*ntp' "${ch}" || die "no unauthenticated fallback: NTS blocked = no time = no HTTPS"
+# maxchange's 3rd field is a LIMIT, not a flag: 0 or positive makes chronyd exit
+# on an oversized correction, leaving the clock both wrong and unsynchronised.
+# That presents as "every HTTPS site has a cert error" with no obvious cause.
+grep -qE '^maxchange [0-9]+ [0-9]+ -1$' "${ch}" || die "chronyd would exit instead of ignoring a bad offset"
+awk '/^maxchange/ { exit ($3 >= 5 && $4 == -1) ? 0 : 1 } END { if (NR==0) exit 1 }' "${ch}" \
+  || die "maxchange delay too low: a dead-RTC laptop could never make its first correction"
 grep -q '^port 0' "${ch}" || die "chrony would serve time to others"
 grep -q 'systemd-timesyncd' "${asm}" || die "plaintext timesyncd still enabled on live"
-say "NTS from 3 jurisdictions, no plaintext fallback, never a server"
+say "NTS from 3 jurisdictions preferred, plain fallback so time always works"
 
 echo "==> module blacklist covers known-bad, not the boot path"
 mb2="${ROOT}/packages/cicada-defaults/files/etc/modprobe.d/cicada-blacklist.conf"
@@ -531,6 +544,16 @@ hk="${ROOT}/packages/cicada-defaults/files/etc/pacman.d/hooks/zz-cicada-setuid.h
 test -f "${hk}" || die "no pacman hook: a package upgrade would restore every setuid bit"
 grep -q 'PostTransaction' "${hk}" || die "hook must run after the transaction"
 say "8 setuid binaries removed, 7 load-bearing kept, survives pacman upgrades"
+
+echo "==> degraded protection is visible, not silent"
+# Cicada now degrades rather than bricks when a network blocks DoH or NTS. That
+# is only defensible if the user can see it happened.
+st="${CICADA_BIN}/cicada-status"
+test -x "${st}" || die "no way to see whether hardening is actually in force"
+grep -q 'UNAUTHENTICATED' "${st}" || die "status does not report unauthenticated time"
+grep -q 'portal mode is on' "${st}" || die "status does not warn while DNS is plaintext"
+grep -q 'NO kill switch' "${st}" || die "status does not warn about a VPN without a kill switch"
+say "cicada-status reports the posture in force, not the one in the config"
 
 echo "==> lock cannot strand a passwordless session"
 lock="${CICADA_BIN}/cicada-lock"

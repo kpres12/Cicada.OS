@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# What is actually protecting you right now.
+#
+# Cicada prefers hardened settings but does not brick the machine when a network
+# blocks them — encrypted DNS falls back, authenticated time falls back. That is
+# the right call for usability and the wrong call to keep quiet about, so this
+# reports the posture in force rather than the posture in the config file.
+#
+# Green means the control is active. Yellow means it degraded to something that
+# still works but protects less. Red means it is off.
+set -uo pipefail
+
+g() { printf '  \033[32m●\033[0m %-22s %s\n' "$1" "$2"; }
+y() { printf '  \033[33m●\033[0m %-22s %s\n' "$1" "$2"; }
+r() { printf '  \033[31m●\033[0m %-22s %s\n' "$1" "$2"; }
+
+echo "Cicada posture"
+echo "=============="
+
+# --- time -------------------------------------------------------------------
+if ! systemctl is-active chronyd >/dev/null 2>&1; then
+  r "time" "chronyd not running — HTTPS will fail once the clock drifts"
+elif ! chronyc -n tracking 2>/dev/null | grep -q 'Leap status *: Normal'; then
+  y "time" "not yet synchronised — HTTPS may fail until it settles"
+elif chronyc -n authdata 2>/dev/null | awk 'NR>2 && $2 == "NTS" {found=1} END {exit !found}'; then
+  g "time" "synchronised, NTS-authenticated"
+else
+  y "time" "synchronised, but UNAUTHENTICATED (NTS blocked on this network)"
+fi
+
+# --- DNS --------------------------------------------------------------------
+dnsline="$(resolvectl status 2>/dev/null | grep -m1 'Current DNS Server' || true)"
+if resolvectl status 2>/dev/null | grep -q '+DNSOverTLS'; then
+  g "system DNS" "encrypted (DoT) ${dnsline##*: }"
+elif [[ -e /run/systemd/resolved.conf.d/zz-cicada-portal.conf ]]; then
+  r "system DNS" "PLAINTEXT — portal mode is on. Log in, then: sudo cicada-portal off"
+else
+  y "system DNS" "not confirmed encrypted ${dnsline##*: }"
+fi
+
+# --- network identity -------------------------------------------------------
+if nmcli -t -f 802-11-wireless.cloned-mac-address connection show \
+     "$(nmcli -t -f NAME connection show --active 2>/dev/null | head -1)" 2>/dev/null \
+     | grep -q random; then
+  g "MAC" "randomized on this connection"
+else
+  y "MAC" "check: nmcli connection show <name> | grep cloned-mac"
+fi
+
+# --- tunnels ----------------------------------------------------------------
+if ip link show wg0 >/dev/null 2>&1; then
+  nft list table inet cicada_ks >/dev/null 2>&1 \
+    && g "VPN" "wg0 up, kill switch armed" \
+    || y "VPN" "wg0 up but NO kill switch — traffic can leak if it drops"
+else
+  y "VPN" "off — this network sees your destination IPs"
+fi
+
+if ip netns list 2>/dev/null | grep -qw onion; then
+  g "Tor" "onion namespace up (verify: cicada-tor check)"
+else
+  y "Tor" "namespace down — tor-scoped apps will refuse to run"
+fi
+
+# --- disk / memory ----------------------------------------------------------
+[[ -z "$(swapon --show 2>/dev/null)" ]] \
+  && g "swap" "none — nothing pages key material to disk" \
+  || r "swap" "ACTIVE — keys can be written to disk"
+
+grep -q '|/bin/false' /proc/sys/kernel/core_pattern 2>/dev/null \
+  && g "core dumps" "refused" \
+  || r "core dumps" "enabled — a crash can write memory to disk"
+
+if [[ -d /run/archiso ]]; then
+  g "storage" "live: overlay is RAM, nothing persists"
+else
+  cryptsetup status cicada >/dev/null 2>&1 \
+    && g "storage" "LUKS2 root unlocked (at rest when powered off)" \
+    || y "storage" "no LUKS mapping named cicada found"
+fi
+
+echo
+echo "Yellow is usually a network restriction, not a bug. Detail: cicada-verify"
