@@ -102,6 +102,8 @@ meek
 torsocks
 zram-generator
 
-# Tirimid: editor + compile toolchain
+# Tirimid: editor + compile toolchain + Python
 nano
 base-devel
+python
+python-pip

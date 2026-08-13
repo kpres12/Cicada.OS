@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Ensure hyprpaper has a real image and an explicit monitor binding.
+# Runs before/with hyprpaper from Hyprland exec-once.
+set -euo pipefail
+
+STOCK="/usr/share/cicada/wallpapers/cicada-3301.png"
+FALLBACK="/usr/share/cicada/wallpapers/cicada-void.png"
+CONF="${HOME}/.config/hypr/hyprpaper.conf"
+mkdir -p "${HOME}/.config/hypr" "${HOME}/Pictures"
+
+img=""
+for cand in "${STOCK}" "${FALLBACK}" "${HOME}/Pictures/cicada-wallpaper.png" \
+            "${HOME}/Pictures/cicada-wallpaper.jpg"; do
+  if [[ -f "${cand}" ]]; then
+    img="${cand}"
+    break
+  fi
+done
+
+if [[ -z "${img}" ]]; then
+  # Last resort: solid via pcmanfm only — tell the user where art should be.
+  notify-send "Cicada" "No wallpaper file under /usr/share/cicada/wallpapers" 2>/dev/null || true
+  exit 0
+fi
+
+# Prefer a writable home copy (live overlay + hyprpaper are happier).
+paper="${HOME}/Pictures/cicada-wallpaper.${img##*.}"
+if [[ ! -f "${paper}" ]] || ! cmp -s "${img}" "${paper}" 2>/dev/null; then
+  cp -f "${img}" "${paper}" 2>/dev/null || paper="${img}"
+fi
+
+mon="$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2; exit}')"
+[[ -n "${mon}" ]] || mon=","
+
+cat > "${CONF}" <<EOF
+preload = ${paper}
+wallpaper = ${mon},${paper}
+splash = false
+ipc = on
+EOF
+
+pkill -x hyprpaper 2>/dev/null || true
+exec hyprpaper

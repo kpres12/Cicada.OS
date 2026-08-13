@@ -48,9 +48,15 @@ grep -qx 'nano' "${pkgs}" || die "install must ship nano (editor)"
 grep -qx 'base-devel' "${pkgs}" || die "install must ship base-devel (gcc/make)"
 grep -q '^nano$' "${iso_pkgs}" || die "live ISO must ship nano"
 grep -q '^base-devel$' "${iso_pkgs}" || die "live ISO must ship base-devel"
-grep -q 'gcc -o fizzbuzz' "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/README.txt" \
-  || die "Documents README must show compile steps"
-say "nano + base-devel + Documents/fizzbuzz.c"
+grep -qx 'python' "${pkgs}" || die "install must ship python"
+grep -qx 'python-pip' "${pkgs}" || die "install must ship python-pip"
+grep -q 'flatpak-install\|Spotify' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-pkg" \
+  || die "cicada-pkg must offer Flatpak apps"
+grep -q 'com.spotify.Client' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "pkg-helper must allowlist Spotify Flatpak"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/hello.py" || die "hello.py starter missing"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Documents/PROGRAMS.txt" || die "PROGRAMS.txt missing"
+say "nano + base-devel + python + pip + Flatpak app path"
 
 echo "==> 4 — Install a new program"
 test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-pkg" || die "cicada-pkg GUI missing"
@@ -61,7 +67,7 @@ grep -q 'pacman -Sy' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicad
 grep -q 'cicada-pkg-helper' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
   || die "sudoers must NOPASSWD cicada-pkg-helper"
 grep -q 'Install software' "${settings}" || die "Settings must offer Install software"
-say "Settings → Install software… (official repos only)"
+say "Settings → Install software… (pacman + Flatpak apps)"
 
 echo "==> 5 — Run a game (Doom)"
 test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-doom" || die "cicada-doom missing"

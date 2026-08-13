@@ -1,46 +1,87 @@
 #!/usr/bin/env bash
-# Install a package from official Arch repos — Tirimid item 4.
-# GUI front-end; real work is cicada-pkg-helper (root, NOPASSWD).
+# Install software — Tirimid item 4 + daily apps.
+# Paths: official pacman packages, or curated Flatpak (Flathub). No AUR.
 set -euo pipefail
 
 die() {
   echo "cicada-pkg: $1" >&2
-  zenity --error --title="Install software" --width=420 --text="$1" 2>/dev/null || true
+  zenity --error --title="Install software" --width=440 --text="$1" 2>/dev/null || true
   exit 1
 }
 
 command -v zenity >/dev/null 2>&1 || die "zenity missing"
-[[ -x /usr/local/bin/cicada-pkg-helper ]] || die "cicada-pkg-helper missing"
 
-pkg="$(zenity --entry --title="Install software" \
-  --text="Official Arch package name only (no AUR).
+pick="$(zenity --list --title="Install software" \
+  --text="Official Arch packages, or curated Flatpaks from Flathub.
+No AUR. Needs Wi-Fi." \
+  --column=Kind --column=Does --print-column=1 --hide-header \
+  --width=520 --height=320 \
+  "Arch package…" "pacman — e.g. htop, git, python-pip" \
+  "Spotify" "Flatpak — music" \
+  "Discord" "Flatpak — chat" \
+  "Signal" "Flatpak — messenger" \
+  "Telegram" "Flatpak — messenger" \
+  "VLC" "Flatpak — video" \
+  "LibreOffice" "Flatpak — documents" \
+  2>/dev/null)" || exit 0
 
-Examples: htop  cowsay  nano  git" \
-  --entry-text="" 2>/dev/null)" || exit 0
-pkg="$(echo "${pkg}" | tr -d '[:space:]')"
-[[ -n "${pkg}" ]] || exit 0
+flatpak_install() {
+  local app_id="$1" name="$2"
+  command -v flatpak >/dev/null 2>&1 || die "flatpak is not installed on this image"
+  [[ -x /usr/local/bin/cicada-pkg-helper ]] || die "cicada-pkg-helper missing"
+  zenity --question --title="Install ${name}?" \
+    --text="Install «${name}» from Flathub (${app_id})?
 
-if ! [[ "${pkg}" =~ ^[a-zA-Z0-9@._+-]+$ ]]; then
-  die "Invalid package name: ${pkg}"
-fi
+Needs network. First Flatpak run also adds the Flathub remote." \
+    --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
+  (
+    echo "5"; echo "# Adding Flathub (if needed)…"
+    if ! sudo -n /usr/local/bin/cicada-pkg-helper flatpak-remote; then
+      echo "100"; echo "# Failed"; exit 1
+    fi
+    echo "40"; echo "# Installing ${name}…"
+    if ! sudo -n /usr/local/bin/cicada-pkg-helper flatpak-install "${app_id}"; then
+      echo "100"; echo "# Failed"; exit 1
+    fi
+    echo "100"; echo "# Done"
+  ) | zenity --progress --title="Installing ${name}" --percentage=0 --auto-close --width=440 2>/dev/null \
+    && zenity --info --title="Install software" \
+         --text="Installed: ${name}\n\nOpen it from the app menu (Cicada launcher) or run:\n  flatpak run ${app_id}" 2>/dev/null \
+    || die "Could not install ${name}. Check Wi-Fi."
+}
 
-zenity --question --title="Install ${pkg}?" \
-  --text="Install «${pkg}» from official repos with pacman?
+case "${pick}" in
+  "Arch package…")
+    [[ -x /usr/local/bin/cicada-pkg-helper ]] || die "cicada-pkg-helper missing"
+    pkg="$(zenity --entry --title="Arch package" \
+      --text="Official package name only (no AUR).
 
-This needs network (Wi-Fi) and may take a minute." \
-  --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
-
-(
-  echo "10"
-  echo "# Resolving ${pkg}…"
-  if sudo -n /usr/local/bin/cicada-pkg-helper install "${pkg}"; then
-    echo "100"
-    echo "# Done"
-  else
-    echo "100"
-    echo "# Failed"
-    exit 1
-  fi
-) | zenity --progress --title="Installing ${pkg}" --percentage=0 --auto-close --width=420 2>/dev/null \
-  && zenity --info --title="Install software" --text="Installed: ${pkg}" 2>/dev/null \
-  || die "Could not install ${pkg}. Check Wi-Fi and the package name."
+Examples: htop  git  python-pip  cowsay  code" \
+      --entry-text="" 2>/dev/null)" || exit 0
+    pkg="$(echo "${pkg}" | tr -d '[:space:]')"
+    [[ -n "${pkg}" ]] || exit 0
+    if ! [[ "${pkg}" =~ ^[a-zA-Z0-9@._+-]+$ ]]; then
+      die "Invalid package name: ${pkg}"
+    fi
+    zenity --question --title="Install ${pkg}?" \
+      --text="Install «${pkg}» with pacman?" \
+      --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
+    (
+      echo "10"; echo "# Resolving ${pkg}…"
+      if sudo -n /usr/local/bin/cicada-pkg-helper install "${pkg}"; then
+        echo "100"; echo "# Done"
+      else
+        echo "100"; echo "# Failed"; exit 1
+      fi
+    ) | zenity --progress --title="Installing ${pkg}" --percentage=0 --auto-close --width=420 2>/dev/null \
+      && zenity --info --title="Install software" --text="Installed: ${pkg}" 2>/dev/null \
+      || die "Could not install ${pkg}. Check Wi-Fi and the name."
+    ;;
+  Spotify) flatpak_install com.spotify.Client Spotify ;;
+  Discord) flatpak_install com.discordapp.Discord Discord ;;
+  Signal) flatpak_install org.signal.Signal Signal ;;
+  Telegram) flatpak_install org.telegram.desktop Telegram ;;
+  VLC) flatpak_install org.videolan.VLC VLC ;;
+  LibreOffice) flatpak_install org.libreoffice.LibreOffice LibreOffice ;;
+  *) exit 0 ;;
+esac

@@ -59,6 +59,14 @@ grep -q 'swappy' "${hypr}" || die "screenshot path should use swappy annotate"
 grep -q 'XF86AudioPlay' "${hypr}" || die "media keys must be bound (playerctl shipped)"
 grep -q 'XCURSOR_THEME' "${hypr}" || die "cursor theme must be set"
 grep -q 'WallpaperMode=color' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" || die "pcmanfm must not fight hyprpaper (use color desk)"
+grep -q 'SidePaneMode=places' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
+  || die "Files must show Places sidebar"
+grep -q 'UseTrash=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
+  || die "Files must use Trash"
+grep -q 'custom_palette=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/qt6ct/qt6ct.conf" \
+  || die "qt6ct must apply Cicada palette (else Files looks stock)"
+test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Templates/New Text File.txt" \
+  || die "Templates missing (Create New Document)"
 grep -q 'dock-pinned' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-dock" || die "dock pins must live under ~/.config/cicada"
 test -f "${ROOT}/packages/cicada-shell/files/etc/skel/.config/cicada/dock-pinned" || die "skel dock-pinned missing"
 grep -qx 'foot' "${ROOT}/packages/cicada-install/files/etc/cicada/install-packages.txt" && die "install must not ship foot (Kitty monopoly)" || true
@@ -172,17 +180,20 @@ fi
 
 echo "==> install / malloc / lock policy in tree"
 grep -q 'refusing Apple internal' "${INSTALL_BIN}/cicada-install" || die "install missing Apple refuse"
-grep -q 'ld.so.preload' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" || die "installed malloc preload missing"
-# Live now gets hardened_malloc too: the live stick is where a browser 0-day
-# actually meets this OS, so demoing on stock glibc was backwards.
+grep -q 'hardened-malloc-enable' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "malloc preload must be opt-in (Helium zygote dies under global preload)"
 fb="${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot"
-grep -q 'run/archiso.*libhardened_malloc' "${fb}" && die "malloc preload still skipped on live" || true
+grep -q 'hardened-malloc-enable' "${fb}" || die "firstboot malloc must be opt-in"
 grep -q 'cicada.nomalloc' "${fb}" || die "no bootloader-reachable escape hatch for a malloc compat regression"
+grep -q 'hardened_malloc is in /etc/ld.so.preload' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium" \
+  || die "browser wrapper must refuse launch under HM preload"
 test ! -e "${ROOT}/iso/overlay/airootfs/etc/ld.so.preload" || die "overlay ships ld.so.preload"
 grep -q 'CICADA_LOCK_REBOOT_SEC=1800' "${ROOT}/packages/cicada-defaults/files/etc/cicada/defaults.env" || die "lock reboot not 30 min"
 grep -q 'throw std::bad_alloc' "${ROOT}/scripts/build-hardened-malloc.sh" || die "malloc script missing GCC 16 patch"
 grep -q 'x86-64-v3' "${ROOT}/scripts/build-hardened-malloc.sh" || die "malloc script missing ISO -march"
-say "Apple refuse / malloc on live too / 30min reboot / gcc16 patch"
+grep -q 'cicada-wallpaper' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hyprland.conf" \
+  || die "hyprland must start cicada-wallpaper"
+say "Apple refuse / malloc opt-in (Helium-safe) / wallpaper helper / 30min reboot"
 
 echo "==> privacy defaults"
 nm="${ROOT}/packages/cicada-defaults/files/etc/NetworkManager/conf.d/cicada.conf"

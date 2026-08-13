@@ -1,0 +1,37 @@
+Creating and running programs on Cicada
+=======================================
+
+Python (ships on the ISO):
+  python --version
+  python hello.py
+
+  # hello.py
+  print("hello from Cicada")
+
+FizzBuzz (C):
+  cd ~/Documents
+  nano fizzbuzz.c
+  gcc -o fizzbuzz fizzbuzz.c
+  ./fizzbuzz
+
+pip (optional):
+  Settings → Install software → Arch package… → python-pip
+  # or: sudo pacman -S python-pip
+  pip install --user requests
+
+Install apps (Wi-Fi required)
+-----------------------------
+Settings → Install software…
+
+  Arch package…   official pacman (htop, git, …) — no AUR
+  Spotify / Discord / Signal / Telegram / VLC / LibreOffice
+                  Flatpak from Flathub (sandboxed)
+
+Cursor IDE: not in official Arch or our Flatpak allowlist yet.
+  Download the Linux AppImage from https://cursor.com , save to
+  ~/Downloads, then:
+    chmod +x ~/Downloads/Cursor-*.AppImage
+    ~/Downloads/Cursor-*.AppImage
+
+Same pattern works for many upstream AppImages. Prefer Flatpak when
+Cicada lists the app — portals + updates are cleaner.

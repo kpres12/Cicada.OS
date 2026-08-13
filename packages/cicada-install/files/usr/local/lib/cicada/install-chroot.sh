@@ -68,7 +68,11 @@ if [[ -f /root/.cicada-user-pass ]]; then
 fi
 passwd -l root || true
 
-if [[ -f /usr/lib/libhardened_malloc.so && ! -f /etc/cicada/hardened-malloc-disable ]]; then
+# Opt-in only — global preload crashes Helium (Tirimid browse). Enable later:
+#   touch /etc/cicada/hardened-malloc-enable && echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
+if [[ -f /usr/lib/libhardened_malloc.so ]] \
+   && [[ -f /etc/cicada/hardened-malloc-enable ]] \
+   && [[ ! -f /etc/cicada/hardened-malloc-disable ]]; then
   echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
 fi
 

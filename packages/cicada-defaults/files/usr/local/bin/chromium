@@ -3,23 +3,37 @@
 # Preloads GrapheneOS hardened_malloc when the library is on disk.
 set -euo pipefail
 
-HM=""
-for cand in /usr/lib/libhardened_malloc.so /usr/lib/hardened_malloc/libhardened_malloc.so; do
-  if [[ -f "${cand}" ]]; then
-    HM="${cand}"
-    break
+# hardened_malloc breaks Chromium/Helium zygote forks (silent exit, no window).
+# Never preload it into the browser — even if ld.so.preload is set system-wide,
+# clear it for this process tree before exec.
+if [[ -n "${LD_PRELOAD:-}" ]]; then
+  _pl="${LD_PRELOAD}"
+  _pl="${_pl//\/usr\/lib\/libhardened_malloc.so/}"
+  _pl="${_pl//\/usr\/lib\/hardened_malloc\/libhardened_malloc.so/}"
+  _pl="${_pl//::/:}"
+  _pl="${_pl#:}"
+  _pl="${_pl%:}"
+  if [[ -n "${_pl}" ]]; then
+    export LD_PRELOAD="${_pl}"
+  else
+    unset LD_PRELOAD
   fi
-done
-# `cicada.nomalloc` is the escape hatch you can reach from the bootloader when
-# there is no writable filesystem to drop the disable file onto (cicada-firstboot
-# honours it for /etc/ld.so.preload). It has to be honoured here too: the browser
-# is the single most likely thing to be broken by an allocator regression, and an
-# escape hatch that leaves the browser preloading anyway is not an escape hatch.
-if [[ -n "${HM}" ]] \
-   && [[ ! -f /etc/cicada/hardened-malloc-disable ]] \
-   && ! grep -qw cicada.nomalloc /proc/cmdline 2>/dev/null; then
-  export LD_PRELOAD="${HM}${LD_PRELOAD:+:${LD_PRELOAD}}"
+  unset _pl
 fi
+# ld.so.preload still applies to children. If it points at hardened_malloc,
+# refuse to launch until the operator clears it — better a zenity than a no-op.
+if [[ -f /etc/ld.so.preload ]] && grep -q hardened_malloc /etc/ld.so.preload 2>/dev/null; then
+  die "Browser blocked: hardened_malloc is in /etc/ld.so.preload and crashes Helium.
+
+Fix (this session):
+  sudo rm -f /etc/ld.so.preload
+Then click Web again.
+
+Or reboot with kernel option: cicada.nomalloc"
+fi
+
+# Do not set LD_PRELOAD to hardened_malloc for the browser (removed above).
+# Other apps can still opt in via cicada-run if desired.
 
 # Launched from a desktop icon, stderr goes nowhere. A browser that exits 1 with
 # a message no one can see is indistinguishable from a click that did nothing —

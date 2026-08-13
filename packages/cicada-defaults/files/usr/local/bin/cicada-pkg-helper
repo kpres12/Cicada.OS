@@ -1,21 +1,54 @@
 #!/usr/bin/env bash
-# Root helper for cicada-pkg. Official repos only. No AUR. No -U local files.
+# Root helper for cicada-pkg. Official repos + curated Flatpak. No AUR.
 set -euo pipefail
 [[ ${EUID} -eq 0 ]] || { echo "cicada-pkg-helper: root only" >&2; exit 1; }
 
-usage() { echo "usage: cicada-pkg-helper install <pkg>" >&2; exit 1; }
-[[ $# -ge 2 ]] || usage
+usage() {
+  echo "usage: cicada-pkg-helper install <pkg>" >&2
+  echo "       cicada-pkg-helper flatpak-remote" >&2
+  echo "       cicada-pkg-helper flatpak-install <app-id>" >&2
+  exit 1
+}
+[[ $# -ge 1 ]] || usage
 cmd="$1"
-pkg="$2"
-shift 2 || true
+shift || true
 
-[[ "${cmd}" == "install" ]] || usage
-[[ "${pkg}" =~ ^[a-zA-Z0-9@._+-]+$ ]] || { echo "invalid package name" >&2; exit 1; }
-
-# Refuse anything that looks like a path or URL.
-case "${pkg}" in
-  */*|*:*|*.pkg.tar*) echo "refusing path/url install" >&2; exit 1 ;;
+case "${cmd}" in
+  install)
+    [[ $# -ge 1 ]] || usage
+    pkg="$1"
+    [[ "${pkg}" =~ ^[a-zA-Z0-9@._+-]+$ ]] || { echo "invalid package name" >&2; exit 1; }
+    case "${pkg}" in
+      */*|*:*|*.pkg.tar*) echo "refusing path/url install" >&2; exit 1 ;;
+    esac
+    export LANG=C
+    pacman -Sy --noconfirm --needed "${pkg}"
+    ;;
+  flatpak-remote)
+    command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
+    if ! flatpak remotes --system 2>/dev/null | grep -qw flathub; then
+      flatpak remote-add --if-not-exists --system flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo
+    fi
+    ;;
+  flatpak-install)
+    [[ $# -ge 1 ]] || usage
+    app_id="$1"
+    # Curated allowlist — Flatpak IDs only (reverse-DNS).
+    case "${app_id}" in
+      com.spotify.Client|com.discordapp.Discord|org.signal.Signal|\
+      org.telegram.desktop|org.videolan.VLC|org.libreoffice.LibreOffice) ;;
+      *)
+        echo "app not in Cicada allowlist: ${app_id}" >&2
+        exit 1
+        ;;
+    esac
+    command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
+    if ! flatpak remotes --system 2>/dev/null | grep -qw flathub; then
+      flatpak remote-add --if-not-exists --system flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo
+    fi
+    flatpak install -y --system flathub "${app_id}"
+    ;;
+  *) usage ;;
 esac
-
-export LANG=C
-pacman -Sy --noconfirm --needed "${pkg}"

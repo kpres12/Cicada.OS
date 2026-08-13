@@ -31,16 +31,19 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 0
 fi
 
-# hardened_malloc applies on live too. The live stick is where a browser 0-day
-# actually gets pointed at this OS — demoing on stock glibc while claiming
-# hardened allocation was the wrong way round. The .so is built into the ISO,
-# so the only real risk is a compat regression, and `cicada.nomalloc` on the
-# kernel cmdline is the escape hatch you can reach from the bootloader when
-# there is no writable filesystem to drop a disable file onto.
+# hardened_malloc: opt-in via /etc/cicada/hardened-malloc-enable (or keep a
+# prior preload). Global preload on by default silently killed Helium's zygote
+# — Tirimid "browse the internet" failed while Doom still worked. Browser and
+# daily apps must come first; allocator hardening is useless if the user has
+# to abandon the OS to open a URL.
 if [[ -f /usr/lib/libhardened_malloc.so ]] \
    && [[ ! -f /etc/cicada/hardened-malloc-disable ]] \
+   && [[ -f /etc/cicada/hardened-malloc-enable ]] \
    && ! grep -qw cicada.nomalloc /proc/cmdline 2>/dev/null; then
   echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
+elif [[ -f /run/archiso ]]; then
+  # Live demo: never leave a broken preload from a previous overlay session.
+  rm -f /etc/ld.so.preload 2>/dev/null || true
 fi
 
 # Live ISO already has units enabled in the profile. enable --now as the

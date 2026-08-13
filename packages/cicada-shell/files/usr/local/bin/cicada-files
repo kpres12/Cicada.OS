@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Files — real folder tree via pcmanfm-qt (host launch: USB, trash, gvfs).
+# Files — real Places/Trash/New Folder file manager (pcmanfm-qt), Cicada chrome.
 set -euo pipefail
+# Open $HOME when launched with no path (dock / Desktop / Super+E).
+if [[ $# -eq 0 ]]; then
+  set -- "${HOME}"
+fi
 if command -v cicada-run >/dev/null 2>&1; then
   exec cicada-run org.cicada.files -- pcmanfm-qt "$@"
 fi
