@@ -63,8 +63,42 @@ bridges() {
     echo "bridges cleared — Tor will connect directly, which is visible to your network"
     return
   fi
-  cat <<'EOF'
-Paste obfs4 bridge lines, one per line, then Ctrl-D.
+  # Find a transport binary. obfs4proxy/lyrebird are AUR-only and the ISO is
+  # official-repos only, so the system tor daemon may have none — while Tor
+  # Browser bundles its own. Say which, rather than writing a torrc that
+  # references a binary that is not there.
+  local pt="" ptname=""
+  for cand in /usr/bin/lyrebird /usr/bin/obfs4proxy; do
+    [[ -x "${cand}" ]] && { pt="${cand}"; ptname=obfs4; break; }
+  done
+  if [[ -z "${pt}" ]]; then
+    for tb in "${HOME}"/.local/share/torbrowser/tbb/x86_64/tor-browser/TorBrowser/Tor/PluggableTransports/lyrebird \
+              /home/*/.local/share/torbrowser/tbb/x86_64/tor-browser/TorBrowser/Tor/PluggableTransports/lyrebird; do
+      [[ -x "${tb}" ]] && { pt="${tb}"; ptname=obfs4; break; }
+    done
+  fi
+  if [[ -z "${pt}" && -x /usr/bin/meek-client ]]; then
+    pt=/usr/bin/meek-client; ptname=meek
+  fi
+  if [[ -z "${pt}" ]]; then
+    cat >&2 <<'EOF'
+No pluggable transport binary is installed.
+
+obfs4proxy/lyrebird and snowflake are not in Arch's official repositories, and
+Cicada does not pull from the AUR. Without a transport, bridges would still be
+plain Tor and your network can still see that you are using Tor.
+
+For a censored or hostile network, use Tor Browser instead — it bundles obfs4
+and snowflake and has its own bridge configuration:
+    cicada-run org.torproject.torbrowser
+
+Then set bridges inside Tor Browser (Settings -> Connection -> Bridges).
+EOF
+    exit 1
+  fi
+  echo "using transport: ${ptname} (${pt})"
+  cat <<EOF
+Paste ${ptname} bridge lines, one per line, then Ctrl-D.
 
 Get them from https://bridges.torproject.org, or email bridges@torproject.org
 from a Gmail or Riseup address with the body:  get transport obfs4
@@ -75,7 +109,7 @@ A line looks like:
 EOF
   local tmp; tmp="$(mktemp)"
   {
-    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy"
+    echo "ClientTransportPlugin ${ptname} exec ${pt}"
     echo "UseBridges 1"
     while IFS= read -r line; do
       line="$(echo "${line}" | tr -d '\r')"
@@ -106,18 +140,24 @@ What it does NOT do
      Tor guards. Where using Tor is itself the danger, you need bridges with a
      pluggable transport: sudo cicada-tor bridges
 
-  2. It does not make a normal browser anonymous. Tor Browser's protection is
+  2. Bridges for the SYSTEM tor daemon are limited. obfs4proxy/lyrebird and
+     snowflake are AUR-only and Cicada ships official repos only, so the onion
+     scope may have no transport at all. Tor Browser bundles obfs4 and
+     snowflake itself — on a censored network use Tor Browser, which has the
+     stronger bridge story:  cicada-run org.torproject.torbrowser
+
+  3. It does not make a normal browser anonymous. Tor Browser's protection is
      that every user looks identical. Helium over Tor looks like Helium over
      Tor — a small, distinctive population. For anonymity use
      org.torproject.torbrowser, not the Helium scope with Tor bolted on.
 
-  3. It does not protect you from what you type. Logging into an account you
+  4. It does not protect you from what you type. Logging into an account you
      have used elsewhere links that identity to the session regardless of Tor.
 
-  4. It does not defend the endpoint. If the machine is compromised or seized
+  5. It does not defend the endpoint. If the machine is compromised or seized
      unlocked, Tor is irrelevant.
 
-  5. Tor's own threat model excludes an adversary who can watch both ends of
+  6. Tor's own threat model excludes an adversary who can watch both ends of
      your circuit. A large state observing enough of the network can correlate
      timing. Tor raises the cost enormously; it is not a guarantee.
 

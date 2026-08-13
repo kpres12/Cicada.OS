@@ -79,6 +79,9 @@ fi
 # Tell the session whether locking is survivable. An empty password hash means
 # hyprlock would grab input and accept nothing — see cicada-lock. Root-only work,
 # which is why it lives here and not in the lock helper.
+# Setuid carve-out. The pacman hook keeps it applied afterwards.
+[[ -x /usr/local/lib/cicada/strip-setuid.sh ]] && /usr/local/lib/cicada/strip-setuid.sh || true
+
 mkdir -p /run/cicada
 rm -f /run/cicada/live-nopasswd
 if [[ -z "$(awk -F: '$1 == "cicada" { print $2 }' /etc/shadow 2>/dev/null)" ]]; then

@@ -1,0 +1,12 @@
+# Upgrading a package restores its setuid bit, silently undoing the hardening.
+# Re-apply after every transaction. Runs last (zz-) so it sees the final state.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/bin/*
+
+[Action]
+Description = Cicada: re-strip setuid from unused binaries
+When = PostTransaction
+Exec = /usr/local/lib/cicada/strip-setuid.sh

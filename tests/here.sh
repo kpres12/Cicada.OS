@@ -452,7 +452,14 @@ test -f "${tb}" || die "no Tor Browser scope"
 grep -q '^NETWORK=tor' "${tb}" || die "Tor Browser scope is not on the tor network"
 grep -q '^NETWORK=tor' "${hel}" && die "Helium must not claim Tor anonymity (fingerprint)" || true
 grep -qx 'tor' "${pkgs}" || die "tor not on the ISO"
-grep -qx 'obfs4proxy' "${pkgs}" || die "no pluggable transport: Tor use is visible where that is the danger"
+# obfs4proxy/lyrebird/snowflake are AUR-only, and the ISO is official-repos
+# only. meek is the one pluggable transport in extra. Tor Browser ships its own
+# obfs4+snowflake, so the censored-network story is stronger inside Tor Browser
+# than it is for the system tor daemon — cicada-tor must say so rather than
+# imply bridge parity it does not have.
+grep -qx 'meek' "${pkgs}" || die "no pluggable transport available at all"
+grep -qx 'obfs4proxy' "${pkgs}" && die "obfs4proxy is AUR-only; it breaks the build" || true
+grep -q 'Tor Browser bundles' "${CICADA_BIN}/cicada-tor" || die "cicada-tor must state where obfs4 actually comes from"
 grep -qx 'torbrowser-launcher' "${pkgs}" || die "no Tor Browser"
 grep -q 'bridges' "${CICADA_BIN}/cicada-tor" || die "no bridge configuration path"
 grep -q 'does not hide that you are using Tor' "${CICADA_BIN}/cicada-tor" \
@@ -507,6 +514,23 @@ grep -q '^blacklist squashfs' "${mb2}" && die "blacklisting squashfs would break
 grep -q '^blacklist ext4' "${mb2}" && die "blacklisting ext4 would break the installed root" || true
 grep -q '^blacklist btrfs' "${mb2}" && die "blacklisting btrfs would break the installed root" || true
 say "vivid + unused filesystem parsers blocked, boot path untouched"
+
+echo "==> setuid carve-out"
+ss="${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/strip-setuid.sh"
+test -x "${ss}" || die "strip-setuid.sh missing"
+for b in ksu chfn chsh gpasswd newgrp chage wall write; do
+  grep -q "/usr/bin/${b}" "${ss}" || die "${b} still setuid (local privilege escalation surface)"
+done
+# Removing any of these bricks the machine; unix_chkpwd in particular makes the
+# lock screen impossible to dismiss.
+for b in sudo su passwd unix_chkpwd mount umount pkexec; do
+  grep -qE "^\\s*/usr/bin/${b}\\b" "${ss}" && die "${b} must NOT be stripped — it is load-bearing" || true
+done
+grep -q 'unix_chkpwd' "${ss}" || die "strip script must document why unix_chkpwd is kept"
+hk="${ROOT}/packages/cicada-defaults/files/etc/pacman.d/hooks/zz-cicada-setuid.hook"
+test -f "${hk}" || die "no pacman hook: a package upgrade would restore every setuid bit"
+grep -q 'PostTransaction' "${hk}" || die "hook must run after the transaction"
+say "8 setuid binaries removed, 7 load-bearing kept, survives pacman upgrades"
 
 echo "==> lock cannot strand a passwordless session"
 lock="${CICADA_BIN}/cicada-lock"

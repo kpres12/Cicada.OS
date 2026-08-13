@@ -88,6 +88,7 @@ qt6ct
 flatpak
 restic
 tor
-obfs4proxy
 torbrowser-launcher
 chrony
+meek
+torsocks

@@ -91,6 +91,8 @@ chmod +x "${PROFILE}/airootfs/etc/skel/Desktop/"*.desktop 2>/dev/null || true
 # there is no network to fetch it over. That is the whole point of it.
 install -Dm755 "${ROOT}/tests/wifi-diag.sh" \
   "${PROFILE}/airootfs/usr/local/bin/cicada-wifi-diag"
+install -Dm755 "${ROOT}/tests/boot-verify.sh" \
+  "${PROFILE}/airootfs/usr/local/bin/cicada-verify"
 
 # Build stamp. Without this there is no way to tell a freshly built ISO from one
 # sitting in out/ from three commits ago — which is exactly how a known-fixed
@@ -273,6 +275,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-memwipe"]="0:0:755"
   ["/usr/local/bin/cicada-logs"]="0:0:755"
   ["/usr/local/bin/cicada-portal"]="0:0:755"
+  ["/usr/local/bin/cicada-verify"]="0:0:755"
   ["/usr/local/bin/cicada-tor"]="0:0:755"
   ["/usr/local/bin/cicada-tor-netns"]="0:0:755"
   ["/usr/local/bin/cicada-netns-helper"]="0:0:755"
