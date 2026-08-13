@@ -1,0 +1,28 @@
+window {
+  background-color: rgba(0, 0, 0, 0.92);
+  border-radius: 0;
+  border-right: 1px solid #ffb000;
+}
+
+#box {
+  padding: 4px;
+  border-radius: 0;
+}
+
+button, button.pinned, button.task {
+  background: #0b0d10;
+  border: 1px solid #1a1f24;
+  border-radius: 0;
+  padding: 6px;
+  margin: 2px;
+  box-shadow: none;
+}
+
+button:hover {
+  background: #0b0d10;
+  border-color: #39ff14;
+}
+
+button:focus, button.active {
+  border-color: #ffb000;
+}

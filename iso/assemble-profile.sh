@@ -91,6 +91,13 @@ ln -sfn /etc/systemd/system/cicada-radios-off.service "${wants}/cicada-radios-of
 ln -sfn /etc/systemd/system/cicada-firstboot.service "${wants}/cicada-firstboot.service"
 ln -sfn /usr/lib/systemd/system/nftables.service "${wants}/nftables.service"
 
+# Desktop Wi-Fi: NetworkManager owns the stack. networkd+iwd-standalone fight NM.
+rm -f "${wants}/systemd-networkd.service" "${wants}/iwd.service"
+rm -f "${PROFILE}/airootfs/etc/systemd/system/dbus-org.freedesktop.network1.service"
+rm -f "${PROFILE}/airootfs/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
+rm -f "${PROFILE}/airootfs/etc/systemd/system/sockets.target.wants/systemd-networkd.socket"
+ln -sfn /usr/lib/systemd/system/NetworkManager.service "${wants}/NetworkManager.service"
+
 # Brand the ISO metadata without rewriting releng bootloader machinery
 python3 - "${PROFILE}/profiledef.sh" <<'PY'
 import pathlib, sys, datetime, os

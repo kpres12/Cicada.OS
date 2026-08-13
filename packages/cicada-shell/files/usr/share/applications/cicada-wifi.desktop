@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wi-Fi
+Comment=Connect to a wireless network
+Exec=cicada-wifi
+Icon=network-wireless
+Terminal=false
+Categories=Network;Settings;
+StartupNotify=true

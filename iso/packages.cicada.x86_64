@@ -59,7 +59,11 @@ papirus-icon-theme
 gnome-themes-extra
 mako
 pavucontrol
-impala
+nwg-dock-hyprland
+zenity
+networkmanager
+nm-connection-editor
+network-manager-applet
 
 # --- privacy / security baseline ---
 nftables

@@ -31,7 +31,7 @@ case "${cmd}" in
         [[ -d "${d}" ]] && printf '%s\n' "$(basename "${d}")"
       done
     else
-      echo "(no profiles yet — try: cicada-profile create personal)"
+      echo "personal"
     fi
     ;;
   create)

@@ -1,8 +1,52 @@
 #!/usr/bin/env bash
-set -euo pipefail
-# Unblock Wi-Fi, then open the iwd TUI (impala) or iwctl.
+# One-click Wi-Fi: unblock radio, pick a network, connect.
+set -uo pipefail
+
+notify() { notify-send "Cicada Wi-Fi" "$1" 2>/dev/null || true; }
+
 rfkill unblock wifi 2>/dev/null || true
-if command -v impala >/dev/null 2>&1; then
-  exec kitty --title CICADA-NET -e impala
+command -v nmcli >/dev/null 2>&1 || {
+  exec nm-connection-editor 2>/dev/null || exec kitty --title CICADA-NET -e iwctl
+}
+
+nmcli radio wifi on >/dev/null 2>&1 || true
+nmcli device wifi rescan >/dev/null 2>&1 || true
+sleep 2
+
+if ! command -v zenity >/dev/null 2>&1; then
+  exec nm-connection-editor
 fi
-exec kitty --title CICADA-NET -e iwctl
+
+ssids=()
+while IFS= read -r line; do
+  [[ -z "${line}" ]] && continue
+  ssids+=("${line}")
+done < <(nmcli -t -f SSID device wifi list 2>/dev/null | awk 'NF && $0 != "--" && !seen[$0]++')
+
+if [[ ${#ssids[@]} -eq 0 ]]; then
+  zenity --error --title="Cicada Wi-Fi" --width=360 \
+    --text="No networks found.\n\nWi-Fi radio is on. If this MacBook has no scan results, the Broadcom driver may still be missing."
+  exit 1
+fi
+
+ssid="$(zenity --list --title="Cicada Wi-Fi" --text="Select a network" \
+  --column="Network" --width=420 --height=400 "${ssids[@]}")" || exit 0
+[[ -n "${ssid}" ]] || exit 0
+
+if nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "${ssid}"; then
+  notify "Already on ${ssid}"
+  exit 0
+fi
+
+if nmcli device wifi connect "${ssid}" >/dev/null 2>&1; then
+  notify "Connected to ${ssid}"
+  exit 0
+fi
+
+pass="$(zenity --password --title="Passphrase for ${ssid}")" || exit 0
+if nmcli device wifi connect "${ssid}" password "${pass}"; then
+  notify "Connected to ${ssid}"
+else
+  zenity --error --title="Cicada Wi-Fi" --width=320 --text="Could not connect to ${ssid}."
+  exit 1
+fi

@@ -2,10 +2,8 @@
   CICADA.OS  //  nimbus  //  channel:dev
   radios soft-blocked · nftables inbound-deny · sshd masked
 
-  GUI:        Hyprland
-  radios:     Super+Shift+R   or click RF
-  wifi:       Super+N         or click NET
-  files:      Super+E         or click FILES
+  dock:       terminal · files · web · wifi
+  wifi:       click the wifi icon, or Super+N
   keys:       Super+/
   install:    archinstall     (external disk only)
 

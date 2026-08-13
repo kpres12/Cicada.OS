@@ -48,6 +48,7 @@ window#waybar {
 #battery,
 #network,
 #pulseaudio,
+#tray,
 #custom-rf,
 #custom-profile,
 #custom-scopes {

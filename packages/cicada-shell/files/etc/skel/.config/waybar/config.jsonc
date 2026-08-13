@@ -5,7 +5,7 @@
   "spacing": 0,
   "modules-left": ["custom/cicada", "custom/term", "custom/web", "custom/files", "hyprland/workspaces", "custom/profile"],
   "modules-center": ["hyprland/window"],
-  "modules-right": ["custom/scopes", "custom/rf", "network", "pulseaudio", "battery", "clock"],
+  "modules-right": ["custom/scopes", "custom/rf", "network", "pulseaudio", "tray", "battery", "clock"],
   "custom/cicada": {
     "format": "CICADA // MAGI-01",
     "tooltip": "click: launcher",
@@ -31,7 +31,7 @@
     "on-click": "thunar"
   },
   "custom/profile": {
-    "exec": "cicada-profile list 2>/dev/null | head -1 | awk '{print toupper($0)}' | sed 's/^$/PERSONAL/'",
+    "exec": "cicada-profile list 2>/dev/null | head -1 | tr '[:lower:]' '[:upper:]'",
     "format": "USR {}",
     "interval": 10,
     "tooltip": false
@@ -70,8 +70,12 @@
     "format-wifi": "NET {essid}",
     "format-ethernet": "NET WIRED",
     "format-disconnected": "NET DOWN",
-    "tooltip": "click: Wi-Fi (impala)",
+    "tooltip": "click: pick a Wi-Fi network",
     "on-click": "cicada-wifi"
+  },
+  "tray": {
+    "icon-size": 14,
+    "spacing": 6
   },
   "pulseaudio": {
     "format": "AUD {volume}",
