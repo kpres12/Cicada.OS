@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="none" aria-hidden="true">
+  <defs>
+    <filter id="bloom">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- orbital rings -->
+  <g stroke="#ffb000" stroke-opacity="0.55" filter="url(#bloom)">
+    <ellipse cx="400" cy="400" rx="310" ry="310" stroke-width="1"/>
+    <ellipse cx="400" cy="400" rx="250" ry="180" stroke-width="1" transform="rotate(-18 400 400)"/>
+    <ellipse cx="400" cy="400" rx="290" ry="120" stroke-width="1" transform="rotate(32 400 400)"/>
+    <ellipse cx="400" cy="400" rx="200" ry="200" stroke-width="1"/>
+    <ellipse cx="400" cy="400" rx="140" ry="140" stroke-width="0.8" stroke="#ff3b00" stroke-opacity="0.7"/>
+  </g>
+  <!-- wireframe sphere meridians -->
+  <g stroke="#39ff14" stroke-opacity="0.35" stroke-width="0.7">
+    <ellipse cx="400" cy="400" rx="90" ry="90"/>
+    <ellipse cx="400" cy="400" rx="90" ry="40"/>
+    <ellipse cx="400" cy="400" rx="40" ry="90"/>
+    <ellipse cx="400" cy="400" rx="70" ry="90" transform="rotate(30 400 400)"/>
+    <ellipse cx="400" cy="400" rx="70" ry="90" transform="rotate(-30 400 400)"/>
+  </g>
+  <!-- crosshair -->
+  <g stroke="#ff3b00" stroke-width="1" stroke-opacity="0.8">
+    <line x1="400" y1="80" x2="400" y2="720"/>
+    <line x1="80" y1="400" x2="720" y2="400"/>
+  </g>
+  <!-- tracked objects -->
+  <g fill="#5ce1ff">
+    <circle cx="520" cy="260" r="2.5"/><circle cx="610" cy="390" r="2"/><circle cx="280" cy="310" r="2"/>
+    <circle cx="340" cy="520" r="2.5"/><circle cx="480" cy="560" r="1.8"/><circle cx="220" cy="450" r="2"/>
+  </g>
+  <g fill="#ff3b00">
+    <circle cx="560" cy="480" r="3"/><circle cx="300" cy="220" r="2.5"/>
+  </g>
+  <text x="400" y="398" text-anchor="middle" fill="#6cffc8" font-family="monospace" font-size="11" letter-spacing="3">EARTH</text>
+  <text x="560" y="250" fill="#39ff14" font-family="monospace" font-size="9" letter-spacing="2">ISS</text>
+</svg>

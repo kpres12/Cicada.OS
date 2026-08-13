@@ -3,6 +3,7 @@
 Arch-based privacy/security laptop OS. GrapheneOS *intent*, Hyprland daily-driver
 feel, Helium as the browser.
 
+**Site:** [`site/`](site/) — download / install / features (GitHub Pages).  
 **North star:** hostile defaults and profile isolation on laptops — honest about
 hardware limits.
 **Method:** Arch is the engine. Cicada owns defaults, release channel, shell,

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Download — Cicada.OS</title>
+  <meta name="description" content="Download the Cicada.OS live ISO. Official releases only."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="../assets/css/cicada.css"/>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="../">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="../features/">Features</a>
+      <a href="./" aria-current="page">Download</a>
+      <a href="../install/">Install</a>
+      <a href="../faq/">FAQ</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
+  </header>
+
+  <main class="wrap">
+    <p class="page-title">Download</p>
+    <p class="page-sub">Official x86_64 live ISO. Flash to USB, boot, then install when ready. Prefer releases from GitHub — not mirrors you found on a forum.</p>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Latest release</h2><span class="tag">X86_64</span></div>
+      <p style="margin:0 0 1rem;color:var(--muted)">
+        ISO artifacts attach to GitHub Releases. Channel pin: <code>cicada-stable</code> · Helium hash-locked in-tree.
+      </p>
+      <div class="cta-row">
+        <a class="btn" href="https://github.com/kpres12/Cicada.OS/releases/latest">Get latest ISO</a>
+        <a class="btn btn-amber" href="../install/">Install instructions</a>
+        <a class="btn btn-ghost" href="https://github.com/kpres12/Cicada.OS">Source tree</a>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Verify before you boot</h2><span class="tag">FAIL CLOSED</span></div>
+      <ol class="steps">
+        <li>
+          <strong>Download the ISO + checksum from the same release</strong>
+          Prefer the release assets page — not a random Drive link.
+        </li>
+        <li>
+          <strong>Check the sha256</strong>
+          <pre>shasum -a 256 cicada-*.iso
+# compare to the published checksum on the release</pre>
+        </li>
+        <li>
+          <strong>Flash (macOS example)</strong>
+          <pre>diskutil list
+# confirm ~250GB stick diskN — wrong disk wipes that drive
+diskutil unmountDisk /dev/diskN
+sudo dd if=./cicada-YYYY.MM.DD-x86_64.iso of=/dev/rdiskN bs=4m status=progress
+sync
+diskutil eject /dev/diskN</pre>
+        </li>
+      </ol>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>After flash</h2><span class="tag">ALERT</span></div>
+      <p style="margin:0;color:var(--muted)">
+        macOS may say the disk is unreadable. <strong>Eject</strong> — never Initialize.
+        Default boot = non-hardened live. Live user <code>cicada</code> / empty password.
+        Install when you want persistence — see <a href="../install/">Install</a>.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · DOWNLOAD</span>
+      <a href="../">Home</a>
+    </div>
+  </footer>
+  <script src="../assets/js/cicada.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Install — Cicada.OS</title>
+  <meta name="description" content="Install Cicada.OS from the live USB. Official guide."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="../assets/css/cicada.css"/>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="../">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="../features/">Features</a>
+      <a href="../download/">Download</a>
+      <a href="./" aria-current="page">Install</a>
+      <a href="../faq/">FAQ</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
+  </header>
+
+  <main class="wrap">
+    <p class="page-title">Install</p>
+    <p class="page-sub">
+      Two paths: live USB for a session that forgets, or <code>cicada-install</code> for a daily driver with LUKS.
+      Use this guide — third-party writeups go stale.
+    </p>
+
+    <div class="panel">
+      <div class="panel-head"><h2>0 · Get the ISO on a stick</h2><span class="tag">PREREQ</span></div>
+      <p style="margin:0;color:var(--muted)">
+        Follow <a href="../download/">Download</a>. Boot the target laptop from USB
+        (Option/⌥ on Intel Macs). Pick the default Cicada live entry unless you need amnesic copy-to-RAM.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>1 · Live session</h2><span class="tag">DEMO</span></div>
+      <ol class="steps">
+        <li><strong>You are cicada</strong> Empty password on live. Overlay is RAM.</li>
+        <li><strong>Wi‑Fi</strong> Click WIFI on the bar — telemetry stays off.</li>
+        <li><strong>Desktop</strong> Left dock, tiling windows, Helium for web, Files for pcmanfm-qt.</li>
+        <li><strong>Do not</strong> Enroll duress or TPM on the live stick — there is no LUKS yet.</li>
+      </ol>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>2 · Install to disk</h2><span class="tag">DAILY DRIVER</span></div>
+      <p style="color:var(--muted)">Wi‑Fi first (<code>pacstrap</code> needs network). Target another drive — not the live stick.</p>
+      <pre>sudo cicada-install --list
+sudo cicada-install --target /dev/sdX                 # external
+sudo cicada-install --target /dev/nvme0n1 --internal  # Framework-class only</pre>
+      <p style="color:var(--muted);margin-top:0.75rem">
+        Apple internal disks are refused. You set a <strong>LUKS passphrase</strong> (disk)
+        and a <strong>user password</strong> for <code>cicada</code> (login). Root is locked — use sudo.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>3 · First hour on the install</h2><span class="tag">OPTIONAL</span></div>
+      <pre>sudo passwd cicada-work       # Work UID created at firstboot
+sudo cicada-duress-enroll     # second LUKS passphrase
+sudo cicada-tpm-enroll        # skip / exit 2 on Apple EFI
+sudo cicada-sbctl-enroll      # Setup Mode only
+cicada-attest                 # pin device.pub on a phone you trust</pre>
+      <p style="color:var(--muted);margin-top:0.75rem">
+        Settings → Camera &amp; microphone for the software AV kill.
+        Settings → App permissions for per-app scopes.
+        Full sheet: <code>docs/USER.md</code> in the repo.
+      </p>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>Stuck?</h2><span class="tag">SUPPORT</span></div>
+      <p style="margin:0;color:var(--muted)">
+        Open an issue on <a href="https://github.com/kpres12/Cicada.OS/issues">GitHub</a>.
+        Say what machine, which boot entry, and the exact command that failed.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · INSTALL</span>
+      <a href="../">Home</a>
+    </div>
+  </footer>
+  <script src="../assets/js/cicada.js"></script>
+</body>
+</html>

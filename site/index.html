@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Cicada.OS — private laptop OS</title>
+  <meta name="description" content="Cicada.OS is a privacy and security focused laptop OS. GrapheneOS intent, Hyprland daily driver. Arch is the warehouse — Cicada is the product."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="assets/css/cicada.css"/>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="./">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="features/" >Features</a>
+      <a href="download/">Download</a>
+      <a href="install/">Install</a>
+      <a href="faq/">FAQ</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta">
+      <span class="live">● LIVE</span>
+      · <span data-mission-clock>—</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-bg" aria-hidden="true">
+      <img src="assets/svg/hero-sentry.svg" alt=""/>
+    </div>
+    <div class="hud-corner tl">MAGI-01 // SENTRY<br/><span class="val">CHANNEL · cicada-stable</span></div>
+    <div class="hud-corner tr">SRC · GITHUB<br/><span class="val">TRACKED · LAPTOP OS</span></div>
+    <div class="hero-inner">
+      <p class="brand">CICADA<span class="dot">.</span>OS</p>
+      <h1>The private laptop OS you can actually use.</h1>
+      <p class="lede">GrapheneOS intent. Hyprland daily driver. Arch is the warehouse — you launch Cicada, not Arch.</p>
+      <div class="cta-row">
+        <a class="btn" href="download/">Download ISO</a>
+        <a class="btn btn-amber" href="install/">Install guide</a>
+        <a class="btn btn-ghost" href="features/">Features</a>
+      </div>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>About</h2>
+        <span class="tag">BALTHASAR-2</span>
+      </div>
+      <p>
+        Cicada.OS is a privacy and security focused <strong>laptop</strong> operating system,
+        developed as an open source project. It hardens defaults, owns the launcher,
+        and ships Graphene-shaped permissions — without making you fight the machine for Wi‑Fi, files, or a browser.
+      </p>
+      <p>
+        Official releases land on the <a href="download/">download</a> page.
+        Installation instructions are on the <a href="install/">install</a> page.
+        Claims stay honest about silicon — see the table below.
+      </p>
+    </div>
+
+    <div class="grid-2" style="margin-top:1rem">
+      <div class="panel">
+        <div class="panel-head"><h2>Product layers</h2><span class="tag">POLICY OS</span></div>
+        <ul class="feature-list">
+          <li><span class="k">Launcher</span><span class="v">Dock / Wofi / MIME only start Cicada wrappers</span></li>
+          <li><span class="k">Scopes</span><span class="v">Default-deny network, files, cam, mic</span></li>
+          <li><span class="k">Work UID</span><span class="v">Second Unix user — not a folder named Burner</span></li>
+          <li><span class="k">Browser</span><span class="v">Helium with Vanadium-class managed policy</span></li>
+          <li><span class="k">Channel</span><span class="v">Pinned cicada-stable — not floating Arch extra</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Not Google · Not AOSP theater</h2><span class="tag">ENGINE</span></div>
+        <p style="margin:0;color:var(--muted)">
+          Cicada will never ship a fake Titan story on Apple EFI.
+          Arch remains the package engine; the product layer is what you touch.
+          Kitty is Owner <code>adb</code> — power user escape, not the UI.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Claims — do not collapse them</h2><span class="tag">THREAT MODEL</span></div>
+      <table class="claim-table">
+        <thead>
+          <tr><th>Claim</th><th>When true</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Trackers / school filter / cold disk thief</td>
+            <td>Strong passphrase + Helium policy + LUKS — mostly now</td>
+          </tr>
+          <tr>
+            <td>LEO with AFU (on or just locked)</td>
+            <td>Never “can’t.” Shorten the window. Still userspace.</td>
+          </tr>
+          <tr>
+            <td>Firmware / evil maid on Apple EFI Air</td>
+            <td>Never. Heads/PureBoot is a different laptop.</td>
+          </tr>
+          <tr>
+            <td>Cicada is its own OS</td>
+            <td>No unsandboxed dock path; scopes; Work UID; signed channel. Identity, not uncrackability.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>Device support</h2><span class="tag">HARDWARE TIERS</span></div>
+      <ul class="feature-list">
+        <li><span class="k">Prototype</span><span class="v">Intel MacBook Air 2015–2017 — software privacy only</span></li>
+        <li><span class="k">Daily</span><span class="v">Framework / modern ThinkPad — TPM2 + Secure Boot enroll</span></li>
+        <li><span class="k">Boot story</span><span class="v">Librem / NitroPad + Heads — evil maid answer</span></li>
+      </ul>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · OPEN SOURCE · FAIL CLOSED</span>
+      <span>
+        <a href="https://github.com/kpres12/Cicada.OS">GitHub</a>
+        · <a href="faq/">FAQ</a>
+        · <a href="download/">Download</a>
+      </span>
+    </div>
+  </footer>
+  <script src="assets/js/cicada.js"></script>
+</body>
+</html>

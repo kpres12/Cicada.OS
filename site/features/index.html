@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Features — Cicada.OS</title>
+  <meta name="description" content="Cicada.OS privacy and security features — Graphene-shaped, laptop-honest."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="../assets/css/cicada.css"/>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="../">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="./" aria-current="page">Features</a>
+      <a href="../download/">Download</a>
+      <a href="../install/">Install</a>
+      <a href="../faq/">FAQ</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
+  </header>
+
+  <main class="wrap">
+    <p class="page-title">Features</p>
+    <p class="page-sub">
+      GrapheneOS is the north star for <em>intent</em>. This page lists what Cicada actually ships on a laptop —
+      policy OS on Linux, not Android kernel sandboxing.
+    </p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Exploit mitigations</h2><span class="tag">RUNTIME</span></div>
+        <ul class="feature-list">
+          <li><span class="k">malloc</span><span class="v">hardened_malloc (GrapheneOS tag) via ld.so.preload</span></li>
+          <li><span class="k">Kernel</span><span class="v">linux-hardened boot entry + lockdown on that entry</span></li>
+          <li><span class="k">Memory</span><span class="v">init_on_alloc / init_on_free on cmdline</span></li>
+          <li><span class="k">CET</span><span class="v">ibt + shstk where silicon supports it — not MTE</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Permissions</h2><span class="tag">SCOPES</span></div>
+        <ul class="feature-list">
+          <li><span class="k">Default</span><span class="v">Unknown apps: NETWORK/FILES deny</span></li>
+          <li><span class="k">MIC/CAM</span><span class="v">Per-app deny + system software kill</span></li>
+          <li><span class="k">Portal</span><span class="v">FILES=portal ≈ Downloads + picker</span></li>
+          <li><span class="k">VPN-only</span><span class="v">Host net only while wg0 is up</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>AFU / coercion</h2><span class="tag">LOCK</span></div>
+        <ul class="feature-list">
+          <li><span class="k">Reboot</span><span class="v">Auto-reboot when locked (default 30 min)</span></li>
+          <li><span class="k">USB</span><span class="v">USBGuard blocks inserts while locked</span></li>
+          <li><span class="k">Duress</span><span class="v">LUKS slot + session PAM path</span></li>
+          <li><span class="k">Watchdog</span><span class="v">Hardware AFU ceiling when present</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Browser / network</h2><span class="tag">HELIUM</span></div>
+        <ul class="feature-list">
+          <li><span class="k">JIT</span><span class="v">Off via managed policy</span></li>
+          <li><span class="k">Telemetry</span><span class="v">Off — sync, metrics, DoH theater cut</span></li>
+          <li><span class="k">VPN</span><span class="v">WireGuard + nftables kill switch (opt-in)</span></li>
+          <li><span class="k">MAC</span><span class="v">Randomized; LLMNR/mDNS off</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>Will not claim</h2><span class="tag">HARD GAPS</span></div>
+      <ul class="feature-list">
+        <li><span class="k">MTE</span><span class="v">No x86 equivalent — do not list as done</span></li>
+        <li><span class="k">Auditor</span><span class="v">No Titan — Pixel pin of TPM quote is the substitute</span></li>
+        <li><span class="k">Qubes</span><span class="v">bwrap scopes ≠ Xen compartments</span></li>
+        <li><span class="k">AV kill</span><span class="v">Software cam/mic kill ≠ hardware cut</span></li>
+      </ul>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · FEATURES</span>
+      <a href="../">Home</a>
+    </div>
+  </footer>
+  <script src="../assets/js/cicada.js"></script>
+</body>
+</html>

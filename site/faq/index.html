@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FAQ — Cicada.OS</title>
+  <meta name="description" content="Cicada.OS FAQ — hardware, claims, Arch, Qubes."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="../assets/css/cicada.css"/>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="../">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="../features/">Features</a>
+      <a href="../download/">Download</a>
+      <a href="../install/">Install</a>
+      <a href="./" aria-current="page">FAQ</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
+  </header>
+
+  <main class="wrap">
+    <p class="page-title">FAQ</p>
+    <p class="page-sub">Short answers. Longer threat model: <code>docs/THREAT_MODEL.md</code> in the repo.</p>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Is this GrapheneOS for laptops?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        Graphene <em>intent</em> — policy OS, hardened defaults, honest hardware tiers.
+        Not a port of AOSP. Not Titan. Not “they can’t crack it.”
+      </p>
+    </div>
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Isn’t this just Arch?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        Arch is the warehouse. You cannot casually launch Arch from the dock —
+        only Cicada wrappers. That identity gap is the product.
+      </p>
+    </div>
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Why not Qubes?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        Qubes wins compartmentalization. Cicada is a Hyprland daily driver with Graphene-shaped scopes.
+        Different job. Use Qubes if the threat is malicious PDFs across trust domains.
+      </p>
+    </div>
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Does the camera kill really kill?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        Software: unloads <code>uvcvideo</code>, forces scopes deny. Root can reverse it.
+        Hardware kill switches (Librem-style) are the real ceiling.
+      </p>
+    </div>
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>Can I run this on my Framework?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        Yes — that is the daily-driver tier. Enroll TPM2 and Secure Boot after install.
+        Prototype development still happens on Intel MBA 2015–2017.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · FAQ</span>
+      <a href="../">Home</a>
+    </div>
+  </footer>
+  <script src="../assets/js/cicada.js"></script>
+</body>
+</html>
