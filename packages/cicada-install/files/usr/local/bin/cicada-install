@@ -117,6 +117,7 @@ copy_product() {
   done
   [[ -f /etc/nftables.conf ]] && cp -a /etc/nftables.conf "${mnt}/etc/nftables.conf"
   [[ -f /etc/chrony.conf ]] && cp -a /etc/chrony.conf "${mnt}/etc/chrony.conf"
+  [[ -f /etc/systemd/zram-generator.conf ]] && cp -a /etc/systemd/zram-generator.conf "${mnt}/etc/systemd/zram-generator.conf"
   mkdir -p "${mnt}/etc/systemd/system"
   find /etc/systemd/system -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/etc/systemd/system/" \;
   mkdir -p "${mnt}/usr/lib/initcpio/hooks" "${mnt}/usr/lib/initcpio/install" "${mnt}/usr/lib"

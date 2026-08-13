@@ -84,6 +84,46 @@ else
   ok "suspend disabled" "no suspend-to-RAM; lid close locks and drops to BFU"
 fi
 
+# Name the tier. Capability lists are hard to act on; a tier tells you what
+# this machine can and cannot be talked into doing.
+echo
+echo "Tier"
+tpm2=0; sb_user=0; uki=0
+[[ -c /dev/tpmrm0 || -c /dev/tpm0 ]] && \
+  [[ "$(cat /sys/class/tpm/tpm0/tpm_version_major 2>/dev/null)" == 2 ]] && tpm2=1
+command -v sbctl >/dev/null 2>&1 && sbctl status 2>/dev/null | grep -qiE 'setup mode.*(enabled|yes)|owner' && sb_user=1
+[[ -d /efi/EFI/Linux || -d /boot/EFI/Linux ]] && uki=1
+
+if [[ "${tpm2}" == 0 ]]; then
+  printf '  \033[1mTier 0\033[0m — no TPM2. The passphrase is the whole boundary and\n'
+  printf '  nothing rate-limits guessing. Evil maid is undetectable here.\n'
+  printf '  Closest available upgrade: cicada-keyfile-enroll --and (removable 2nd factor)\n'
+elif [[ "${sb_user}" == 1 && "${uki}" == 1 ]]; then
+  printf '  \033[1;32mTier 2\033[0m — TPM2 + your own Secure Boot keys + signed UKI.\n'
+  printf '  This is as close to GrapheneOS as commodity x86 gets: verified boot\n'
+  printf '  chain plus hardware-throttled unlock.\n'
+elif [[ "${sb_user}" == 1 ]]; then
+  printf '  \033[1;33mTier 1+\033[0m — TPM2 and firmware in Setup Mode. Finish the job:\n'
+  printf '    cicada-sbctl-enroll   then   cicada-tpm-enroll --pcrs 0+7+11\n'
+else
+  printf '  \033[1;33mTier 1\033[0m — TPM2 present. Seal the disk behind a PIN so the\n'
+  printf '  hardware rate-limits guessing:  cicada-tpm-enroll\n'
+fi
+
+# The single most consequential thing this tool can tell you.
+if [[ "${tpm2}" == 1 ]] && command -v cryptsetup >/dev/null 2>&1; then
+  dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')"
+  if [[ -n "${dev}" ]] && cryptsetup luksDump "${dev}" 2>/dev/null | grep -q 'systemd-tpm2'; then
+    if cryptsetup luksDump "${dev}" 2>/dev/null | grep -qi 'tpm2-pin.*true'; then
+      printf '  \033[32m✓\033[0m TPM2 keyslot is PIN-protected\n'
+    else
+      printf '  \033[31m!\033[0m TPM2 keyslot has NO PIN — this disk unlocks itself on power-on.\n'
+      printf '    A thief who presses the power button gets a decrypted disk.\n'
+      printf '    Fix: systemd-cryptenroll --wipe-slot=tpm2 %s && cicada-tpm-enroll\n' "${dev}"
+    fi
+  fi
+fi
+
 echo
 echo "Summary: ${pass} present, ${miss} absent"
 if [[ "${miss}" -gt 0 ]]; then

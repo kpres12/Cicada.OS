@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# First-run hardening wizard. Runs once on the first desktop login of an
+# INSTALLED system, then never again unless invoked by hand.
+#
+# Why this exists: the two things that most improve both security and daily
+# comfort — a USB unlock token on Tier 0, a TPM PIN on Tier 1+ — both require a
+# human at a keyboard, so neither can happen inside cicada-install or
+# cicada-firstboot (a non-interactive systemd oneshot). Left as commands the
+# user would have to discover, they never get run.
+#
+# The daily-comfort angle matters as much as the security one. On Tier 0 the
+# passphrase is 19 characters because nothing rate-limits guessing, and the
+# machine drops to BFU 20 minutes after the lid closes. Typing that several
+# times a day is how people end up disabling reboot-to-BFU entirely. A token
+# makes unlock cheap, which is what makes the aggressive BFU window survivable.
+set -uo pipefail
+
+MARKER="${HOME}/.local/share/cicada/firstrun-done"
+FORCE=0
+[[ "${1:-}" == "--force" ]] && FORCE=1
+
+# Live has no LUKS to enrol against, and nothing here persists anyway.
+[[ -d /run/archiso ]] && exit 0
+[[ "${FORCE}" == 1 || ! -f "${MARKER}" ]] || exit 0
+
+have_luks() { cryptsetup status cicada >/dev/null 2>&1; }
+have_tpm2() {
+  [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]] || return 1
+  [[ "$(cat /sys/class/tpm/tpm0/tpm_version_major 2>/dev/null)" == 2 ]]
+}
+luks_dev() { cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}'; }
+has_tpm_slot() {
+  local d; d="$(luks_dev)"; [[ -n "${d}" ]] || return 1
+  cryptsetup luksDump "${d}" 2>/dev/null | grep -q 'systemd-tpm2'
+}
+has_token_slot() { [[ -f /etc/cicada/keyfile.env ]]; }
+
+mark_done() { mkdir -p "$(dirname "${MARKER}")"; date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"; }
+
+# No LUKS means this is not a Cicada install (or the mapping is named something
+# else). Nothing to offer; do not nag on every login.
+have_luks || { mark_done; exit 0; }
+
+# GUI if we have one, terminal otherwise. Never block the session either way.
+ask() {
+  local title="$1" body="$2"
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    zenity --question --title="${title}" --width=460 --text="${body}" 2>/dev/null
+  else
+    printf '\n%s\n\n%s\n' "${title}" "${body}"
+    read -r -p "Set this up now? [y/N] " a
+    [[ "${a}" =~ ^[Yy] ]]
+  fi
+}
+
+run_in_terminal() {
+  # These commands need a real TTY: they prompt for a passphrase and a PIN.
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+    kitty --title CICADA-SETUP -e sudo "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+if have_tpm2; then
+  # ---- Tier 1+ : TPM PIN --------------------------------------------------
+  if has_tpm_slot; then
+    mark_done; exit 0
+  fi
+  ask "Cicada — make unlocking easier and safer" \
+"This machine has a TPM2.
+
+Sealing the disk key to it behind a PIN means you type a short PIN at boot
+instead of your long passphrase — and the TPM rate-limits guessing in
+hardware, so a short PIN is genuinely safe here.
+
+Your passphrase keyslot is kept as a fallback.
+
+Set up a TPM PIN now?" && run_in_terminal cicada-tpm-enroll
+else
+  # ---- Tier 0 : USB unlock token -----------------------------------------
+  if has_token_slot; then
+    mark_done; exit 0
+  fi
+  ask "Cicada — make unlocking easier" \
+"This machine has no TPM, so your disk passphrase has to be long (that is
+what protects it, since nothing can rate-limit guessing).
+
+You can enrol a USB stick as an unlock token. Then booting is: plug it in.
+Your passphrase still works if the stick is lost.
+
+This matters more than it sounds: the machine returns to a passphrase prompt
+20 minutes after you close the lid, and typing a 19-character passphrase
+several times a day is how people end up turning that protection off.
+
+The stick will be ERASED. Enrol one now?" && {
+    # Show removable candidates rather than making the user guess a device node.
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+      kitty --title CICADA-SETUP -e bash -c '
+        echo "Removable devices:"; echo
+        lsblk -o NAME,SIZE,MODEL,TRAN,RM,MOUNTPOINTS | awk "NR==1 || \$5==1"
+        echo
+        echo "Enrol with (partition, not whole disk):"
+        echo "  sudo cicada-keyfile-enroll --or --device /dev/sdX1"
+        echo
+        echo "--or  = token OR passphrase unlocks (recommended: recoverable)"
+        echo "--and = both required (stronger, needs a second backup token)"
+        echo
+        exec bash'
+    else
+      lsblk -o NAME,SIZE,MODEL,TRAN,RM | awk 'NR==1 || $5==1'
+      echo "Run: sudo cicada-keyfile-enroll --or --device /dev/sdX1"
+    fi
+  }
+fi
+
+mark_done

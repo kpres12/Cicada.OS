@@ -1,10 +1,53 @@
 #!/usr/bin/env bash
-# Bind LUKS to TPM2 PCRs. Passphrase slot stays. No TPM → exit 2 (not a fake success).
+# Seal the LUKS key to the TPM2, gated behind a PIN.
+#
+# THE PIN IS THE POINT. Sealing to PCRs alone means the disk unlocks itself
+# whenever the machine boots into the expected firmware state — a stolen laptop
+# powers on and decrypts, and only the login password stands between an attacker
+# and the data. That is weaker than a passphrase, not stronger.
+#
+# With --tpm2-with-pin, unsealing requires the PIN *and* the TPM performs the
+# check itself. The TPM's dictionary-attack lockout then rate-limits guessing in
+# hardware: wrong attempts increment a counter the CPU cannot reset, and the TPM
+# refuses to cooperate for an escalating cooldown.
+#
+# That is the property that makes a 6-digit PIN safe on a Pixel behind Titan M2,
+# and it is the closest a commodity x86 laptop gets to it. On this path the
+# secret can be short and memorable *because* the hardware throttles guessing —
+# which is the opposite of the no-TPM path, where the passphrase must carry 80+
+# bits because nothing rate-limits an offline attack on a disk image.
+#
+# The passphrase keyslot is always kept. Firmware updates change PCRs and will
+# make unsealing fail; that is the tamper signal working, and you type the
+# passphrase and re-enroll.
 set -euo pipefail
 
-if [[ ! -c /dev/tpmrm0 ]]; then
-  echo "cicada-tpm-enroll: no /dev/tpmrm0 (Apple EFI MBA: expected)." >&2
-  echo "Passphrase-only LUKS stays. Framework-class: run this after install." >&2
+WITH_PIN=1
+PCRS="${CICADA_TPM_PCRS:-}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-pin) WITH_PIN=0 ;;   # deliberately undocumented in --help; see below
+    --pcrs) PCRS="${2:?}"; shift ;;
+    -h|--help)
+      cat <<'EOF'
+usage: cicada-tpm-enroll [--pcrs 0+7]
+
+Seals the LUKS key to the TPM2 behind a PIN. The TPM rate-limits PIN guessing
+in hardware, so a short PIN is safe here in a way it never is on a machine
+without a TPM.
+
+Your passphrase keyslot is kept. If a firmware update changes the measurements,
+unsealing fails by design — type the passphrase and re-run this.
+EOF
+      exit 0 ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+if [[ ! -c /dev/tpmrm0 && ! -c /dev/tpm0 ]]; then
+  echo "cicada-tpm-enroll: no TPM2 on this machine (Apple EFI MBA: expected)." >&2
+  echo "Passphrase-only LUKS stays. Nothing here can rate-limit guessing without a TPM." >&2
   exit 2
 fi
 [[ ${EUID} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
@@ -14,22 +57,59 @@ dev=""
 if [[ -f /etc/cicada/install.env ]]; then
   # shellcheck disable=SC1091
   source /etc/cicada/install.env
-  if [[ -n "${CICADA_LUKS_UUID:-}" ]]; then
-    dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
-  fi
+  [[ -n "${CICADA_LUKS_UUID:-}" ]] && dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
 fi
 if [[ -z "${dev}" || ! -e "${dev}" ]]; then
   dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')"
 fi
 [[ -n "${dev}" && -e "${dev}" ]] || { echo "cannot find LUKS device (boot the installed system)" >&2; exit 1; }
 
-echo "Enrolling TPM2 against PCR 0,1,2,3,7 on ${dev}"
-echo "Passphrase slot is kept. Firmware/bootloader change → TPM unwrap fails → type the passphrase."
-systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+1+2+3+7 "${dev}"
+# PCR choice is a usability/security trade, so pick deliberately:
+#   7  Secure Boot policy — changes if someone disables Secure Boot or swaps keys.
+#   0  Firmware code — changes if the firmware itself is replaced.
+#   11 The UKI, when one is in use; the strongest binding, set by the caller.
+# PCRs 1 and 3 are firmware *configuration* and option ROMs: they churn on
+# unrelated setting changes and dock/GPU swaps, which trains users to re-enroll
+# reflexively and defeats the point of a tamper signal.
+if [[ -z "${PCRS}" ]]; then
+  if [[ -f /etc/kernel/uki.conf || -d /efi/EFI/Linux || -d /boot/EFI/Linux ]]; then
+    PCRS="0+7+11"
+  else
+    PCRS="0+7"
+  fi
+fi
+
+echo "Sealing ${dev} to TPM2 PCRs ${PCRS}"
+if [[ "${WITH_PIN}" == 1 ]]; then
+  echo
+  echo "You will be asked for a NEW PIN. This is not your passphrase."
+  echo "It can be short — the TPM rate-limits guessing in hardware — but it must"
+  echo "not be one an observer could shoulder-surf and reuse."
+  echo
+  systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs="${PCRS}" --tpm2-with-pin=yes "${dev}"
+  crypttab_opts="tpm2-device=auto"
+else
+  # Reachable only via --no-pin. Kept for machines used as unattended servers,
+  # where nobody is present to type anything. On a laptop this means the disk
+  # decrypts itself on power-on, so it is never the default.
+  echo "WARNING: enrolling WITHOUT a PIN. This disk will unlock automatically" >&2
+  echo "whenever the machine boots into the expected state. A thief who powers" >&2
+  echo "it on gets a decrypted disk. Only do this for an unattended server." >&2
+  read -r -p "Type UNATTENDED to continue: " ans
+  [[ "${ans}" == UNATTENDED ]] || { echo "aborted"; exit 1; }
+  systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs="${PCRS}" "${dev}"
+  crypttab_opts="tpm2-device=auto"
+fi
 
 if [[ -f /etc/crypttab ]]; then
-  sed -i 's/ none luks$/ none luks,tpm2-device=auto/' /etc/crypttab || true
+  sed -i "s/ none luks$/ none luks,${crypttab_opts}/" /etc/crypttab || true
 fi
-command -v cicada-seal >/dev/null && cicada-seal append tpm.enroll "{}" >/dev/null 2>&1 || true
-echo "enrolled. Rebuild initramfs if unlock at boot ignores TPM: mkinitcpio -P"
-echo "Hook sd-encrypt is required for TPM2 at initramfs; passphrase still works with encrypt."
+command -v cicada-seal >/dev/null && \
+  cicada-seal append tpm.enroll "{\"pcrs\":\"${PCRS}\",\"pin\":${WITH_PIN}}" >/dev/null 2>&1 || true
+
+echo
+echo "Enrolled. Rebuild the initramfs so the boot path can talk to the TPM:"
+echo "  mkinitcpio -P"
+echo
+echo "The passphrase keyslot is still there. If a firmware update changes the"
+echo "measurements, unsealing will fail — that is the tamper signal, not a fault."

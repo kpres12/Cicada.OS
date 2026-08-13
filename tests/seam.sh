@@ -39,8 +39,13 @@ for pkg in root.glob("packages/*/files/etc"):
                 missing.append("/etc/" + f.name)
             continue
         d = "/etc/" + str(f.parent.relative_to(pkg))
-        if not any(d == a or d.startswith(a + "/") for a in allow):
-            missing.append(d)
+        if any(d == a or d.startswith(a + "/") for a in allow):
+            continue
+        # A file outside every covered directory may still be carried by its own
+        # explicit cp line in copy_product; accept that, but only by exact name.
+        if f.name in inst:
+            continue
+        missing.append(d + "/" + f.name)
 for d in sorted(set(missing)):
     print(f"  FAIL {d} shipped but not copied by copy_product (live-only)")
 sys.exit(1 if missing else 0)

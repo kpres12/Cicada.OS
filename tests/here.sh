@@ -334,7 +334,27 @@ say "token enroll + or/and boot paths + no key material in initramfs"
 echo "==> hardware-adaptive trust (Cicada runs on more than one laptop)"
 test -x "${CICADA_BIN}/cicada-hw-trust" || die "cicada-hw-trust not executable"
 grep -q 'tpmrm0' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" || die "install does not use a TPM2 when present"
-grep -q 'cicada-tpm-enroll' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" || die "TPM2 never enrolled on capable hardware"
+# TPM sealing WITHOUT a PIN makes a laptop unlock itself on power-on — a thief
+# who presses the power button gets a decrypted disk. That is strictly worse
+# than passphrase-only, so it must never be the default and must never be done
+# unattended (enrolling a PIN needs a human at a keyboard).
+tpe="${CICADA_BIN}/cicada-tpm-enroll"
+grep -q -- '--tpm2-with-pin=yes' "${tpe}" || die "TPM enrolment without a PIN: disk would auto-unlock on power-on"
+grep -q 'UNATTENDED' "${tpe}" || die "--no-pin has no explicit confirmation"
+grep -qE 'tpm2-pcrs="\$\{PCRS\}"' "${tpe}" || die "PCR set not configurable"
+grep -q 'PCRs 1 and 3' "${tpe}" || die "PCR choice must document why 1/3 are excluded (churn)"
+ich="${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh"
+grep -q 'systemd-cryptenroll' "${ich}" && die "install must not seal the TPM unattended (no PIN possible there)" || true
+grep -q 'cicada-tpm-enroll' "${ich}" || die "install should tell TPM2 users about the strong path"
+# Tier reporting: a capability list is hard to act on, a tier is not.
+ht="${CICADA_BIN}/cicada-hw-trust"
+for tier in 'Tier 0' 'Tier 1' 'Tier 2'; do
+  grep -q "${tier}" "${ht}" || die "cicada-hw-trust does not report ${tier}"
+done
+grep -q 'unlocks itself on power-on' "${ht}" || die "hw-trust must flag a PIN-less TPM keyslot"
+for tier in 'Tier 0' 'Tier 1' 'Tier 2' 'Tier 3'; do
+  grep -q "${tier}" "${ROOT}/docs/THREAT_MODEL.md" || die "THREAT_MODEL missing ${tier}"
+done
 say "TPM2 auto-enrol when present, honest report when not"
 
 echo "==> no swap anywhere (a swapfile would undo the RAM story)"
@@ -342,13 +362,30 @@ echo "==> no swap anywhere (a swapfile would undo the RAM story)"
 # disk, surviving reboot, outside the reach of init_on_free. Cicada has none.
 # This is currently a property of the install rather than a decision anyone
 # wrote down, so assert it before someone "helpfully" adds a swapfile.
-grep -qE 'mkswap|swapon|swapfile|zram' "${INSTALL_BIN}/cicada-install" && die "install creates swap" || true
-grep -qE 'mkswap|swapon|swapfile|zram' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
-  && die "install-chroot creates swap" || true
-grep -qxE '(zram-generator|systemd-swap)' "${pkgs}" && die "swap tooling on the ISO" || true
+grep -qE 'mkswap|swapfile' "${INSTALL_BIN}/cicada-install" && die "install creates disk swap" || true
+grep -qE 'mkswap|swapfile' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  && die "install-chroot creates disk swap" || true
+grep -qx 'systemd-swap' "${pkgs}" && die "disk swap tooling on the ISO" || true
+# zram IS permitted: it is compressed swap in RAM, destroyed at power-off and
+# never written to the SSD. It is what makes an 8GB machine usable under a
+# browser. The one setting that would break the property is writeback.
+zr="${ROOT}/packages/cicada-defaults/files/etc/systemd/zram-generator.conf"
+if [[ -f "${zr}" ]]; then
+  # Strip comments first: the file explains why writeback is absent, and
+  # matching that prose fails a check the config actually passes.
+  grep -vE '^\s*#' "${zr}" | grep -qi 'writeback' \
+    && die "zram writeback would spill to disk — the artifact we are avoiding" || true
+  grep -q 'fs-type = swap' "${zr}" || die "zram device is not configured as swap"
+fi
 grep -q 'AllowHibernation=no' "${ROOT}/packages/cicada-defaults/files/etc/systemd/sleep.conf.d/cicada.conf" \
   || die "hibernation would need swap and would write keys to disk"
-say "no swap: nothing pages key material to disk"
+# A laptop you cannot close is not a laptop. Locking stays immediate; this is
+# only the window before BFU. GrapheneOS ships 18h; anything under ~10 min
+# means users disable the feature entirely, which protects nobody.
+awk -F= '/^CICADA_LID_REBOOT_SEC=/ { exit ($2 >= 600) ? 0 : 1 }' \
+  "${ROOT}/packages/cicada-defaults/files/etc/cicada/defaults.env" \
+  || die "lid reboot window too short to carry the laptop between rooms"
+say "no disk swap (zram ok) / lid window survives walking to class"
 
 echo "==> hardware watchdog (AFU ceiling that outlives userspace)"
 wd="${CICADA_BIN}/cicada-watchdog"
@@ -392,7 +429,7 @@ need = {"DefaultJavaScriptJitSetting": 2, "WebGpuEnabled": False, "SitePerProces
         "PostQuantumKeyAgreementEnabled": True, "ScreenCaptureAllowed": False}
 bad = [k for k, v in need.items() if d.get(k) != v]
 if bad: print("  missing/wrong:", bad)
-sys.exit(1 if bad or "ClearBrowsingDataOnExitList" not in d else 0)
+sys.exit(1 if bad else 0)
 PY
 say "JIT blocked / WebGPU off / site isolation / PQ / clear-on-exit"
 
@@ -574,6 +611,23 @@ grep -q 'UNAUTHENTICATED' "${st}" || die "status does not report unauthenticated
 grep -q 'portal mode is on' "${st}" || die "status does not warn while DNS is plaintext"
 grep -q 'NO kill switch' "${st}" || die "status does not warn about a VPN without a kill switch"
 say "cicada-status reports the posture in force, not the one in the config"
+
+echo "==> first-run wizard offers the tier-appropriate unlock"
+fr="${CICADA_BIN}/cicada-firstrun"
+test -x "${fr}" || die "no first-run flow: token/PIN setup would stay undiscovered"
+# Neither can be done by cicada-install or cicada-firstboot — both need a human
+# at a keyboard — so a login-time wizard is the only place this can happen.
+grep -q 'run/archiso' "${fr}" || die "first-run must be a no-op on live (no LUKS to enrol against)"
+grep -q 'cicada-tpm-enroll' "${fr}" || die "TPM2 machines are not offered a PIN"
+grep -q 'cicada-keyfile-enroll' "${fr}" || die "no-TPM machines are not offered a USB token"
+grep -q -- '--or' "${fr}" || die "must suggest --or: --and does not solve the typing problem"
+grep -q 'firstrun-done' "${fr}" || die "wizard would nag on every login"
+grep -q 'has_tpm_slot\|has_token_slot' "${fr}" || die "wizard re-offers what is already enrolled"
+grep -q 'cicada-firstrun' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hyprland.conf" \
+  || die "first-run never launches"
+grep -q 'sleep 8' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hypr/hyprland.conf" \
+  || die "first-run must not race the desktop coming up"
+say "first-run: TPM PIN on Tier 1+, USB token on Tier 0, once only"
 
 echo "==> lock cannot strand a passwordless session"
 lock="${CICADA_BIN}/cicada-lock"

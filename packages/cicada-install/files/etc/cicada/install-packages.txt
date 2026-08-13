@@ -91,3 +91,4 @@ torbrowser-launcher
 chrony
 meek
 torsocks
+zram-generator

@@ -39,9 +39,62 @@ See [docs/ATTACKS.md](ATTACKS.md) for the forensic/laptop mapping.
 
 ## Hardware tiers
 
-1. **Prototype (Intel MBA 2015–2017):** privacy + hardening, software only
-2. **Daily driver (Framework etc.):** same software, better maintainability
-3. **Graphene-adjacent (Librem / NitroPad + Heads/PureBoot):** boot integrity + tamper story
+Cicada is written for a range of machines, and the security ceiling is set by
+hardware, not by configuration. The software is identical across tiers; what
+changes is which root of trust is available. `cicada-hw-trust` reports the tier
+a given machine is actually on.
+
+### Tier 0 — no TPM2, vendor-controlled firmware
+*Apple EFI MacBooks (incl. the 2015–2017 Air), most pre-2016 x86.*
+
+- Disk: LUKS2 + Argon2id, **passphrase is the entire boundary**
+- Guessing: **not rate-limited**. An imaged disk is attacked offline forever, so
+  `cicada-install` generates 80–100 bits rather than accepting a short secret
+- Boot: unsigned, unmeasured. **Evil maid is undetectable** — modifying the
+  plaintext ESP to capture the passphrase needs a screwdriver, not an exploit
+- Optional second factor: `cicada-keyfile-enroll --and` (a USB token you can
+  physically not-have)
+- Honest summary: **Tails-plus-persistence.** Strong against seizure of a
+  powered-off machine, DMA, and network observation. Nothing against firmware.
+
+### Tier 1 — TPM2 present, Secure Boot not user-controlled
+*Most OEM laptops with a TPM but locked-down or vendor-keyed firmware.*
+
+- Disk: LUKS2 sealed to TPM2 PCRs 0+7 **behind a PIN** (`cicada-tpm-enroll`)
+- Guessing: **rate-limited in hardware.** The TPM's dictionary-attack lockout
+  counts failures in silicon and the CPU cannot reset it. This is the property
+  that makes a 6-digit PIN safe on a Pixel, and it is the single largest jump
+  in the whole table
+- Boot: firmware replacement changes PCR 0 → unsealing fails → tamper is
+  *visible* instead of silent
+- Evil maid: detectable, not prevented
+
+### Tier 2 — TPM2 + user-controlled Secure Boot
+*Framework, recent ThinkPad, Star Labs, NovaCustom, System76.*
+
+- Everything in Tier 1, plus:
+- Own Secure Boot keys enrolled (`cicada-sbctl-enroll`), so the firmware refuses
+  to execute anything you did not sign
+- Kernel + initramfs as a signed UKI, measured into PCR 11, and the disk key
+  sealed to 0+7+11 — a modified initramfs cannot unseal the disk
+- **This is as close to GrapheneOS as commodity x86 gets:** a verified boot
+  chain plus hardware-throttled unlock. What is still missing versus a Pixel is
+  a discrete secure element holding the key material and per-app hardware
+  attestation
+- Evil maid: **prevented** for the boot chain, not merely detected
+
+### Tier 3 — Tier 2 + owner-controlled boot firmware
+*NitroPad / Librem with Heads or PureBoot, coreboot machines.*
+
+- Everything in Tier 2, plus firmware you can build and measure yourself, with a
+  tamper-evident boot that proves itself to you (TOTP / USB token) before you
+  type anything
+- Removes the "trust the vendor's firmware" assumption that Tiers 1–2 keep
+
+### What no tier fixes
+Intel ME / AMD PSP are present in all of them. Traffic analysis defeats Tor at
+sufficient scale. A compromised or seized-unlocked endpoint makes every item
+above irrelevant.
 
 ## Known costs of our own design choices
 

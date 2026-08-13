@@ -114,17 +114,30 @@ fi
 mkdir -p /etc/cicada
 echo 'WORK_UID=pending' > /etc/cicada/work-uid.env
 
-# Use the strongest root of trust this machine actually has. On a TPM2 laptop
-# (Framework, ThinkPad, most modern x86) sealing the key to PCRs gives the
-# hardware-enforced ceiling that an Apple-EFI MacBook can never have. The
-# passphrase keyslot is always kept, so a firmware update that changes the PCRs
-# degrades to "type your passphrase" rather than "your disk is gone".
+# Root of trust: use the strongest this machine actually has, but never enrol
+# something that weakens the disk. TPM sealing WITHOUT a PIN makes a laptop
+# unlock itself on power-on — worse than a passphrase — and enrolling a PIN
+# needs a human at a keyboard, which we do not have inside pacstrap. So detect,
+# report, and hand the user the one command; do not silently seal.
 if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
-  echo "==> TPM2 present: sealing LUKS key to PCRs"
-  cicada-tpm-enroll || echo "==> TPM enrol failed; passphrase-only (still fine)"
+  cat <<'TPMEOF'
+==> TPM2 detected. This machine can do the strong path:
+
+      cicada-tpm-enroll
+
+    That seals the disk key to the TPM behind a PIN, and the TPM rate-limits
+    PIN guessing in hardware — the property that makes a short PIN safe. Run it
+    after first boot. It is NOT run automatically: enrolling without a PIN would
+    make this disk unlock itself whenever it powers on.
+TPMEOF
+  if command -v sbctl >/dev/null 2>&1 && sbctl status 2>/dev/null | grep -qi 'setup mode.*enabled'; then
+    echo "==> Firmware is in Setup Mode: cicada-sbctl-enroll will give you verified boot."
+  fi
 else
-  echo "==> no TPM2: passphrase is the sole root of trust on this machine"
-  echo "    consider a USB token: cicada-keyfile-enroll --and --device /dev/sdX1"
+  echo "==> No TPM2: the passphrase is the sole root of trust on this machine."
+  echo "    Nothing here can rate-limit guessing, which is why cicada-install"
+  echo "    generates a high-entropy passphrase rather than accepting a short one."
+  echo "    Consider a removable second factor: cicada-keyfile-enroll --and ..."
 fi
 systemctl mask sshd.service || true
 
