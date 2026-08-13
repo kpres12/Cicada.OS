@@ -1,0 +1,6 @@
+[submodule "vendor/archiso"]
+	path = vendor/archiso
+	url = https://gitlab.archlinux.org/archlinux/archiso.git
+[submodule "vendor/Hyprland"]
+	path = vendor/Hyprland
+	url = https://github.com/hyprwm/Hyprland.git
