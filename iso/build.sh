@@ -112,3 +112,12 @@ fi
 
 echo "==> ISO(s):"
 ls -lh "${OUT}"/*.iso
+
+# Always point flash scripts / humans at the newest image (same-day rebuilds
+# overwrite cicada-YYYY.MM.DD-x86_64.iso; the symlink tracks whichever won).
+newest="$(ls -1t "${OUT}"/cicada-*.iso 2>/dev/null | grep -v 'cicada-latest' | head -1 || true)"
+if [[ -n "${newest}" ]]; then
+  ln -sfn "$(basename "${newest}")" "${OUT}/cicada-latest-x86_64.iso"
+  echo "==> latest -> ${OUT}/cicada-latest-x86_64.iso -> $(basename "${newest}")"
+  ls -lh "${newest}" "${OUT}/cicada-latest-x86_64.iso"
+fi
