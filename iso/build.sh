@@ -35,15 +35,55 @@ fi
 # Official Chocolate Doom + Freedoom (hash-pinned). Tirimid item 6 — required.
 "${ROOT}/scripts/install-doom.sh" "${PROFILE}/airootfs"
 
+# Prove Helium + wallpaper landed before the long pacstrap (fail fast).
+helium_bin=""
+for cand in \
+  "${PROFILE}/airootfs/opt/helium/helium" \
+  "${PROFILE}/airootfs/opt/helium/chrome" \
+  "${PROFILE}/airootfs/opt/helium/helium-wrapper"
+do
+  if [[ -x "${cand}" ]]; then
+    helium_bin="${cand}"
+    break
+  fi
+done
+[[ -n "${helium_bin}" ]] || {
+  echo "error: Helium not executable in airootfs after install-helium.sh" >&2
+  ls -la "${PROFILE}/airootfs/opt/helium" 2>&1 | head -20 >&2 || true
+  exit 1
+}
+wall="${PROFILE}/airootfs/usr/share/cicada/wallpapers/cicada-3301.png"
+[[ -f "${wall}" ]] || {
+  echo "error: wallpaper missing at ${wall}" >&2
+  exit 1
+}
+grep -q 'cicada-wallpaper' "${PROFILE}/airootfs/etc/skel/.config/hypr/hyprland.conf" \
+  || grep -q 'cicada-wallpaper' "${PROFILE}/airootfs/home/cicada/.config/hypr/hyprland.conf" \
+  || echo "==> warning: cicada-wallpaper not in hyprland.conf (desk may stay void)"
+echo "==> preflight OK: Helium=$(basename "${helium_bin}") wallpaper=$(basename "${wall}")"
+
 echo "==> mkarchiso  work=${WORK}/mkarchiso  out=${OUT}"
 rm -rf "${WORK}/mkarchiso"
 mkdir -p "${WORK}/mkarchiso"
 
-MKARCHISO=(mkarchiso -v -w "${WORK}/mkarchiso" -o "${OUT}" "${PROFILE}")
-if [[ "${EUID}" -ne 0 ]]; then
-  MKARCHISO=(sudo "${MKARCHISO[@]}")
+run_mkarchiso() {
+  local MKARCHISO=(mkarchiso -v -w "${WORK}/mkarchiso" -o "${OUT}" "${PROFILE}")
+  if [[ "${EUID}" -ne 0 ]]; then
+    MKARCHISO=(sudo "${MKARCHISO[@]}")
+  fi
+  "${MKARCHISO[@]}"
+}
+
+# Under qemu-amd64, a killed prior pacstrap can leave the work volume poisoned
+# even after rm -rf; one clean retry covers the perl/desc abort class.
+if ! run_mkarchiso; then
+  echo "==> mkarchiso failed — scrubbing work and retrying once"
+  rm -rf "${WORK}/mkarchiso"
+  mkdir -p "${WORK}/mkarchiso"
+  # Drop any stale locks from a crashed privileged mount
+  sleep 2
+  run_mkarchiso
 fi
-"${MKARCHISO[@]}"
 
 # Persist pacman pkg cache → local cicada-stable repo (next assemble embeds it).
 PKG_CACHE=""
