@@ -1,0 +1,7 @@
+# Cicada.OS — greetd (installed systems). Live USB keeps getty autologin.
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --asterisks --greeting 'Cicada.OS' --cmd cicada-session"
+user = greeter

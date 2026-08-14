@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Cicada.OS
+Comment=Cicada.OS desktop
+Exec=cicada-session
+Type=Application
+DesktopNames=Cicada;Cicada.OS

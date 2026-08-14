@@ -27,8 +27,14 @@ settings="${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings"
 skel_desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop"
 
 echo "==> 1 — Graphical system"
-grep -q 'Hyprland\|hyprland' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" \
-  || die "login must start Hyprland"
+grep -q 'Hyprland\|hyprland\|cicada-session' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" \
+  || die "login must start Cicada session"
+test -x "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-session" \
+  || die "cicada-session missing"
+grep -q 'tuigreet' "${ROOT}/packages/cicada-defaults/files/etc/greetd/config.toml" \
+  || die "greetd must use tuigreet branded Cicada"
+grep -qx 'greetd' "${ROOT}/iso/packages.cicada.x86_64" || die "greetd not on ISO"
+grep -qx 'greetd-tuigreet' "${ROOT}/iso/packages.cicada.x86_64" || die "tuigreet not on ISO"
 grep -q "(_).---.(_)" "${ROOT}/packages/cicada-defaults/files/etc/issue" \
   || die "boot/login issue missing cicada ASCII art"
 grep -q 'PRETTY_NAME="Cicada.OS"' "${ROOT}/packages/cicada-defaults/files/etc/os-release" \

@@ -44,6 +44,8 @@ hyprpolkitagent
 hyprpaper
 hyprlock
 hypridle
+greetd
+greetd-tuigreet
 waybar
 wofi
 kitty

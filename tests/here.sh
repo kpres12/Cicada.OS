@@ -775,7 +775,8 @@ test -L "${P}/airootfs/etc/systemd/system/multi-user.target.wants/usbguard.servi
 grep -q '03:\*:\*' "${ROOT}/packages/cicada-defaults/files/etc/usbguard/rules.conf" || die "USBGuard must allow HID for MBA keyboard"
 test ! -e "${P}/airootfs/etc/systemd/system/multi-user.target.wants/cicada-radios-off.service" || die "radios-off enabled on live"
 test ! -e "${P}/airootfs/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" || die "networkd still enabled"
-grep -q Hyprland "${P}/airootfs/home/cicada/.bash_profile" || die "live home does not start Hyprland"
+grep -qE 'cicada-session|Hyprland' "${P}/airootfs/home/cicada/.bash_profile" \
+  || die "live home does not start Cicada session"
 grep -q 'cicada-firstboot' "${P}/airootfs/home/cicada/.config/hypr/hyprland.conf" && die "assembled hypr still exec-once firstboot" || true
 def=$(echo "${P}/efiboot/loader/entries/"01-*.conf)
 grep -q intel_iommu "${def}" && die "default live entry has intel_iommu (breaks Apple iGPU)" || true

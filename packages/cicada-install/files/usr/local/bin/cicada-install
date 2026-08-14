@@ -109,6 +109,7 @@ copy_product() {
     /etc/profile.d \
     /etc/pam.d \
     /etc/tor \
+    /etc/greetd \
     /etc/systemd/coredump.conf.d
   do
     if [[ -e "${d}" ]]; then

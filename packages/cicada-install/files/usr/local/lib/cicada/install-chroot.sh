@@ -182,6 +182,12 @@ HOME_URL="https://github.com/kpresler12/Cicada.OS"
 DOCUMENTATION_URL="https://github.com/kpresler12/Cicada.OS"
 LOGO=cicada
 EOF
+
+# greeter user for greetd (package usually creates it; belt and braces)
+id greeter >/dev/null 2>&1 || useradd -r -s /usr/bin/nologin -M -d /var/lib/greetd greeter 2>/dev/null || true
+systemctl enable greetd.service || true
+# greetd owns VT1 — do not fight it with getty autologin
+systemctl disable getty@tty1.service 2>/dev/null || true
 cat > /etc/issue <<'EOF'
 
       '-.       ,   ,       .-'

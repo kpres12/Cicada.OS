@@ -3,3 +3,4 @@
 %wheel ALL=(root) NOPASSWD: /usr/bin/passwd cicada-work
 %wheel ALL=(root) NOPASSWD: /usr/local/lib/cicada/heal-helium.sh
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-pkg-helper
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-update

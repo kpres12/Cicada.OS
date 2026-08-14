@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Channel-first updates. Prefer cicada-stable; never tell users to raw pacman -Syu.
+set -euo pipefail
+
+die() {
+  echo "cicada-update: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Cicada — Update" --width=420 --text="$1" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+[[ ${EUID} -eq 0 ]] || exec sudo -n "$0" "$@" || die "Need sudo (login password on etched installs)."
+
+if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
+  /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf || true
+fi
+
+echo "==> Cicada channel sync"
+if [[ -d /var/cache/cicada/repo ]] && compgen -G /var/cache/cicada/repo/cicada-stable.db* >/dev/null 2>&1; then
+  pacman -Sy --noconfirm cicada-stable 2>/dev/null || pacman -Sy
+else
+  echo "    (no local cicada-stable db yet — using pinned ISO set; full channel mirror TBD)"
+  pacman -Sy
+fi
+
+echo
+echo "Channel pin: $(cat /etc/cicada/channel 2>/dev/null || cat /usr/share/cicada/channel/CURRENT 2>/dev/null || echo unknown)"
+echo
+echo "To upgrade packages from the channel:"
+echo "  sudo pacman -Su"
+echo
+echo "Do not treat raw Arch rolling as the product update path."
+echo "Rebuild/reflash (or a signed cicada-stable mirror) is how Cicada moves versions."

@@ -20,6 +20,9 @@ xdg-desktop-portal-gtk
 hyprpolkitagent
 hyprpaper
 hyprlock
+# Login greeter (etched installs). Live keeps getty autologin.
+greetd
+greetd-tuigreet
 waybar
 wofi
 kitty

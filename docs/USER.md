@@ -102,7 +102,7 @@ Live USB: this command exits. Install first.
 
 ```bash
 sudo passwd cicada-work            # Settings → Profiles → Set Work password
-cicada-profile login work          # Hyprland on tty3
+cicada-profile login work          # Work session on tty3
 # Ctrl+Alt+F1 = Owner,  F3 = Work
 ```
 
