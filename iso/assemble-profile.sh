@@ -336,9 +336,6 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/share/cicada/wayland-sessions/cicada.desktop"]="0:0:644"
   ["/usr/share/cicada/wayland-sessions/cicada-sway.desktop"]="0:0:644"
   ["/usr/share/cicada/wayland-sessions/cicada-niri.desktop"]="0:0:644"
-  ["/usr/share/wayland-sessions/hyprland.desktop"]="0:0:644"
-  ["/usr/share/wayland-sessions/sway.desktop"]="0:0:644"
-  ["/usr/share/wayland-sessions/niri.desktop"]="0:0:644"
 )'''
 if needle not in text:
     raise SystemExit("profiledef.sh file_permissions block changed upstream")
