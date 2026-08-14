@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+# Shared ASCII cicada (jgs — ascii.co.uk/art/cicada) for getty / early tty.
+cat <<'EOF'
 
       '-.       ,   ,       .-'
          \    _.-'"'-._    /
@@ -24,4 +27,5 @@
             \_.'     '._/
 
                  C I C A D A . O S
-              live · wifi · etch · inbound deny
+
+EOF

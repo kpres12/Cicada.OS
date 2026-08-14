@@ -31,7 +31,7 @@ console-mode max
 editor no
 EOF
 
-CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw quiet loglevel=3 systemd.show_status=false rd.udev.log_level=3 intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 if [[ -n "${CICADA_BTRFS_SUBVOL:-}" ]]; then
   CMDLINE="${CMDLINE} rootflags=subvol=${CICADA_BTRFS_SUBVOL}"
 fi
@@ -156,6 +156,63 @@ else
   echo "    Consider a removable second factor: cicada-keyfile-enroll --and ..."
 fi
 systemctl mask sshd.service || true
+
+# Brand: never leave Arch Linux / generic strings on an etched disk.
+cat > /etc/os-release <<'EOF'
+NAME="Cicada.OS"
+PRETTY_NAME="Cicada.OS"
+ID=cicada
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="1;33"
+HOME_URL="https://github.com/kpresler12/Cicada.OS"
+DOCUMENTATION_URL="https://github.com/kpresler12/Cicada.OS"
+LOGO=cicada
+CICADA_CODENAME=nimbus
+CICADA_CHANNEL=stable
+EOF
+cat > /usr/lib/os-release <<'EOF'
+NAME="Cicada.OS"
+PRETTY_NAME="Cicada.OS"
+ID=cicada
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="1;33"
+HOME_URL="https://github.com/kpresler12/Cicada.OS"
+DOCUMENTATION_URL="https://github.com/kpresler12/Cicada.OS"
+LOGO=cicada
+EOF
+cat > /etc/issue <<'EOF'
+
+      '-.       ,   ,       .-'
+         \    _.-'"'-._    /
+          \  (_).---.(_)  /
+           '-/         \-'
+             \__.---.__/
+             / .'   '. \
+         ,--(_;.-----.;_)--,
+        /   |  \     /  |   \
+       /   /;'-.'._.'.-';\   \
+    ,-'   /, \~ \-=-/ ~/ ,\   '-,
+         ; ;  |~ '.' ~|  ; ;
+         |; '  \=====/  ; ;|
+        /| ; ;_| === |_; ; |\
+       / |  \_/;= = =;\_/  | \
+     _/  | ; ;_ \===/ _; ; |  \_
+    `    |  \_/ ;\=/; \_/  |    `
+         | \_| ; ;|; ; |_/ |
+         ;\_/ ; ;/ \; ; \_/;
+         ;/, ; ; | | ; ; ,\;
+          ; ; ; /   \ ; ; ;
+          \; ; ;|   |; ; ;/
+           \; ; /   \ ; ;/
+            \_.'     '._/
+
+                 C I C A D A . O S
+\r (\l)
+
+EOF
+echo 'Cicada.OS' > /etc/issue.net
 
 # Installed system is not the live ISO — no getty autologin, no live sudo.
 rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf

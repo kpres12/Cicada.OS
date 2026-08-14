@@ -29,6 +29,10 @@ skel_desk="${ROOT}/packages/cicada-shell/files/etc/skel/Desktop"
 echo "==> 1 — Graphical system"
 grep -q 'Hyprland\|hyprland' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" \
   || die "login must start Hyprland"
+grep -q "(_).---.(_)" "${ROOT}/packages/cicada-defaults/files/etc/issue" \
+  || die "boot/login issue missing cicada ASCII art"
+grep -q 'PRETTY_NAME="Cicada.OS"' "${ROOT}/packages/cicada-defaults/files/etc/os-release" \
+  || die "os-release must be Cicada.OS not Arch"
 grep -q 'exec-once = waybar\|waybar' "${hypr}" || die "Waybar must start"
 grep -q 'exec-once = cicada-dock\|cicada-dock' "${hypr}" || die "dock must start"
 grep -q 'exec-once = pcmanfm-qt --desktop' "${hypr}" || die "desktop icons (pcmanfm) must start"

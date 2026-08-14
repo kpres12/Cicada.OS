@@ -320,6 +320,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-pkg"]="0:0:755"
   ["/usr/local/bin/cicada-pkg-helper"]="0:0:755"
   ["/usr/local/bin/cicada-wallpaper"]="0:0:755"
+  ["/usr/local/bin/cicada-banner"]="0:0:755"
   ["/usr/local/bin/cicada-brightness"]="0:0:755"
   ["/usr/local/bin/cicada-tor-browser"]="0:0:755"
 )'''
@@ -363,7 +364,7 @@ python3 - "${PROFILE}" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-extra = " init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+extra = " quiet loglevel=3 systemd.show_status=false rd.udev.log_level=3 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
 count = 0
 for path in (root / "efiboot").rglob("*.conf") if (root / "efiboot").exists() else []:
     text = path.read_text()

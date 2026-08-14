@@ -153,6 +153,9 @@ copy_product() {
     mkdir -p "${mnt}/usr/bin"
     cp -a /usr/bin/helium-browser "${mnt}/usr/bin/"
   fi
+  [[ -f /etc/os-release ]] && cp -a /etc/os-release "${mnt}/etc/os-release"
+  [[ -f /etc/issue ]] && cp -a /etc/issue "${mnt}/etc/issue"
+  [[ -f /etc/issue.net ]] && cp -a /etc/issue.net "${mnt}/etc/issue.net"
   [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && \
     find /etc/sudoers.d -maxdepth 1 -name 'cicada-*' ! -name 'cicada-live' \
       -exec cp -a {} "${mnt}/etc/sudoers.d/" \; 2>/dev/null || true

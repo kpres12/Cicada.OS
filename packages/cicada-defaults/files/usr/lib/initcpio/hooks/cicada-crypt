@@ -176,9 +176,9 @@ run_hook() {
 
   while true; do
     if [ -n "${kf}" ] && [ "${kf_mode}" = "and" ]; then
-      echo -n "Passphrase for ${CRYPTNAME} (token detected): "
+      echo -n "Cicada.OS passphrase (token detected): "
     else
-      echo -n "Enter passphrase for ${CRYPTNAME}: "
+      echo -n "Cicada.OS disk passphrase: "
     fi
     read -r -s pass
     echo
