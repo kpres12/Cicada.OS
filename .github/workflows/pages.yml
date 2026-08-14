@@ -1,11 +1,12 @@
 name: GitHub Pages
 
 on:
+  # Every push to main redeploys, not just pushes that touch site/. A path
+  # filter kept the Actions tab showing a commit from hours ago while main had
+  # moved on, which reads as "the push did not land" — and the cost of checking
+  # that suspicion is far higher than the ~20s this job takes.
   push:
     branches: [main, master]
-    paths:
-      - "site/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
