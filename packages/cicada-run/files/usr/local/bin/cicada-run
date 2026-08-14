@@ -18,8 +18,12 @@ fi
 
 # Owner/admin UI talks to host services (NM, polkit, tty). Still an app-id —
 # just not boxed. Everything else is default-deny until its scopes file says so.
+#
+# Helium: Chromium's zygote cannot survive bwrap --unshare-pid (silent exit,
+# dock icon does nothing). Ship it unsandboxed like Files/Doom until Tier-2
+# Firejail/netns; scopes .env still documents the intended policy.
 case "${APP_ID}" in
-  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start|org.cicada.files|org.cicada.doom)
+  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start|org.cicada.files|org.cicada.doom|org.cicada.helium|org.torproject.torbrowser)
     export CICADA_APP_ID="${APP_ID}"
     exec "$@"
     ;;

@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 # Default browser: Helium (official tarball at /opt/helium), else Arch chromium.
-# Preloads GrapheneOS hardened_malloc when the library is on disk.
+# Never preload hardened_malloc into the browser — it kills the zygote.
 set -euo pipefail
 
-# hardened_malloc breaks Chromium/Helium zygote forks (silent exit, no window).
-# Never preload it into the browser — even if ld.so.preload is set system-wide,
-# clear it for this process tree before exec.
+# Visible failure: desktop clicks have nowhere for stderr. Define before any use.
+die() {
+  echo "cicada: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+    if command -v zenity >/dev/null 2>&1; then
+      zenity --error --title="Cicada — browser" --width=480 --text="$1" 2>/dev/null || true
+    elif command -v notify-send >/dev/null 2>&1; then
+      notify-send "Cicada — browser" "$1" 2>/dev/null || true
+    fi
+  fi
+  exit 1
+}
+
+# Strip hardened_malloc from this process tree's LD_PRELOAD.
 if [[ -n "${LD_PRELOAD:-}" ]]; then
   _pl="${LD_PRELOAD}"
   _pl="${_pl//\/usr\/lib\/libhardened_malloc.so/}"
@@ -20,36 +31,20 @@ if [[ -n "${LD_PRELOAD:-}" ]]; then
   fi
   unset _pl
 fi
-# ld.so.preload still applies to children. If it points at hardened_malloc,
-# refuse to launch until the operator clears it — better a zenity than a no-op.
+
+# ld.so.preload still applies to every child. Clear it (NOPASSWD on live) —
+# do not call die() before the function existed (that was a silent no-op click).
 if [[ -f /etc/ld.so.preload ]] && grep -q hardened_malloc /etc/ld.so.preload 2>/dev/null; then
-  die "Browser blocked: hardened_malloc is in /etc/ld.so.preload and crashes Helium.
+  if sudo -n rm -f /etc/ld.so.preload 2>/dev/null; then
+    notify-send "Cicada" "Cleared hardened_malloc preload so Helium can start" 2>/dev/null || true
+  else
+    die "Browser blocked: hardened_malloc is in /etc/ld.so.preload and crashes Helium.
 
-Fix (this session):
+Fix:
   sudo rm -f /etc/ld.so.preload
-Then click Web again.
-
-Or reboot with kernel option: cicada.nomalloc"
-fi
-
-# Do not set LD_PRELOAD to hardened_malloc for the browser (removed above).
-# Other apps can still opt in via cicada-run if desired.
-
-# Launched from a desktop icon, stderr goes nowhere. A browser that exits 1 with
-# a message no one can see is indistinguishable from a click that did nothing —
-# which is exactly how a 0644 Helium binary went unnoticed for a whole build.
-# Every exit path from here on has to be visible on screen.
-die() {
-  echo "cicada: $1" >&2
-  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
-    if command -v zenity >/dev/null 2>&1; then
-      zenity --error --title="Cicada — browser" --width=460 --text="$1" 2>/dev/null || true
-    elif command -v notify-send >/dev/null 2>&1; then
-      notify-send "Cicada — browser" "$1" 2>/dev/null || true
-    fi
+Then click Web again."
   fi
-  exit 1
-}
+fi
 
 BIN=""
 found_unusable=""
@@ -60,17 +55,11 @@ for cand in /opt/helium/helium-wrapper /opt/helium/chrome /opt/helium/helium \
     BIN="${cand}"
     break
   fi
-  # Present but not executable is a build defect, not a missing browser. Say so:
-  # the two have completely different fixes and identical symptoms.
-  # Written as an `if`, not `[[ ... ]] && x=y`: under `set -e` a false test as
-  # the last command in the loop body would exit the script — silently, which
-  # is the exact failure mode this block exists to eliminate.
   if [[ -e "${cand}" && -z "${found_unusable}" ]]; then
     found_unusable="${cand}"
   fi
 done
 if [[ -z "${BIN}" ]]; then
-  # Last chance: heal modes then retry (NOPASSWD on live/installed wheel).
   if [[ -n "${found_unusable}" ]] && [[ -x /usr/local/lib/cicada/heal-helium.sh ]]; then
     sudo -n /usr/local/lib/cicada/heal-helium.sh 2>/dev/null || true
     for cand in /opt/helium/helium-wrapper /opt/helium/chrome /opt/helium/helium; do
@@ -85,14 +74,39 @@ if [[ -z "${BIN}" ]]; then
   if [[ -n "${found_unusable}" ]]; then
     die "Helium is installed at ${found_unusable} but is not executable.
 
-This is a build defect (the exec bit was lost). Fix it on this machine with:
-  sudo chmod 755 /opt/helium/helium /opt/helium/helium-wrapper \\
-                 /opt/helium/helium_crashpad_handler"
+Fix:
+  sudo chmod 755 /opt/helium/helium /opt/helium/helium-wrapper"
   fi
   die "No browser found (Helium / Chromium)."
 fi
 
-if command -v cicada-run >/dev/null 2>&1; then
-  exec cicada-run org.cicada.helium -- "${BIN}" "$@"
+# Wayland session: force ozone so we do not silently fall into a missing XWayland.
+extra=()
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  extra+=(--ozone-platform=wayland --ozone-platform-hint=wayland)
 fi
-exec "${BIN}" "$@"
+# Official Helium tarball ships no chrome_sandbox on this channel — without
+# these flags the zygote exits immediately (looks like a dead dock icon).
+extra+=(--no-sandbox --disable-setuid-sandbox --disable-namespace-sandbox)
+
+LOG="${XDG_RUNTIME_DIR:-/tmp}/cicada-helium.log"
+run_browser() {
+  if command -v cicada-run >/dev/null 2>&1; then
+    cicada-run org.cicada.helium -- "${BIN}" "${extra[@]}" "$@"
+  else
+    "${BIN}" "${extra[@]}" "$@"
+  fi
+}
+
+# If the browser dies in the first second, surface the log — not a silent click.
+run_browser "$@" >"${LOG}" 2>&1 &
+pid=$!
+sleep 1.2
+if ! kill -0 "${pid}" 2>/dev/null; then
+  wait "${pid}" 2>/dev/null || true
+  tailtxt="$(tail -c 800 "${LOG}" 2>/dev/null || true)"
+  die "Helium exited immediately.
+
+${tailtxt:-(no log — try: /opt/helium/helium-wrapper)}"
+fi
+wait "${pid}" || true

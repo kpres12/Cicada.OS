@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Tor Browser
+Comment=Anonymity browser (downloads on first launch)
+Exec=cicada-tor-browser
+Icon=torbrowser
+Terminal=false
+StartupNotify=true
+Categories=Network;WebBrowser;
+StartupWMClass=Tor Browser

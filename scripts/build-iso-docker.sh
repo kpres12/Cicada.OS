@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the Intel/x86_64 Cicada ISO from macOS (Apple Silicon) via Docker.
 #
-# One build at a time (flock). Never kills a healthy in-flight builder unless
+# One build at a time. Never kills a healthy in-flight builder unless
 # CICADA_ISO_FORCE=1 — that was the EXIT:137 / poisoned-work loop.
+# Note: macOS has no flock(1); we use mkdir lock + docker ps.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,7 +12,7 @@ FULL="${CICADA_FULL:-0}"
 WORK_VOL="${CICADA_ISO_WORK_VOL:-cicada-iso-work}"
 PKG_VOL="${CICADA_ISO_PKG_VOL:-cicada-pacman-cache}"
 FORCE="${CICADA_ISO_FORCE:-0}"
-LOCK="${ROOT}/out/.cicada-iso-build.lock"
+LOCK_DIR="${ROOT}/out/.cicada-iso-build.lockdir"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "error: docker not found. Install Docker Desktop and enable Rosetta/amd64 emulation." >&2
@@ -21,20 +22,31 @@ fi
 mkdir -p "${ROOT}/out"
 
 running_builders() {
-  docker ps -q --filter "ancestor=${IMAGE}" 2>/dev/null || true
   docker ps --format '{{.ID}} {{.Image}} {{.Names}}' 2>/dev/null \
-    | awk '/cicada-iso-build/ {print $1}' || true
+    | awk '/cicada-iso-builder|cicada-iso-build/ {print $1}' || true
 }
 
-# Hold the lock for the whole docker run (do not `exec` — that drops the flock).
-exec 9>"${LOCK}"
-if ! flock -n 9; then
-  echo "error: another Cicada ISO build already holds ${LOCK}" >&2
-  echo "       running containers:" >&2
-  docker ps --filter "ancestor=${IMAGE}" --format '  {{.ID}} {{.Status}} {{.Names}}' >&2 || true
-  echo "       wait for it, or: CICADA_ISO_FORCE=1 ./scripts/build-iso-docker.sh" >&2
-  exit 1
+cleanup_lock() {
+  rmdir "${LOCK_DIR}" 2>/dev/null || true
+}
+trap cleanup_lock EXIT
+
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+  # Stale lock from a killed script: only block if a builder container is live.
+  ids="$(running_builders | sort -u | tr '\n' ' ')"
+  if [[ -z "${ids// }" ]]; then
+    echo "==> clearing stale build lock (no container running)"
+    rmdir "${LOCK_DIR}" 2>/dev/null || rm -rf "${LOCK_DIR}"
+    mkdir "${LOCK_DIR}"
+  else
+    echo "error: another Cicada ISO build is running: ${ids}" >&2
+    echo "       wait, or: CICADA_ISO_FORCE=1 ./scripts/build-iso-docker.sh" >&2
+    exit 1
+  fi
 fi
+
+# Drop leftover empty flock file from older script versions
+rm -f "${ROOT}/out/.cicada-iso-build.lock" 2>/dev/null || true
 
 ids="$(running_builders | sort -u | tr '\n' ' ')"
 if [[ -n "${ids// }" ]]; then
@@ -72,9 +84,8 @@ docker build \
 
 NAME="cicada-iso-build-$$"
 echo "==> running mkarchiso as ${NAME} (privileged, Linux VM volume)"
-echo "    log tip: docker logs -f ${NAME}"
+echo "    docker logs -f ${NAME}"
 
-# Line-buffered so squash progress / EXIT land in redirected logs.
 docker run --rm \
   --platform linux/amd64 \
   --privileged \
@@ -93,6 +104,6 @@ docker run --rm \
 
 echo "==> newest ISO:"
 ls -lt "${ROOT}/out"/cicada-*.iso | head -5
-if [[ -L "${ROOT}/out/cicada-latest-x86_64.iso" ]] || [[ -f "${ROOT}/out/cicada-latest-x86_64.iso" ]]; then
+if [[ -e "${ROOT}/out/cicada-latest-x86_64.iso" ]]; then
   ls -lh "${ROOT}/out/cicada-latest-x86_64.iso"
 fi

@@ -93,6 +93,7 @@ copy_product() {
     /etc/nftables.d \
     /etc/sysctl.d \
     /etc/modprobe.d \
+    /etc/udev \
     /etc/NetworkManager/conf.d \
     /etc/systemd/resolved.conf.d \
     /etc/systemd/journald.conf.d \

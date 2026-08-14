@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Brightness up/down for MacBook Air — brightnessctl, then raw sysfs fallback.
+set -euo pipefail
+dir=up
+delta=5
+case "${1:-}" in
+  up|+) dir=up ;;
+  down|-) dir=down ;;
+  *) echo "usage: cicada-brightness up|down [percent]" >&2; exit 2 ;;
+esac
+[[ -n "${2:-}" ]] && delta="${2}"
+
+if command -v brightnessctl >/dev/null 2>&1; then
+  if [[ "${dir}" == up ]]; then
+    brightnessctl -q set "+${delta}%" && exit 0
+  else
+    brightnessctl -q set "${delta}%-" && exit 0
+  fi
+fi
+
+# Fallback: first backlight class (intel_backlight on MBA HD 6000).
+bl="$(echo /sys/class/backlight/*/brightness | awk '{print $1}')"
+[[ -e "${bl}" ]] || exit 1
+max_f="$(dirname "${bl}")/max_brightness"
+max="$(cat "${max_f}")"
+cur="$(cat "${bl}")"
+step=$(( max * delta / 100 ))
+[[ "${step}" -lt 1 ]] && step=1
+if [[ "${dir}" == up ]]; then
+  next=$((cur + step))
+  [[ "${next}" -gt "${max}" ]] && next="${max}"
+else
+  next=$((cur - step))
+  [[ "${next}" -lt 0 ]] && next=0
+fi
+# May need video group / udev; try anyway.
+echo "${next}" > "${bl}" 2>/dev/null || exit 1

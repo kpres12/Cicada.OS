@@ -58,7 +58,13 @@ grep -q 'live-nopasswd' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/hy
 grep -q 'swappy' "${hypr}" || die "screenshot path should use swappy annotate"
 grep -q 'XF86AudioPlay' "${hypr}" || die "media keys must be bound (playerctl shipped)"
 grep -q 'XCURSOR_THEME' "${hypr}" || die "cursor theme must be set"
-grep -q 'WallpaperMode=color' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" || die "pcmanfm must not fight hyprpaper (use color desk)"
+grep -q 'WallpaperMode=stretch' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
+  || die "pcmanfm desk must show wallpaper (stretch) — color mode hid hyprpaper"
+grep -q 'Wallpaper=/usr/share/cicada/wallpapers/cicada-3301.png' \
+  "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
+  || die "pcmanfm must ship stock wallpaper path"
+grep -q 'org.cicada.helium)' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "Helium must be unsandboxed (bwrap kills Chromium zygote)"
 grep -q 'SidePaneMode=places' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
   || die "Files must show Places sidebar"
 grep -q 'UseTrash=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
@@ -151,9 +157,14 @@ say "scopes (browser works, keepass net-off, files home, default-deny)"
 echo "==> cicada-run is not bind-all"
 grep -q -- '--bind / /' "${RUN_BIN}/cicada-run" && die "cicada-run still bind-mounts /" || true
 grep -q -- '--ro-bind /usr /usr' "${RUN_BIN}/cicada-run" || die "no ro-bind /usr"
-# Homebrew must not supply bwrap — this asserts fail-closed when it is missing.
+# Homebrew must not supply bwrap — sandboxed apps fail closed when it is missing.
+# Helium is deliberately unsandboxed (zygote dies under bwrap); probe KeePassXC.
 expect_exit 78 "cicada-run without bwrap" \
-  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.helium -- /bin/true
+  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.keepassxc.KeePassXC -- true
+# Helium must still launch when bwrap is absent (dock Web must not be a no-op).
+# Use `true` on PATH — macOS may lack /bin/true in restricted PATH probes.
+expect_exit 0 "Helium without bwrap still runs" \
+  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.helium -- true
 
 echo "==> fail-closed CLIs"
 bash "${INSTALL_BIN}/cicada-install" -h >/dev/null || die "install -h"
@@ -538,7 +549,15 @@ grep -qE '^NS=onion' "${hlp}" || die "namespace name must be hardcoded, not call
 # Tor Browser, not Helium-over-Tor, carries the anonymity claim.
 tb="${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes/org.torproject.torbrowser.env"
 test -f "${tb}" || die "no Tor Browser scope"
-grep -q '^NETWORK=tor' "${tb}" || die "Tor Browser scope is not on the tor network"
+# Tor Browser brings its own Tor — must NOT be NETWORK=tor (Tor-over-Tor / black screen).
+grep -q '^NETWORK=allow' "${tb}" || die "Tor Browser scope must be NETWORK=allow (own Tor)"
+grep -q 'cicada-tor-browser' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-tor-browser" \
+  || test -x "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-tor-browser" \
+  || die "cicada-tor-browser wrapper missing"
+grep -q 'fnmode=1' "${ROOT}/packages/cicada-defaults/files/etc/modprobe.d/hid-apple.conf" \
+  || die "hid-apple must use fnmode=1 (media keys like macOS)"
+grep -q 'cicada-brightness' "${hypr}" || die "brightness binds must use cicada-brightness"
+
 grep -q '^NETWORK=tor' "${hel}" && die "Helium must not claim Tor anonymity (fingerprint)" || true
 grep -qx 'tor' "${pkgs}" || die "tor not on the ISO"
 # obfs4proxy/lyrebird/snowflake are AUR-only, and the ISO is official-repos

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Launch Tor Browser. Tor Browser ships its OWN Tor — never put it in the
+# system onion netns (Tor-over-Tor = black window / silent hang).
+#
+# First run: torbrowser-launcher must download ~100MB over clearnet. Show a
+# zenity so a click is not a dead black rectangle.
+set -euo pipefail
+
+die() {
+  echo "cicada-tor-browser: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Cicada — Tor Browser" --width=480 --text="$1" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+find_tb() {
+  local cand
+  for cand in \
+    "${HOME}/.local/share/torbrowser/tbb/x86_64/tor-browser/Browser/start-tor-browser" \
+    "${HOME}/.local/share/torbrowser/tbb/x86_64/tor-browser/start-tor-browser.desktop" \
+    "${HOME}/.local/share/torbrowser/tbb/x86_64/tor-browser/Browser/start-tor-browser.desktop"
+  do
+    if [[ -x "${cand}" ]]; then
+      printf '%s\n' "${cand}"
+      return 0
+    fi
+  done
+  # Newer launcher layouts
+  local found
+  found="$(find "${HOME}/.local/share/torbrowser" -type f -name 'start-tor-browser' 2>/dev/null | head -1 || true)"
+  if [[ -n "${found}" && -x "${found}" ]]; then
+    printf '%s\n' "${found}"
+    return 0
+  fi
+  return 1
+}
+
+ensure_net() {
+  if ! ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && ! ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then
+    die "No network. Connect Wi-Fi (dock WIFI or click the Wi-Fi icon), then open Tor Browser again."
+  fi
+}
+
+install_tb() {
+  command -v torbrowser-launcher >/dev/null 2>&1 \
+    || die "torbrowser-launcher is not installed on this image."
+
+  ensure_net
+
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --info --title="Cicada — Tor Browser" --width=420 \
+      --text="Tor Browser is not installed yet.
+
+It will download from torproject.org (~100 MB) over your normal Wi-Fi.
+This is clearnet on purpose — Tor Browser brings its own Tor after install.
+
+Click OK to start. A progress window may appear; wait until the browser opens." \
+      2>/dev/null || true
+  fi
+
+  # Clearnet install — do NOT wrap in cicada-run NETWORK=tor.
+  # --settings only opens config; bare launch triggers download+start.
+  if command -v zenity >/dev/null 2>&1; then
+    (
+      echo "0"
+      echo "# Contacting torproject.org…"
+      torbrowser-launcher "$@" >/tmp/cicada-torbrowser-install.log 2>&1 &
+      local pid=$!
+      local n=0
+      while kill -0 "${pid}" 2>/dev/null; do
+        n=$((n + 2))
+        [[ ${n} -gt 95 ]] && n=95
+        echo "${n}"
+        echo "# Downloading / installing Tor Browser… (${n}%)"
+        # Installed?
+        if find_tb >/dev/null 2>&1; then
+          echo "100"
+          echo "# Starting Tor Browser…"
+          break
+        fi
+        sleep 2
+      done
+      wait "${pid}" 2>/dev/null || true
+      echo "100"
+    ) | zenity --progress --title="Cicada — Tor Browser" --width=420 \
+        --text="Downloading Tor Browser…" --percentage=0 --auto-close 2>/dev/null || true
+  else
+    torbrowser-launcher "$@" >/tmp/cicada-torbrowser-install.log 2>&1 || true
+  fi
+}
+
+tb=""
+if tb="$(find_tb)"; then
+  :
+else
+  install_tb "$@"
+  tb="$(find_tb)" || die "Tor Browser install did not finish.
+
+Check Wi-Fi, then run again. Log: /tmp/cicada-torbrowser-install.log
+$(tail -c 400 /tmp/cicada-torbrowser-install.log 2>/dev/null || true)"
+fi
+
+# Tor Browser = its own Tor. Scope is allow/portal for files only — never onion netns.
+export CICADA_APP_ID=org.torproject.torbrowser
+cd "$(dirname "${tb}")"
+if [[ "${tb}" == *.desktop ]]; then
+  exec gtk-launch "$(basename "${tb}")" 2>/dev/null || exec torbrowser-launcher "$@"
+fi
+exec "${tb}" --detach "$@"
