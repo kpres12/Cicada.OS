@@ -31,13 +31,18 @@
     <div class="panel">
       <div class="panel-head"><h2>Latest release</h2><span class="tag">X86_64</span></div>
       <p style="margin:0 0 1rem;color:var(--muted)">
-        ISO artifacts attach to GitHub Releases. Channel pin: <code>cicada-stable</code> · Helium hash-locked in-tree.
+        First public beta: <strong>2026.08.14</strong>. The raw ISO is ~2.9 GiB, so GitHub ships
+        <strong>split parts</strong> — reassemble, then verify sha256 (instructions on the release).
+        Channel pin: <code>cicada-stable</code> · Helium hash-locked in-tree.
       </p>
       <div class="cta-row">
         <a class="btn" href="https://github.com/kpres12/Cicada.OS/releases/latest">Get latest ISO</a>
         <a class="btn btn-amber" href="../install/">Install instructions</a>
         <a class="btn btn-ghost" href="https://github.com/kpres12/Cicada.OS">Source tree</a>
       </div>
+      <pre style="margin-top:1rem"># after downloading all .part-* files + .sha256 from the release
+cat cicada-2026.08.14-x86_64.iso.part-* &gt; cicada-2026.08.14-x86_64.iso
+shasum -a 256 -c cicada-2026.08.14-x86_64.iso.sha256</pre>
     </div>
 
     <div class="panel" style="margin-top:1rem">

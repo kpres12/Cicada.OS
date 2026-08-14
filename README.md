@@ -3,6 +3,8 @@
 Arch-based privacy/security laptop OS. GrapheneOS *intent*, Hyprland daily-driver
 feel, Helium as the browser.
 
+**Public beta (2026.08.14):** [Download ISO](https://github.com/kpres12/Cicada.OS/releases/latest) · [Site](https://kpres12.github.io/Cicada.OS/) · [Install](https://kpres12.github.io/Cicada.OS/install/)
+
 **Site:** [`site/`](site/) — download / install / features (GitHub Pages).  
 **North star:** hostile defaults and profile isolation on laptops — honest about
 hardware limits.
