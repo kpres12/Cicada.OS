@@ -1,22 +1,37 @@
-# Install Cicada
+# Install / Etch Cicada
 
-Live USB is the demo. This writes LUKS2 + btrfs + systemd-boot to a disk you can reboot into.
+Live USB is the demo. **Etch** writes LUKS2 + btrfs + systemd-boot to a disk you reboot into as the product.
 
-1. Boot the Cicada ISO. Click **Wi-Fi** (`pacstrap` needs network).
+## On the live USB
+
+1. Boot Cicada. Click **Wi-Fi** (`pacstrap` needs network).
 2. Plug the **install** disk (not the live stick).
-3. `sudo cicada-install --list`
-4. External SSD: `sudo cicada-install --target /dev/sdX`
-5. Framework-class internal NVMe: `sudo cicada-install --target /dev/nvme0n1 --internal`
+3. Click **Etch Cicada** on the desktop (or dock / `cicada-etch`).
+4. Pick the disk, set a LUKS passphrase, set the **cicada** login password.
+5. Wait for pacstrap. Shut down, remove the USB, boot the etched disk.
 
-Apple internal SSDs (`APPLE SSD` / MacBook NVMe) are **always refused**. The live USB is refused.
+CLI equivalent:
 
-You will set a LUKS passphrase and a `cicada` user password. Root is locked; use `sudo`. There is **no autologin** on the installed system.
+```bash
+sudo cicada-install --list
+sudo cicada-install --target /dev/sdX
+# Framework-class NVMe:
+sudo cicada-install --target /dev/nvme0n1 --internal
+```
 
-After reboot:
+Apple internal SSDs are **always refused**. The live USB is refused.
 
-- Machines with TPM2: `sudo cicada-tpm-enroll` (passphrase slot is kept; PCR 0,1,2,3,7).
-- Firmware Setup Mode: `sudo cicada-sbctl-enroll` (Apple EFI will exit 2).
-- Pin identity: `cicada-attest` then store `device.pub` on a Graphene Pixel. See [ATTEST.md](ATTEST.md).
-- Backups to a **USB**, not this disk: `CICADA_BACKUP_REPO=... cicada-backup init` then `backup` / `restore`.
+## After reboot (real login)
 
-Duress: after install, `sudo cicada-duress-enroll`. Wrong PIN and duress both wait ~12s and print the same error; duress wipes keyslots and poweroffs.
+1. Unlock **LUKS** with the disk passphrase.
+2. **Login** as `cicada` with the password you chose (getty → Hyprland). No autologin.
+3. **Firstrun** offers: Work profile password, power-on duress, lock-screen duress, TPM/USB token.
+
+Root is locked; use `sudo` (password = your login password on installed systems).
+
+## Later hardening
+
+- TPM2: `sudo cicada-tpm-enroll`
+- Firmware Setup Mode: `sudo cicada-sbctl-enroll` (Apple EFI exits 2)
+- Duress: `sudo cicada-duress-enroll` and/or `--session`
+- Backups to a **USB**: `CICADA_BACKUP_REPO=... cicada-backup init`

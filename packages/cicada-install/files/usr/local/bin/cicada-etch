@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# cicada-etch — install Cicada onto a disk (the product path).
+# Live USB demo → etch → reboot → LUKS unlock → login → firstrun (duress / Work).
+set -euo pipefail
+
+die() {
+  echo "cicada-etch: $1" >&2
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="Cicada — Etch" --width=480 --text="$1" 2>/dev/null || true
+  fi
+  exit 1
+}
+
+[[ -d /run/archiso ]] || die "Etch only runs from the live USB.
+You are on an installed system — reboot the stick to install onto another disk."
+
+command -v zenity >/dev/null 2>&1 || die "zenity missing"
+command -v cicada-install >/dev/null 2>&1 || die "cicada-install missing"
+
+if ! ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && ! ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then
+  die "No network. Connect Wi-Fi first (dock WIFI), then run Etch again.
+pacstrap needs the internet."
+fi
+
+zenity --info --title="Cicada.OS — Etch (install)" --width=520 --text="This writes Cicada to a disk as a real install:
+
+1. LUKS2 disk encryption (passphrase you keep)
+2. User account <tt>cicada</tt> with a login password
+3. After reboot: unlock LUKS → type password → desktop
+4. First desktop session: optional Work user + duress PINs
+
+Apple internal SSDs are refused. The live USB is refused.
+Target disk will be WIPED." 2>/dev/null || true
+
+# Build disk list: NAME SIZE MODEL TRAN
+mapfile -t lines < <(lsblk -dnp -o NAME,SIZE,MODEL,TRAN,RM | awk 'NR>0 {print}')
+[[ ${#lines[@]} -gt 0 ]] || die "No block devices found."
+
+zen_args=()
+declare -a devs=()
+while IFS= read -r line; do
+  name="$(awk '{print $1}' <<<"${line}")"
+  [[ -b "${name}" ]] || continue
+  # Skip obviously tiny
+  bytes="$(lsblk -nbdo SIZE "${name}" 2>/dev/null || echo 0)"
+  (( bytes >= 16 * 1024 * 1024 * 1024 )) || continue
+  model="$(lsblk -ndo MODEL "${name}" 2>/dev/null | xargs)"
+  size="$(lsblk -ndo SIZE "${name}" 2>/dev/null | xargs)"
+  tran="$(lsblk -ndo TRAN "${name}" 2>/dev/null | xargs)"
+  label="${name}  ${size}  ${model:-?}  ${tran:-?}"
+  zen_args+=("${label}")
+  devs+=("${name}")
+done < <(lsblk -dnp -o NAME,SIZE,MODEL,TRAN)
+
+[[ ${#zen_args[@]} -gt 0 ]] || die "No disk ≥16G found."
+
+picked="$(zenity --list --title="Cicada — pick install disk" \
+  --text="Select the disk to WIPE and etch Cicada onto." \
+  --column="Disk" --width=640 --height=360 \
+  "${zen_args[@]}")" || exit 0
+[[ -n "${picked}" ]] || exit 0
+TARGET="$(awk '{print $1}' <<<"${picked}")"
+[[ -b "${TARGET}" ]] || die "Bad target: ${TARGET}"
+
+zenity --question --title="Cicada — FINAL WARNING" --width=480 \
+  --ok-label="Wipe and etch" --cancel-label="Cancel" \
+  --text="THIS WILL DESTROY ALL DATA ON:
+
+  ${TARGET}
+
+Type confirmation on the next screen." 2>/dev/null || exit 0
+
+confirm="$(zenity --entry --title="Confirm wipe" --width=420 \
+  --text="Type the device path exactly to continue:" \
+  --entry-text="")" || exit 0
+[[ "${confirm}" == "${TARGET}" ]] || die "Aborted (path did not match)."
+
+host="$(zenity --entry --title="Hostname" --width=400 \
+  --text="Computer name:" --entry-text="cicada")" || exit 0
+host="$(xargs <<<"${host}")"
+[[ -n "${host}" ]] || host=cicada
+
+luks_mode="$(zenity --list --title="Disk encryption passphrase" --width=520 --height=280 \
+  --text="This passphrase unlocks the disk at every boot. There is no recovery." \
+  --column="Choice" --hide-header \
+  "Generate a strong passphrase (recommended — write it down)" \
+  "Generate a longer passphrase (100 bits)" \
+  "I will type my own (6+ words or 24+ characters)")" || exit 0
+
+luks_file="$(mktemp /tmp/cicada-etch-luks.XXXXXX)"
+user_file="$(mktemp /tmp/cicada-etch-user.XXXXXX)"
+chmod 600 "${luks_file}" "${user_file}"
+cleanup() { shred -u "${luks_file}" "${user_file}" 2>/dev/null || rm -f "${luks_file}" "${user_file}"; }
+trap cleanup EXIT
+
+case "${luks_mode}" in
+  "Generate a strong passphrase"*)
+    gen="$(sudo cicada-install --print-passphrase 16)"
+    zenity --info --title="WRITE THIS DOWN" --width=480 \
+      --text="Your disk passphrase (will not be shown again):
+
+<tt>${gen}</tt>
+
+Write it on paper. Losing it means the disk is gone." 2>/dev/null || true
+    confirm="$(zenity --entry --title="Confirm you copied it" --width=480 \
+      --text="Type the passphrase back:")" || exit 0
+    [[ "${confirm}" == "${gen}" ]] || die "Passphrase not confirmed."
+    printf '%s' "${gen}" > "${luks_file}"
+    unset gen confirm
+    ;;
+  "Generate a longer"*)
+    gen="$(sudo cicada-install --print-passphrase 20)"
+    zenity --info --title="WRITE THIS DOWN" --width=480 \
+      --text="Your disk passphrase:
+
+<tt>${gen}</tt>" 2>/dev/null || true
+    confirm="$(zenity --entry --title="Confirm you copied it" --width=480 \
+      --text="Type the passphrase back:")" || exit 0
+    [[ "${confirm}" == "${gen}" ]] || die "Passphrase not confirmed."
+    printf '%s' "${gen}" > "${luks_file}"
+    unset gen confirm
+    ;;
+  *)
+    p1="$(zenity --password --title="LUKS passphrase" 2>/dev/null)" || exit 0
+    p2="$(zenity --password --title="LUKS passphrase again" 2>/dev/null)" || exit 0
+    [[ "${p1}" == "${p2}" ]] || die "Passphrases do not match."
+    words="$(printf '%s' "${p1}" | tr -s '[:space:]' '\n' | grep -c . || true)"
+    if [[ "${words}" -lt 6 && ${#p1} -lt 24 ]]; then
+      die "Passphrase too weak (need 6+ words or 24+ characters)."
+    fi
+    printf '%s' "${p1}" > "${luks_file}"
+    unset p1 p2
+    ;;
+esac
+
+u1="$(zenity --password --title="Login password for user cicada" 2>/dev/null)" || exit 0
+u2="$(zenity --password --title="Login password again" 2>/dev/null)" || exit 0
+[[ "${u1}" == "${u2}" ]] || die "Login passwords do not match."
+[[ ${#u1} -ge 8 ]] || die "Login password must be at least 8 characters."
+printf '%s' "${u1}" > "${user_file}"
+unset u1 u2
+
+zenity --info --title="Etching…" --width=400 \
+  --text="Installing. A terminal will show progress (pacstrap needs several minutes).
+Do not unplug the target disk." 2>/dev/null || true
+
+# Run install in kitty so the user sees progress; noninteractive via pass files.
+if command -v kitty >/dev/null 2>&1; then
+  kitty --title CICADA-ETCH -e sudo cicada-install \
+    --target "${TARGET}" \
+    --hostname "${host}" \
+    --yes \
+    --luks-pass-file "${luks_file}" \
+    --user-pass-file "${user_file}"
+else
+  sudo cicada-install \
+    --target "${TARGET}" \
+    --hostname "${host}" \
+    --yes \
+    --luks-pass-file "${luks_file}" \
+    --user-pass-file "${user_file}"
+fi
+
+zenity --info --title="Cicada etched" --width=480 --text="Install finished.
+
+1. Shut down
+2. Remove the live USB
+3. Boot from the etched disk
+4. Unlock LUKS with your disk passphrase
+5. Log in as <b>cicada</b> with your login password
+6. Firstrun will offer Work password + duress PINs
+
+Apple EFI: Secure Boot / TPM enroll will no-op on this Air." 2>/dev/null || true

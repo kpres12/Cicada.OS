@@ -1,7 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Install Cicada
-Exec=kitty --title CICADA-INSTALL -e sudo cicada-install --list
+Name=Etch Cicada
+Comment=Install Cicada onto a disk
+Exec=cicada-etch
 Icon=drive-harddisk
-StartupNotify=false
+StartupNotify=true
 Terminal=false

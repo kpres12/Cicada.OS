@@ -1,0 +1,4 @@
+# LIVE USB ONLY — never copy to an installed system (install-chroot deletes this).
+# Empty passwords + PAM-without-nullok mean `su`/`sudo` otherwise fail, so etch
+# and heal helpers cannot run. Installed disks use passworded %wheel ALL.
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

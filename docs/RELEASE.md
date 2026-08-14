@@ -46,11 +46,17 @@ Site Download button already points at `releases/latest`.
 
 `cicada-firstrun` (Hyprland exec-once, skips `/run/archiso`):
 
-1. Welcome — installed vs live
-2. Optional Work password
-3. Optional duress enroll
-4. TPM PIN or USB token (by hardware)
-5. Point at Files / Appearance wallpaper
+1. Welcome — etched install vs live
+2. Optional Work password (`cicada-work`)
+3. Optional LUKS duress (power-on wipe)
+4. Optional session duress (hyprlock / sudo wipe)
+5. TPM PIN or USB token (by hardware)
+6. Point at Files / Appearance wallpaper
+
+## Etch (install)
+
+Live desktop: **Etch Cicada** → `cicada-etch` (GUI over `cicada-install`).
+Live has passwordless sudo for etch only; installed disks strip that and require the login password for `sudo`.
 
 ## Channel
 

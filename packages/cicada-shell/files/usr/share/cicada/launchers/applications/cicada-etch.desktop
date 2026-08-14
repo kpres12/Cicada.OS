@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Etch Cicada
+Comment=Install Cicada onto a disk (LUKS + login)
+Exec=cicada-etch
+Icon=system-software-install
+Terminal=false
+Categories=System;
+StartupNotify=true

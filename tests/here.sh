@@ -103,7 +103,18 @@ grep -q 'host/adb' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-sco
 grep -q 'Wallpaper' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing wallpaper picker"
 grep -q 'apply_wallpaper\|Pictures/cicada-wallpaper' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "wallpaper apply helper missing"
 grep -q 'run/archiso' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" || die "firstrun must skip live USB"
-grep -q 'public beta\|Public beta\|installed (public beta)' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" || die "firstrun missing public-beta welcome"
+grep -q 'first setup\|Etch\|duress' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" \
+  || die "firstrun missing v1.0 welcome"
+grep -q 'duress-enroll --session\|--session' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" \
+  || die "firstrun must offer session duress"
+test -x "${ROOT}/packages/cicada-install/files/usr/local/bin/cicada-etch" \
+  || die "cicada-etch missing"
+grep -q 'cicada-live' "${ROOT}/iso/overlay/airootfs/etc/sudoers.d/cicada-live" \
+  || test -f "${ROOT}/iso/overlay/airootfs/etc/sudoers.d/cicada-live" \
+  || die "live sudoers missing (etch cannot run)"
+grep -q 'rm -f /etc/sudoers.d/cicada-live' \
+  "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "chroot must strip live NOPASSWD sudo"
 test -f "${ROOT}/docs/RELEASE.md" || die "docs/RELEASE.md missing"
 test -f "${ROOT}/scripts/prepare-release.sh" || die "prepare-release.sh missing"
 test -f "${ROOT}/packages/cicada-shell/files/etc/skel/Pictures/.keep" || die "skel Pictures missing"
@@ -209,7 +220,9 @@ say "Apple refuse / malloc opt-in (Helium-safe) / wallpaper helper / 30min reboo
 echo "==> privacy defaults"
 nm="${ROOT}/packages/cicada-defaults/files/etc/NetworkManager/conf.d/cicada.conf"
 grep -q 'enabled=false' "${nm}" || die "NM connectivity not off"
-grep -q 'cloned-mac-address=random' "${nm}" || die "MAC random missing"
+grep -q 'cloned-mac-address=permanent' "${nm}" || die "MBA Broadcom needs permanent MAC default"
+grep -qE '^ipv4\.ignore-auto-dns=' "${nm}" && die "ignore-auto-dns in conf.d is invalid (NM unknown key)" || true
+grep -q 'dhcp-send-hostname=false' "${nm}" || die "DHCP hostname must stay off"
 # broadcom-wl cannot be driven by iwd and cannot randomize scan MACs. Both
 # settings look like "no networks found" on the MBA.
 grep -q 'wifi.backend=wpa_supplicant' "${nm}" || die "NM backend must be wpa_supplicant for broadcom-wl"
@@ -225,7 +238,8 @@ grep -q '^DNS=9\.9\.9\.9#dns\.quad9\.net' "${rsv}" || die "system DNS not pinned
 grep -q '#dns.quad9.net' "${rsv}" || die "no TLS certificate name: a redirect of 9.9.9.9 would answer silently"
 grep -qE '^DNSOverTLS=(opportunistic|yes)' "${rsv}" || die "system DNS is plaintext"
 grep -q '^Domains=~\.' "${rsv}" || die "DHCP-supplied resolvers would still get queries"
-grep -q 'ipv4.ignore-auto-dns=true' "${nm}" || die "NM still hands DHCP DNS to resolved"
+# ignore-auto-dns is NOT valid in NetworkManager conf.d (unknown key spam).
+# Domains=~. in resolved is the real "ignore DHCP DNS" control.
 python3 - <<PY || die "browser DoH not strict, or not pointed at Quad9"
 import json, sys, pathlib
 d = json.loads(pathlib.Path("${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/managed/cicada.json").read_text())

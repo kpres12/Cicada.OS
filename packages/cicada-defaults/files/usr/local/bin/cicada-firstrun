@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# First-run wizard — INSTALLED systems only. Live USB exits immediately (beta demo).
+# First-run wizard — INSTALLED systems only. Live USB exits immediately.
 #
-# Public-beta path: welcome → optional Work password → optional duress hint →
-# TPM PIN or USB token (machine-tier) → point at Files/Pictures.
+# v1.0 path after etch: welcome → Work password → LUKS duress → session duress
+# → TPM/USB token → Files tip. Login password was already set during etch.
 set -uo pipefail
 
 MARKER="${HOME}/.local/share/cicada/firstrun-done"
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
-# Live has no LUKS to enrol against, and nothing here persists anyway.
 [[ -d /run/archiso ]] && exit 0
 [[ "${FORCE}" == 1 || ! -f "${MARKER}" ]] || exit 0
 
@@ -24,20 +23,19 @@ has_tpm_slot() {
   cryptsetup luksDump "${d}" 2>/dev/null | grep -q 'systemd-tpm2'
 }
 has_token_slot() { [[ -f /etc/cicada/keyfile.env ]]; }
+has_session_duress() { [[ -f /etc/cicada/duress-session.sha256 ]]; }
+has_luks_duress() { [[ -f /etc/cicada/duress.sha256 ]]; }
 
 mark_done() { mkdir -p "$(dirname "${MARKER}")"; date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"; }
 
-# Seed daily-driver folders even if the user skips every prompt.
 mkdir -p "${HOME}/Downloads" "${HOME}/Pictures" "${HOME}/Documents" "${HOME}/Desktop"
 
-# No LUKS means this is not a Cicada install (or the mapping is named something
-# else). Nothing to offer; do not nag on every login.
 have_luks || { mark_done; exit 0; }
 
 ask() {
   local title="$1" body="$2"
   if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
-    zenity --question --title="${title}" --width=480 --text="${body}" 2>/dev/null
+    zenity --question --title="${title}" --width=500 --text="${body}" 2>/dev/null
   else
     printf '\n%s\n\n%s\n' "${title}" "${body}"
     read -r -p "Continue? [y/N] " a
@@ -48,7 +46,7 @@ ask() {
 info() {
   local title="$1" body="$2"
   if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] && command -v zenity >/dev/null 2>&1; then
-    zenity --info --title="${title}" --width=480 --text="${body}" 2>/dev/null || true
+    zenity --info --title="${title}" --width=500 --text="${body}" 2>/dev/null || true
   else
     printf '\n%s\n\n%s\n' "${title}" "${body}"
   fi
@@ -62,24 +60,27 @@ run_in_terminal() {
   fi
 }
 
-# ---- Welcome (public beta) ------------------------------------------------
-info "Cicada.OS — installed (public beta)" \
-"You left the live USB. This disk is the product:
+info "Cicada.OS — first setup" \
+"This disk is the product (etched install), not the live USB.
 
-• Files and wallpaper survive reboot (under LUKS)
-• Live USB stays the try-before-you-buy demo
-• Claims stay honest — see Settings → Start here
+You already have:
+• LUKS disk encryption (power-on passphrase)
+• Login as <b>cicada</b> with the password you chose at etch
 
-Next prompts are optional. Skip anything you are not ready for."
+Next (all optional — skip anything you are not ready for):
+• Work profile password (second Unix user)
+• Duress at power-on (wipes disk keys)
+• Duress at lock screen (wipes if coerced while unlocked)
+• TPM PIN or USB unlock token"
 
 # ---- Work UID password ----------------------------------------------------
 if id cicada-work >/dev/null 2>&1; then
   if passwd -S cicada-work 2>/dev/null | grep -q ' L '; then
     ask "Set Work profile password?" \
-"A second user cicada-work already exists (locked).
-Work is a real Unix UID — closest Graphene Users analogue.
+"A second user <tt>cicada-work</tt> exists (locked until you set a password).
 
-Set its login password now? (Settings → Profiles also does this.)" && {
+Work is a real Unix UID — closest Graphene Users analogue.
+Settings → Profiles can also do this later." && {
       if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
         kitty --title CICADA-WORK-PASS -e bash -lc 'sudo passwd cicada-work; read -r -p "Enter…"'
       else
@@ -89,55 +90,64 @@ Set its login password now? (Settings → Profiles also does this.)" && {
   fi
 fi
 
-# ---- Duress (optional) ----------------------------------------------------
-ask "Enroll a duress disk passphrase?" \
-"Duress is a second LUKS passphrase at power-on.
+# ---- LUKS duress (power-on) -----------------------------------------------
+if ! has_luks_duress; then
+  ask "Enroll a power-on duress passphrase?" \
+"A second LUKS passphrase at boot.
 Typing it wipes disk keys and poweroffs — same delay as a wrong guess.
 
-Only do this if you understand it. You can run later:
+Only if you understand the legal risk. Later:
   sudo cicada-duress-enroll" && run_in_terminal cicada-duress-enroll
+fi
 
-# ---- TPM / USB token (existing Tier path) ---------------------------------
+# ---- Session duress (hyprlock / sudo) -------------------------------------
+if ! has_session_duress; then
+  ask "Enroll a lock-screen duress password?" \
+"Different threat: machine is already unlocked and someone forces you to
+unlock the session (hyprlock / sudo).
+
+Typing the session duress password erases LUKS and hard-resets.
+Must NOT be your login password.
+
+Later:  sudo cicada-duress-enroll --session" && run_in_terminal cicada-duress-enroll --session
+fi
+
+# ---- TPM / USB token ------------------------------------------------------
 if have_tpm2; then
   if ! has_tpm_slot; then
-    ask "Cicada — TPM PIN unlock" \
-"This machine has a TPM2.
+    ask "Set up a TPM PIN?" \
+"This machine has a TPM2. Seal the disk key behind a short PIN
+(passphrase kept as fallback). TPM rate-limits guessing in hardware.
 
-Seal the disk key behind a short PIN (passphrase kept as fallback).
-The TPM rate-limits guessing in hardware.
-
-Set up a TPM PIN now?" && run_in_terminal cicada-tpm-enroll
+Apple EFI Airs: this usually no-ops — skip if unsure." && run_in_terminal cicada-tpm-enroll
   fi
 else
   if ! has_token_slot; then
-    ask "Cicada — USB unlock token (no TPM)" \
-"No TPM here, so the disk passphrase must stay long.
-A USB unlock token makes daily unlock survivable with a short AFU reboot window.
+    ask "USB unlock token? (no TPM)" \
+"No TPM here. A USB unlock token makes daily unlock survivable.
 
-The stick will be ERASED. Show enrol instructions now?" && {
+The stick will be ERASED. Show enrol instructions?" && {
       if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
         kitty --title CICADA-SETUP -e bash -c '
           echo "Removable devices:"; echo
           lsblk -o NAME,SIZE,MODEL,TRAN,RM,MOUNTPOINTS | awk "NR==1 || \$5==1"
           echo
-          echo "Enrol with (partition, not whole disk):"
           echo "  sudo cicada-keyfile-enroll --or --device /dev/sdX1"
           echo
           exec bash'
       else
-        lsblk -o NAME,SIZE,MODEL,TRAN,RM | awk 'NR==1 || $5==1'
         echo "Run: sudo cicada-keyfile-enroll --or --device /dev/sdX1"
       fi
     }
   fi
 fi
 
-# ---- Point at daily persistence -------------------------------------------
-info "Files & wallpaper" \
-"• Open Files from the dock — Downloads, Pictures, Documents are yours
-• Settings → Appearance → Wallpaper… to change the desk
-• Helium saves into Downloads by default (storage scopes)
+info "You are set" \
+"• Dock: Files, Helium, Wi-Fi, Settings
+• Lock: Super+L (hyprlock) — login password
+• Settings → Profiles for Work
+• Super+/ or Start here for the cheat sheet
 
-Live USB testing continues in parallel; this install is the release path."
+Live USB remains the try-before-you-buy demo."
 
 mark_done

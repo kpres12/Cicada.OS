@@ -1,9 +1,7 @@
+wifi ready · telemetry off · inbound deny · sshd masked
 
-  CICADA.OS  //  nimbus  //  channel:dev
-  wifi ready · telemetry off · inbound deny · sshd masked
-
-  click:      SETTINGS · WIFI · CLOSE · dock · desktop icons
-  wifi:       pick a scanned network
-  browser:    Helium (dock Web)
-  install:    sudo cicada-install --target /dev/sdX   (external disk; Apple internal refused)
-
+  etch:       click Etch Cicada (or: cicada-etch)
+  wifi:       click WIFI on the dock
+  browser:    Helium (Web)
+  install:    sudo cicada-install --target /dev/sdX
+              (external disk; Apple internal refused)

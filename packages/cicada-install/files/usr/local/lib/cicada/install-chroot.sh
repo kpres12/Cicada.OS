@@ -60,6 +60,8 @@ fi
 
 # User: no autologin. Empty live password must not follow onto disk.
 id cicada >/dev/null 2>&1 || useradd -m -G wheel,video,audio,storage,rfkill,network,input,users -s /bin/bash cicada
+# Installed: passworded sudo. Never keep live NOPASSWD.
+rm -f /etc/sudoers.d/cicada-live
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel
 chmod 440 /etc/sudoers.d/wheel
 if [[ -f /root/.cicada-user-pass ]]; then
@@ -155,7 +157,12 @@ else
 fi
 systemctl mask sshd.service || true
 
-# Installed system is not the live ISO — no getty autologin.
+# Installed system is not the live ISO — no getty autologin, no live sudo.
 rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf
+rm -f /etc/sudoers.d/cicada-live
+# Drop Install/Etch icon from the etched desktop (live-only surface).
+rm -f /home/cicada/Desktop/install.desktop \
+      /home/cicada/Desktop/etch.desktop \
+      /etc/skel/Desktop/install.desktop 2>/dev/null || true
 
 echo "==> chroot done host=${HOST} luks=${CICADA_LUKS_UUID}"

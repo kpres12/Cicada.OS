@@ -153,7 +153,9 @@ copy_product() {
     mkdir -p "${mnt}/usr/bin"
     cp -a /usr/bin/helium-browser "${mnt}/usr/bin/"
   fi
-  [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && find /etc/sudoers.d -maxdepth 1 -name 'cicada-*' -exec cp -a {} "${mnt}/etc/sudoers.d/" \; 2>/dev/null || true
+  [[ -d /etc/sudoers.d ]] && mkdir -p "${mnt}/etc/sudoers.d" && \
+    find /etc/sudoers.d -maxdepth 1 -name 'cicada-*' ! -name 'cicada-live' \
+      -exec cp -a {} "${mnt}/etc/sudoers.d/" \; 2>/dev/null || true
 }
 
 pacstrap_filtered() {
@@ -184,17 +186,24 @@ pacstrap_filtered() {
 
 usage() {
   cat <<'EOF'
-cicada-install — LUKS2 + btrfs + systemd-boot
+cicada-install — LUKS2 + btrfs + systemd-boot (etch Cicada onto a disk)
 
   cicada-install --list
   cicada-install --target /dev/sdX --hostname cicada
   cicada-install --target /dev/nvme0n1 --internal   # non-Apple internal disk
 
+GUI path (live):  cicada-etch
+
+Noninteractive (used by cicada-etch):
+  --yes
+  --luks-pass-file PATH
+  --user-pass-file PATH
+  --print-passphrase 16|20   # generate only, print to stdout
+
 Destroys the target. Apple internal SSDs are always refused.
 Needs network (pacstrap). Connect Wi-Fi first (dock / Super+N).
 
-Duress keyslot is not enrolled (timing-safe hook is not done).
-TPM2 enroll is optional after first boot: cicada-tpm-enroll
+After reboot: LUKS unlock → login as cicada → firstrun (duress / Work).
 EOF
 }
 
@@ -202,6 +211,9 @@ TARGET=""
 HOST="${HOSTNAME_DEFAULT}"
 DRY=0
 ALLOW_INTERNAL=0
+ASSUME_YES=0
+LUKS_PASS_FILE=""
+USER_PASS_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -210,6 +222,23 @@ while [[ $# -gt 0 ]]; do
     --hostname) HOST="${2:?}"; shift 2 ;;
     --internal) ALLOW_INTERNAL=1; shift ;;
     --dry-run) DRY=1; shift ;;
+    --yes) ASSUME_YES=1; shift ;;
+    --luks-pass-file) LUKS_PASS_FILE="${2:?}"; shift 2 ;;
+    --user-pass-file) USER_PASS_FILE="${2:?}"; shift 2 ;;
+    --print-passphrase)
+      n="${2:?}"
+      shift 2
+      [[ "${n}" == "16" || "${n}" == "20" ]] || die "--print-passphrase needs 16 or 20"
+      CICADA_PW_ALPHABET='0123456789abcdefghjkmnpqrstvwxyz'
+      out=""
+      for ((i = 0; i < n; i++)); do
+        byte=$(od -An -N1 -tu1 < /dev/urandom | tr -d ' ')
+        out+="${CICADA_PW_ALPHABET:$((byte % 32)):1}"
+        if (( (i + 1) % 4 == 0 && i + 1 < n )); then out+="-"; fi
+      done
+      printf '%s\n' "${out}"
+      exit 0
+      ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown arg: $1" ;;
   esac
@@ -223,8 +252,12 @@ echo
 echo "THIS WILL WIPE ${TARGET}"
 lsblk "${TARGET}"
 echo
-read -r -p "Type the device path to continue: " typed
-[[ "${typed}" == "${TARGET}" ]] || die "aborted"
+if [[ "${ASSUME_YES}" == 1 ]]; then
+  echo "==> --yes: skipping retype confirmation for ${TARGET}"
+else
+  read -r -p "Type the device path to continue: " typed
+  [[ "${typed}" == "${TARGET}" ]] || die "aborted"
+fi
 command -v cicada-auth >/dev/null && cicada-auth confirm install
 
 # ---------------------------------------------------------------------------
@@ -262,39 +295,54 @@ passphrase_ok() {
   return 1
 }
 
-echo
-echo "LUKS passphrase. This is the only thing protecting the disk once it is"
-echo "seized — there is no hardware rate-limiting on this or any x86 laptop."
-echo "  1) Generate one for me (recommended, 80 bits — write it down NOW)"
-echo "  2) Generate a longer one (100 bits)"
-echo "  3) I will type my own (needs 6+ words or 24+ characters)"
-read -r -p "Choice [1]: " pwchoice
-case "${pwchoice:-1}" in
-  1|2)
-    [[ "${pwchoice:-1}" == 2 ]] && p1="$(gen_passphrase 20)" || p1="$(gen_passphrase 16)"
-    echo
-    echo "  ┌────────────────────────────────────────────────┐"
-    printf '  │  %-44s  │\n' "${p1}"
-    echo "  └────────────────────────────────────────────────┘"
-    echo
-    echo "Write this on paper before continuing. It is not stored anywhere and"
-    echo "cannot be recovered. Losing it means the disk is gone."
-    read -r -p "Type it back to confirm you copied it: " p2
-    [[ "${p1}" == "${p2}" ]] || die "passphrase not confirmed — nothing was written"
-    ;;
-  3)
-    read -r -s -p "LUKS passphrase: " p1; echo
-    read -r -s -p "Again: " p2; echo
-    [[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
-    passphrase_ok "${p1}" || die "passphrase too weak: use 6+ words or 24+ characters (option 1 generates one)"
-    ;;
-  *) die "invalid choice" ;;
-esac
+p1=""
+u1=""
+if [[ -n "${LUKS_PASS_FILE}" ]]; then
+  [[ -f "${LUKS_PASS_FILE}" ]] || die "luks pass file missing: ${LUKS_PASS_FILE}"
+  p1="$(cat "${LUKS_PASS_FILE}")"
+  [[ -n "${p1}" ]] || die "luks pass file empty"
+  passphrase_ok "${p1}" || die "luks passphrase from file is too weak"
+else
+  echo
+  echo "LUKS passphrase. This is the only thing protecting the disk once it is"
+  echo "seized — there is no hardware rate-limiting on this or any x86 laptop."
+  echo "  1) Generate one for me (recommended, 80 bits — write it down NOW)"
+  echo "  2) Generate a longer one (100 bits)"
+  echo "  3) I will type my own (needs 6+ words or 24+ characters)"
+  read -r -p "Choice [1]: " pwchoice
+  case "${pwchoice:-1}" in
+    1|2)
+      [[ "${pwchoice:-1}" == 2 ]] && p1="$(gen_passphrase 20)" || p1="$(gen_passphrase 16)"
+      echo
+      echo "  ┌────────────────────────────────────────────────┐"
+      printf '  │  %-44s  │\n' "${p1}"
+      echo "  └────────────────────────────────────────────────┘"
+      echo
+      echo "Write this on paper before continuing. It is not stored anywhere and"
+      echo "cannot be recovered. Losing it means the disk is gone."
+      read -r -p "Type it back to confirm you copied it: " p2
+      [[ "${p1}" == "${p2}" ]] || die "passphrase not confirmed — nothing was written"
+      ;;
+    3)
+      read -r -s -p "LUKS passphrase: " p1; echo
+      read -r -s -p "Again: " p2; echo
+      [[ "${p1}" == "${p2}" ]] || die "passphrases do not match"
+      passphrase_ok "${p1}" || die "passphrase too weak: use 6+ words or 24+ characters (option 1 generates one)"
+      ;;
+    *) die "invalid choice" ;;
+  esac
+fi
 
-read -r -s -p "User (cicada) password: " u1; echo
-read -r -s -p "Again: " u2; echo
-[[ "${u1}" == "${u2}" ]] || die "user passwords do not match"
-[[ ${#u1} -ge 8 ]] || die "user password too short"
+if [[ -n "${USER_PASS_FILE}" ]]; then
+  [[ -f "${USER_PASS_FILE}" ]] || die "user pass file missing: ${USER_PASS_FILE}"
+  u1="$(cat "${USER_PASS_FILE}")"
+  [[ ${#u1} -ge 8 ]] || die "user password from file too short"
+else
+  read -r -s -p "User (cicada) password: " u1; echo
+  read -r -s -p "Again: " u2; echo
+  [[ "${u1}" == "${u2}" ]] || die "user passwords do not match"
+  [[ ${#u1} -ge 8 ]] || die "user password too short"
+fi
 
 if [[ "${DRY}" == 1 ]]; then
   echo "dry-run: would LUKS+btrfs+pacstrap+bootctl ${TARGET} hostname=${HOST} internal=${ALLOW_INTERNAL}"
@@ -392,7 +440,8 @@ EOF
 command -v cicada-seal >/dev/null && cicada-seal append install.ok "{\"target\":\"${TARGET}\"}" >/dev/null 2>&1 || true
 
 echo
-echo "Installed. Reboot, pick the SSD in firmware, unlock LUKS."
+echo "Installed (etched). Reboot, remove the live USB, pick the disk in firmware."
+echo "Unlock LUKS → log in as cicada → firstrun offers Work password + duress."
 echo "Then (on machines with TPM2): sudo cicada-tpm-enroll"
 echo "Unmount: umount -R /mnt && cryptsetup close cicada"
 echo "Apple EFI: Secure Boot/TPM enroll will no-op. Framework-class: sbctl + cicada-tpm-enroll."
