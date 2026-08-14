@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Cicada.OS (niri)
+Comment=Optional scrollable tiling session
+Exec=cicada-session-niri
+Type=Application
+DesktopNames=Cicada;Cicada.OS

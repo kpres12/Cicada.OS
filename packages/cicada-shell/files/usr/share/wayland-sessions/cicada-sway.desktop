@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Cicada.OS (Sway)
+Comment=Optional minimal tiling session
+Exec=cicada-session-sway
+Type=Application
+DesktopNames=Cicada;Cicada.OS

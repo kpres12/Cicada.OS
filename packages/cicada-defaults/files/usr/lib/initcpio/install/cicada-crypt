@@ -13,12 +13,28 @@ build() {
   add_binary mkdir
   add_binary rm
   add_binary cat
+  add_binary grep
   # Locating a USB key token by filesystem label when udev has not populated
   # /dev/disk/by-label yet. Also used to find the ESP for the fail counter.
   add_binary blkid
   # Filesystems a key token / ESP might use.
   add_module 'ext4'
   add_module 'vfat'
+  # TPM2 unlock (cicada-tpm-enroll). Harmless when no TPM / no token enrolled.
+  add_module 'tpm_tis'
+  add_module 'tpm_crb'
+  add_module 'tpm_tis_spi'
+  add_module 'rng_core'
+  # cryptsetup systemd-tpm2 token plugin + TSS libs (best-effort)
+  shopt -s nullglob
+  for f in /usr/lib/cryptsetup/libcryptsetup-token-systemd-tpm2.so \
+           /usr/lib/cryptsetup/plugins/libcryptsetup-token-systemd-tpm2.so \
+           /usr/lib/libtss2-*.so* \
+           /usr/lib/libcryptsetup.so*; do
+    [[ -e "${f}" ]] && add_file "${f}"
+  done
+  shopt -u nullglob
+  command -v tpm2 >/dev/null 2>&1 && add_binary tpm2 || true
 
   # /etc/cicada/keyfile.env lives on the encrypted root and so is unreadable at
   # unlock time. Copy it into the initramfs instead. It records only the mode

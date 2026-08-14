@@ -142,12 +142,30 @@ The stick will be ERASED. Show enrol instructions?" && {
   fi
 fi
 
+# ---- Secure Boot (sbctl) — non-Apple Setup Mode only ----------------------
+if command -v sbctl >/dev/null 2>&1; then
+  if sbctl status 2>/dev/null | grep -qi 'setup mode.*enabled\|setup mode:.*yes'; then
+    ask "Enroll Cicada Secure Boot keys?" \
+"Firmware is in Setup Mode. This enrolls sbctl keys and signs the boot
+chain. Kernel updates re-sign via pacman hook.
+
+Apple EFI: skip (will fail). Framework / Heads: yes." && run_in_terminal cicada-sbctl-enroll
+  fi
+fi
+
+# ---- Channel pin (updates stay Cicada, not raw Arch rolling) --------------
+if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
+  sudo /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf >/dev/null 2>&1 || true
+fi
+
 info "You are set" \
 "• Dock: Files, Helium, Wi-Fi, Settings
-• Lock: Super+L (hyprlock) — login password
+• Lock: Super+L — login password
+• Settings → Security for TPM / Secure Boot / allocator / updates
 • Settings → Profiles for Work
 • Super+/ or Start here for the cheat sheet
 
+Updates: cicada-update (channel only — not raw Arch rolling).
 Live USB remains the try-before-you-buy demo."
 
 mark_done

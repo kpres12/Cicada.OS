@@ -152,6 +152,50 @@ set_gtk_key() {
   fi
 }
 
+desktop_session_picker() {
+  local pick pref="${HOME}/.config/cicada/preferred-session"
+  mkdir -p "$(dirname "${pref}")"
+  pick="$(zenity --list --title="Desktop session" \
+    --text="Default stays Cicada. Optional compositors apply at next login (greeter)." \
+    --column=Session --column=Notes --print-column=1 --hide-header \
+    --width=560 --height=280 \
+    "Cicada (default)" "Product desk — dock, icons, tiling" \
+    "Sway" "Minimal tiling (installs sway if needed)" \
+    "niri" "Scrollable tiling (installs niri if needed)" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    "Cicada (default)")
+      printf 'cicada\n' > "${pref}"
+      ;;
+    Sway)
+      if ! command -v sway >/dev/null 2>&1; then
+        zenity --question --title="Install Sway?" --width=420 \
+          --text="Sway is not installed. Install from Arch repos now?" 2>/dev/null || return 0
+        pkexec pacman -S --needed --noconfirm sway || {
+          zenity --error --title="Cicada" --text="Could not install sway." 2>/dev/null || true
+          return 1
+        }
+      fi
+      printf 'sway\n' > "${pref}"
+      ;;
+    niri)
+      if ! command -v niri >/dev/null 2>&1; then
+        zenity --question --title="Install niri?" --width=420 \
+          --text="niri is not installed. Install from Arch repos now?" 2>/dev/null || return 0
+        pkexec pacman -S --needed --noconfirm niri || {
+          zenity --error --title="Cicada" --text="Could not install niri." 2>/dev/null || true
+          return 1
+        }
+      fi
+      printf 'niri\n' > "${pref}"
+      ;;
+    *) return 0 ;;
+  esac
+  zenity --info --title="Desktop session" --width=420 \
+    --text="Preferred session saved.\nLog out and sign in again to use it.\n(Greeter still lists all Cicada sessions.)" \
+    2>/dev/null || true
+}
+
 appearance() {
   local pick size img stock
   pick="$(zenity --list --title="Appearance" \
@@ -165,8 +209,10 @@ appearance() {
     "Icons small" "Desktop icons 48px" \
     "Icons medium" "Desktop icons 56px" \
     "Icons large" "Desktop icons 72px" \
+    "Desktop session…" "Cicada (default) / Sway / niri — next login" \
     2>/dev/null)" || return 0
   case "${pick}" in
+    "Desktop session…") desktop_session_picker; return 0 ;;
     "Wallpaper…")
       mkdir -p "${HOME}/Pictures"
       img="$(zenity --file-selection --title="Wallpaper" \
@@ -343,12 +389,86 @@ av_kill() {
   esac
 }
 
+security() {
+  local pick
+  pick="$(zenity --list --title="Security" \
+    --text="Boot, disk, updates, allocator. Fail closed." \
+    --column=Item --column=Does --print-column=1 --hide-header \
+    --width=560 --height=360 \
+    "Status…" "TPM / Secure Boot / channel / malloc" \
+    "TPM PIN…" "Seal disk to TPM (passphrase fallback)" \
+    "Secure Boot…" "sbctl enroll (Setup Mode only)" \
+    "hardened_malloc on" "Opt-in allocator (may break Helium)" \
+    "hardened_malloc off" "Default — browser-safe" \
+    "Check updates" "cicada-update (channel only)" \
+    "VPN kill switch check" "Verify WireGuard policy" \
+    2>/dev/null)" || return 0
+  case "${pick}" in
+    "Status…")
+      {
+        echo "=== channel ==="
+        cat /etc/cicada/channel 2>/dev/null || cat /usr/share/cicada/channel/CURRENT 2>/dev/null || echo "(unknown)"
+        grep -A3 '^\[cicada-stable\]' /etc/pacman.d/cicada-repos.conf 2>/dev/null || echo "cicada-stable: not enabled"
+        echo
+        echo "=== malloc ==="
+        cicada-malloc status 2>/dev/null || echo "cicada-malloc missing"
+        echo
+        echo "=== TPM ==="
+        if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+          echo "TPM2: present"
+          cryptsetup status cicada 2>/dev/null | head -5 || true
+        else
+          echo "TPM2: none (passphrase / USB token)"
+        fi
+        echo
+        echo "=== Secure Boot (sbctl) ==="
+        sbctl status 2>/dev/null || echo "sbctl not installed / not enrolled"
+        echo
+        echo "=== boot ==="
+        head -20 /boot/loader/loader.conf 2>/dev/null || true
+        ls /boot/loader/entries/*.conf 2>/dev/null || true
+      } | zenity --text-info --title="Security status" --width=640 --height=480 2>/dev/null || true
+      ;;
+    "TPM PIN…")
+      if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+        kitty --title CICADA-TPM -e sudo cicada-tpm-enroll
+      else
+        sudo cicada-tpm-enroll
+      fi
+      ;;
+    "Secure Boot…")
+      if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+        kitty --title CICADA-SBCTL -e sudo cicada-sbctl-enroll
+      else
+        sudo cicada-sbctl-enroll
+      fi
+      ;;
+    "hardened_malloc on")
+      sudo cicada-malloc on && notify-send "Cicada" "hardened_malloc on — restart apps"
+      ;;
+    "hardened_malloc off")
+      sudo cicada-malloc off && notify-send "Cicada" "hardened_malloc off"
+      ;;
+    "Check updates")
+      if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+        kitty --title CICADA-UPDATE -e bash -lc 'cicada-update; read -r -p "Enter…"'
+      else
+        cicada-update
+      fi
+      ;;
+    "VPN kill switch check")
+      cicada-vpn verify 2>&1 | zenity --text-info --title="VPN kill switch" --width=520 --height=280 2>/dev/null || true
+      ;;
+  esac
+}
+
 case "${1:-}" in
   wifi|Wi-Fi) exec cicada-wifi ;;
   sound|Sound) sound; exit 0 ;;
   brightness|Brightness) brightness; exit 0 ;;
   displays|Displays) displays; exit 0 ;;
   appearance|Appearance) appearance; exit 0 ;;
+  security|Security) security; exit 0 ;;
   pkg|install|"Install software") exec cicada-pkg ;;
   power|Power) exec cicada-power ;;
   scopes|Scopes) exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
@@ -370,6 +490,7 @@ pick="$(zenity --list --title="Settings" \
   "Install software…" "Official Arch package (pacman)" \
   "App permissions" "Scopes — network/files/camera per app" \
   "Camera & microphone" "Software kill — not a hardware switch" \
+  "Security" "TPM, Secure Boot, updates, allocator" \
   "Profiles" "Work (UID) / Burner (folder) compartments" \
   "Notifications" "Notification center" \
   "Dock left" "Keep the dock on the left" \
@@ -390,6 +511,7 @@ case "${pick}" in
   "Install software…") exec cicada-pkg ;;
   "App permissions") exec cicada-run org.cicada.kitty -- kitty --title CICADA-SCOPES -e cicada-scopes ;;
   "Camera & microphone") av_kill ;;
+  Security) security ;;
   Profiles) profiles ;;
   Notifications) exec swaync-client -t -sw ;;
   "Dock left") restart_dock left ;;

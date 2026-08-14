@@ -40,6 +40,13 @@ rm -f "${OUT}/cicada-stable.db"* "${OUT}/cicada-stable.files"* 2>/dev/null || tr
 )
 
 echo "channel-build-repo: wrote ${OUT}/cicada-stable.db*"
+
+# Product meta-packages (cicada-desktop, …) when builder has makepkg.
+if [[ -x "${ROOT}/scripts/channel-build-meta.sh" ]] || [[ -f "${ROOT}/scripts/channel-build-meta.sh" ]]; then
+  bash "${ROOT}/scripts/channel-build-meta.sh" "${OUT}" || \
+    echo "channel-build-repo: meta packages skipped (non-fatal)"
+fi
+
 # Optional sign
 if [[ -x "${ROOT}/scripts/channel-sign.sh" ]]; then
   "${ROOT}/scripts/channel-sign.sh" "${OUT}" || true

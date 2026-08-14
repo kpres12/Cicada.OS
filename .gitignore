@@ -10,6 +10,11 @@ pkg/
 .archiso/
 channel/repo/**
 !channel/repo/.gitkeep
+# Local agent permissions. Untracked today, but nothing was stopping a
+# `git add -A` from publishing it — and it necessarily names absolute paths on
+# this machine, including unrelated private repos, to deny access to them.
+.claude/settings.local.json
+
 channel/keys/gnupg/
 channel/keys/batch-keygen
 channel/keys/*.sec

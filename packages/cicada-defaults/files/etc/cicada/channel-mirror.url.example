@@ -1,0 +1,5 @@
+# Uncomment / replace with the hosted cicada-stable root (must serve pacman db).
+# After scripts/channel-publish.sh:
+# https://github.com/OWNER/REPO/releases/download/channel-latest
+#
+# Then: sudo cicada-channel-enable.sh && sudo cicada-update

@@ -1,0 +1,52 @@
+# Maintainer: Cicada.OS
+# Meta-package: one unit = desk + greeter + browser stack + Cicada product layer.
+pkgname=cicada-desktop
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Cicada.OS desktop product (session, greeter, dock, files, browser hooks)"
+arch=('any')
+url="https://github.com/kpresler12/Cicada.OS"
+license=('GPL-3.0-or-later')
+depends=(
+  # Product layer (file trees shipped on ISO; named for the channel story)
+  'hyprland'
+  'hyprpaper'
+  'hyprlock'
+  'hypridle'
+  'hyprpolkitagent'
+  'xdg-desktop-portal-hyprland'
+  'xdg-desktop-portal-gtk'
+  'waybar'
+  'wofi'
+  'nwg-dock-hyprland'
+  'kitty'
+  'pcmanfm-qt'
+  'gvfs'
+  'swaync'
+  'greetd'
+  'greetd-tuigreet'
+  'zenity'
+  'networkmanager'
+  'pipewire'
+  'pipewire-pulse'
+  'wireplumber'
+  'pamixer'
+  'brightnessctl'
+  'ttf-jetbrains-mono-nerd'
+  'papirus-icon-theme'
+  'qt6ct'
+)
+optdepends=(
+  'sway: optional Cicada.OS (Sway) session via Settings'
+  'niri: optional Cicada.OS (niri) session via Settings'
+)
+provides=('cicada-desktop')
+source=()
+sha256sums=()
+
+package() {
+  # Meta only — files live in cicada-shell / cicada-defaults on the ISO.
+  # Channel builds may later merge those trees into this package.
+  install -d "${pkgdir}/usr/share/cicada/meta"
+  printf '%s\n' "${pkgver}-${pkgrel}" > "${pkgdir}/usr/share/cicada/meta/cicada-desktop.version"
+}

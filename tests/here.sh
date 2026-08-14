@@ -94,6 +94,19 @@ grep -q 'hidraw\|/sys/bus/iio\|SENSORS' "${ROOT}/packages/cicada-run/files/usr/l
 grep -q 'GTK_USE_PORTAL=1' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "FILES=portal must set GTK_USE_PORTAL"
 grep -q 'av-kill.env' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must honor system AV kill"
 grep -q 'Camera & microphone' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Camera & microphone"
+grep -q '"Security"' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Security"
+grep -q 'cicada-wifi.conf' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "etched boot must offer linux Wi-Fi/Broadcom fallback"
+grep -q 'vmlinuz-linux-hardened' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "etched default must prefer linux-hardened"
+grep -q 'systemd-tpm2' "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" \
+  || die "cicada-crypt must try TPM before passphrase"
+test -f "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-malloc" || die "cicada-malloc missing"
+grep -q 'verify)' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-vpn" || die "cicada-vpn verify missing"
+grep -q 'zz-cicada-sbctl.hook' "${ROOT}/packages/cicada-defaults/files/etc/pacman.d/hooks/zz-cicada-sbctl.hook" \
+  || test -f "${ROOT}/packages/cicada-defaults/files/etc/pacman.d/hooks/zz-cicada-sbctl.hook" \
+  || die "sbctl pacman hook missing"
+
 grep -q 'cicada-av-kill' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-av-kill" || die "cicada-av-kill missing"
 test -f "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/hide-arch-desktops.sh" || die "hide-arch-desktops.sh missing"
 grep -q 'create-locked work' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" || die "firstboot must create Work UID"

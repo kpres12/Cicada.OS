@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Login entrypoint for greetd — honors Settings → Desktop session preference.
+set -euo pipefail
+pref="${HOME}/.config/cicada/preferred-session"
+case "$(tr -d '[:space:]' < "${pref}" 2>/dev/null || true)" in
+  sway|cicada-sway) exec cicada-session-sway "$@" ;;
+  niri|cicada-niri) exec cicada-session-niri "$@" ;;
+  *) exec cicada-session "$@" ;;
+esac

@@ -102,14 +102,19 @@ else
 fi
 
 if [[ -f /etc/crypttab ]]; then
-  sed -i "s/ none luks$/ none luks,${crypttab_opts}/" /etc/crypttab || true
+  if grep -q 'tpm2-device=' /etc/crypttab; then
+    :
+  else
+    sed -i "s/ none luks$/ none luks,${crypttab_opts}/" /etc/crypttab || true
+  fi
 fi
 command -v cicada-seal >/dev/null && \
   cicada-seal append tpm.enroll "{\"pcrs\":\"${PCRS}\",\"pin\":${WITH_PIN}}" >/dev/null 2>&1 || true
 
 echo
-echo "Enrolled. Rebuild the initramfs so the boot path can talk to the TPM:"
-echo "  mkinitcpio -P"
+echo "Rebuilding initramfs so cicada-crypt can talk to the TPM…"
+mkinitcpio -P
 echo
-echo "The passphrase keyslot is still there. If a firmware update changes the"
-echo "measurements, unsealing will fail — that is the tamper signal, not a fault."
+echo "Enrolled. Boot asks for TPM PIN first; passphrase remains the fallback."
+echo "If a firmware update changes PCRs, unsealing fails — type the passphrase"
+echo "and re-run cicada-tpm-enroll (tamper signal, not a fault)."

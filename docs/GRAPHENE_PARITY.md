@@ -18,12 +18,13 @@ North star is Graphene *intent*. Claims stay honest about hardware.
 Graphene: hardened libc, hardened_malloc, ARMv9 BTI/PAC, hardware MTE in kernel allocators, forced kernel module signing, kernel lockdown, CFI.
 
 **Cicada:**
-- [x] `hardened_malloc` globally — GrapheneOS **tag 14** built in the ISO Docker builder (`scripts/build-hardened-malloc.sh`). Firstboot `/etc/ld.so.preload`. Opt-out: `/etc/cicada/hardened-malloc-disable`
-- [x] `linux-hardened` packaged for **install** (boot entry after `cicada-install`; not on the live USB menu — MBA Broadcom + menu clutter)
-- [x] `lockdown=confidentiality` on the hardened entry only
-- [x] `ibt=on shstk=on` on live and installed cmdline (no-op on CPUs without CET; **not MTE**)
-- [ ] Forced module signing — **won't do without forking Arch's kernel** (violates official-repos-only for security-critical packages). Policy-OS ceiling does not include a custom signed kernel.
-- [ ] Secure Boot chain (sbctl hook shipped; enroll with `cicada-sbctl-enroll` in Setup Mode)
+- [x] `hardened_malloc` from GrapheneOS tag 14 — **opt-in** via `cicada-malloc on` / Settings → Security (default off: Helium)
+- [x] `linux-hardened` is the **default etched** boot entry (`lockdown=confidentiality`); `linux` is “Wi‑Fi / Broadcom” fallback
+- [x] `ibt=on shstk=on` + `init_on_alloc/free` on installed cmdline
+- [x] TPM unlock in `cicada-crypt` (PIN first, passphrase fallback); `cicada-tpm-enroll` rebuilds initramfs
+- [x] sbctl enroll + pacman re-sign hook (`zz-cicada-sbctl.hook`)
+- [ ] Forced module signing — **won't do without forking Arch's kernel**
+- [x] Module blacklist policy (`etc/modprobe.d/cicada-blacklist.conf`)
 
 **Gap:** MTE has no x86 equivalent. CET/shadow stack is the substitute on 11th-gen Intel / Zen 3+. Do not list MTE as done.
 

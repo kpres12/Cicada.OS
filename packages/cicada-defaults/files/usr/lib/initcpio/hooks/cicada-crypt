@@ -174,6 +174,32 @@ run_hook() {
     echo "Key token present but rejected; falling back to passphrase."
   fi
 
+  # TPM2 PIN path (cicada-tpm-enroll). Passphrase keyslot always remains.
+  # Duress is passphrase-only — a TPM PIN never triggers wipe.
+  if [ -c /dev/tpmrm0 ] || [ -c /dev/tpm0 ]; then
+    if cryptsetup token list "${CRYPTDEV}" 2>/dev/null | grep -q 'systemd-tpm2'; then
+      echo -n "Cicada.OS TPM PIN (Enter alone → passphrase): "
+      read -r -s tpm_pin
+      echo
+      if [ -n "${tpm_pin}" ]; then
+        start="$(date +%s)"
+        if printf '%s' "${tpm_pin}" | cryptsetup open --token-type systemd-tpm2 \
+             --key-file=- "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1 \
+           || TPM2PIN="${tpm_pin}" cryptsetup open --token-type systemd-tpm2 \
+             "${CRYPTDEV}" "${CRYPTNAME}" >/dev/null 2>&1; then
+          tpm_pin=""
+          umount "${KEYMNT}" 2>/dev/null
+          _reset_fails
+          echo "Unlocked with TPM."
+          return 0
+        fi
+        tpm_pin=""
+        _pad "${start}"
+        echo "TPM unlock failed — try passphrase."
+      fi
+    fi
+  fi
+
   while true; do
     if [ -n "${kf}" ] && [ "${kf_mode}" = "and" ]; then
       echo -n "Cicada.OS passphrase (token detected): "

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Opt-in hardened_malloc. Default off — global preload breaks Helium/Chromium.
+# Enable only when you accept that tradeoff (or use for selected binaries later).
+set -euo pipefail
+LIB=/usr/lib/libhardened_malloc.so
+PRELOAD=/etc/ld.so.preload
+ENABLE=/etc/cicada/hardened-malloc-enable
+DISABLE=/etc/cicada/hardened-malloc-disable
+
+usage() {
+  echo "usage: cicada-malloc status|on|off"
+  echo "  on  — preload hardened_malloc (may break Helium; opt-in)"
+  echo "  off — remove preload (default product path)"
+}
+
+[[ ${EUID} -eq 0 ]] || exec sudo -n "$0" "$@" 2>/dev/null || exec sudo "$0" "$@"
+
+case "${1:-}" in
+  status)
+    if [[ -f "${PRELOAD}" ]] && grep -q 'libhardened_malloc' "${PRELOAD}"; then
+      echo "hardened_malloc: on (${PRELOAD})"
+    else
+      echo "hardened_malloc: off"
+    fi
+    [[ -f "${LIB}" ]] || echo "note: ${LIB} missing (ISO build may have skipped it)"
+    ;;
+  on)
+    [[ -f "${LIB}" ]] || { echo "cicada-malloc: ${LIB} missing" >&2; exit 1; }
+    mkdir -p /etc/cicada
+    rm -f "${DISABLE}"
+    touch "${ENABLE}"
+    echo "${LIB}" > "${PRELOAD}"
+    echo "hardened_malloc: enabled. Reboot or restart apps. Helium may need --no-sandbox / opt-out."
+    command -v cicada-seal >/dev/null && cicada-seal append malloc.on "{}" >/dev/null 2>&1 || true
+    ;;
+  off)
+    mkdir -p /etc/cicada
+    touch "${DISABLE}"
+    rm -f "${ENABLE}"
+    if [[ -f "${PRELOAD}" ]]; then
+      grep -v 'libhardened_malloc' "${PRELOAD}" > "${PRELOAD}.tmp" || true
+      if [[ -s "${PRELOAD}.tmp" ]]; then
+        mv "${PRELOAD}.tmp" "${PRELOAD}"
+      else
+        rm -f "${PRELOAD}" "${PRELOAD}.tmp"
+      fi
+    fi
+    echo "hardened_malloc: disabled"
+    command -v cicada-seal >/dev/null && cicada-seal append malloc.off "{}" >/dev/null 2>&1 || true
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

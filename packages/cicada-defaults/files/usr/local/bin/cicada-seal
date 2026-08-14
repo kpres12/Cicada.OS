@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cicada seal log — Ed25519-signed, SHA-256 hash-chained (Heli.OS-shaped audit).
+"""Cicada seal log — Ed25519-signed, SHA-256 hash-chained append-only audit.
 
 init / append / verify / pubkey / tip
 Does not prompt. Signing is the device key. Destructive gates stay in cicada-auth.

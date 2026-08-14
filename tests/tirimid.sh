@@ -31,20 +31,31 @@ grep -q 'Hyprland\|hyprland\|cicada-session' "${ROOT}/packages/cicada-shell/file
   || die "login must start Cicada session"
 test -x "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-session" \
   || die "cicada-session missing"
-grep -q 'tuigreet' "${ROOT}/packages/cicada-defaults/files/etc/greetd/config.toml" \
-  || die "greetd must use tuigreet branded Cicada"
-grep -qx 'greetd' "${ROOT}/iso/packages.cicada.x86_64" || die "greetd not on ISO"
-grep -qx 'greetd-tuigreet' "${ROOT}/iso/packages.cicada.x86_64" || die "tuigreet not on ISO"
+test -x "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-login" \
+  || die "cicada-login missing"
+test -f "${ROOT}/packages/cicada-shell/files/usr/share/cicada/wayland-sessions/cicada.desktop" \
+  || die "cicada.desktop session missing"
+grep -q 'cicada-login' "${ROOT}/packages/cicada-defaults/files/etc/greetd/config.toml" \
+  || die "greetd must default to cicada-login"
+grep -q '/usr/share/cicada/wayland-sessions' "${ROOT}/packages/cicada-defaults/files/etc/greetd/config.toml" \
+  || die "greetd must use Cicada-only session dir"
+grep -q 'Desktop session' "${settings}" || die "Settings must offer Desktop session"
+grep -q 'preferred-session' "${settings}" || die "Settings must persist preferred-session"
+test -f "${ROOT}/packages/cicada-desktop/PKGBUILD" || die "cicada-desktop meta missing"
 grep -q "(_).---.(_)" "${ROOT}/packages/cicada-defaults/files/etc/issue" \
   || die "boot/login issue missing cicada ASCII art"
 grep -q 'PRETTY_NAME="Cicada.OS"' "${ROOT}/packages/cicada-defaults/files/etc/os-release" \
   || die "os-release must be Cicada.OS not Arch"
+grep -q 'tuigreet' "${ROOT}/packages/cicada-defaults/files/etc/greetd/config.toml" \
+  || die "greetd must use tuigreet branded Cicada"
+grep -qx 'greetd' "${ROOT}/iso/packages.cicada.x86_64" || die "greetd not on ISO"
+grep -qx 'greetd-tuigreet' "${ROOT}/iso/packages.cicada.x86_64" || die "tuigreet not on ISO"
 grep -q 'exec-once = waybar\|waybar' "${hypr}" || die "Waybar must start"
 grep -q 'exec-once = cicada-dock\|cicada-dock' "${hypr}" || die "dock must start"
 grep -q 'exec-once = pcmanfm-qt --desktop' "${hypr}" || die "desktop icons (pcmanfm) must start"
 grep -q 'layout = dwindle' "${hypr}" || die "tiling desktop must exist"
 test -f "${skel_desk}/term.desktop" || die "terminal desktop icon missing"
-say "Hyprland + dock + desktop icons + terminal"
+say "Cicada session + greeter + dock + desktop icons + terminal"
 
 echo "==> 2 — Change the resolution"
 grep -q 'Resolution' "${settings}" || die "Settings Displays must offer Resolution"
@@ -102,11 +113,17 @@ say "Web + Helium heal + Wi-Fi GUI"
 
 echo "==> 7 — Explore what makes it special"
 test -f "${skel_desk}/settings.desktop" || die "Settings desktop missing"
-grep -q 'App permissions\|Scopes\|Camera & microphone\|Profiles' "${settings}" \
+grep -q 'App permissions\|Scopes\|Camera & microphone\|Profiles\|Security' "${settings}" \
   || die "Settings must surface Cicada-specific controls"
+grep -q '"Security"' "${settings}" || die "Settings Security pane missing"
+grep -q 'cicada-sbctl-enroll' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstrun" \
+  || die "firstrun must offer sbctl"
 grep -q 'CICADA_LUKS_MAX_FAIL\|luksErase' \
   "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" \
   || die "special: LUKS attempt-cap wipe missing"
+grep -q 'systemd-tpm2' \
+  "${ROOT}/packages/cicada-defaults/files/usr/lib/initcpio/hooks/cicada-crypt" \
+  || die "special: TPM unlock path missing in cicada-crypt"
 say "Settings specials + LUKS/duress story present"
 
 echo "==> 8 — Power off and reboot"

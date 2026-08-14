@@ -40,21 +40,31 @@ ucode=""
 [[ -f /boot/intel-ucode.img ]] && ucode="initrd /intel-ucode.img"
 [[ -f /boot/amd-ucode.img ]] && ucode="${ucode}"$'\n'"initrd /amd-ucode.img"
 
-cat > /boot/loader/entries/cicada.conf <<EOF
+# Default etched kernel: linux-hardened + lockdown when present.
+# Fallback entry: stock linux for MBA Broadcom (wl) and other out-of-tree drivers.
+if [[ -f /boot/vmlinuz-linux-hardened ]]; then
+  cat > /boot/loader/entries/cicada.conf <<EOF
 title Cicada.OS
+linux /vmlinuz-linux-hardened
+${ucode}
+initrd /initramfs-linux-hardened.img
+options ${CMDLINE} lockdown=confidentiality
+EOF
+  cat > /boot/loader/entries/cicada-wifi.conf <<EOF
+title Cicada.OS (Wi-Fi / Broadcom)
 linux /vmlinuz-linux
 ${ucode}
 initrd /initramfs-linux.img
 options ${CMDLINE}
 EOF
-
-if [[ -f /boot/vmlinuz-linux-hardened ]]; then
-  cat > /boot/loader/entries/cicada-hardened.conf <<EOF
-title Cicada.OS (linux-hardened)
-linux /vmlinuz-linux-hardened
+  rm -f /boot/loader/entries/cicada-hardened.conf
+else
+  cat > /boot/loader/entries/cicada.conf <<EOF
+title Cicada.OS
+linux /vmlinuz-linux
 ${ucode}
-initrd /initramfs-linux-hardened.img
-options ${CMDLINE} lockdown=confidentiality
+initrd /initramfs-linux.img
+options ${CMDLINE}
 EOF
 fi
 

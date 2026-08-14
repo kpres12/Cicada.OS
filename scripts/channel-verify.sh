@@ -33,9 +33,16 @@ grep -q 'install-doom.sh' "${ROOT}/iso/build.sh" || die "ISO build does not inst
 grep -q 'Public beta' "${ROOT}/site/index.html" || die "site home missing public beta banner"
 grep -q 'prepare-release\|RELEASE.md' "${ROOT}/docs/RELEASE.md" || die "RELEASE.md incomplete"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run default-deny missing"
-test -x "${ROOT}/scripts/channel-build-repo.sh" || test -f "${ROOT}/scripts/channel-build-repo.sh" || die "channel-build-repo.sh missing"
+test -f "${ROOT}/scripts/channel-build-repo.sh" || die "channel-build-repo.sh missing"
+test -f "${ROOT}/scripts/channel-build-meta.sh" || die "channel-build-meta.sh missing"
 test -f "${ROOT}/scripts/channel-sign.sh" || die "channel-sign.sh missing"
+test -f "${ROOT}/scripts/channel-publish.sh" || die "channel-publish.sh missing"
+test -f "${ROOT}/packages/cicada-desktop/PKGBUILD" || die "cicada-desktop meta PKGBUILD missing"
 test -f "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-channel-enable.sh" || die "cicada-channel-enable.sh missing"
+grep -q 'channel-mirror.url' "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-channel-enable.sh" \
+  || die "channel-enable must honor hosted mirror URL"
+grep -q 'pacman -Slq cicada-stable\|Slq cicada-stable' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-update" \
+  || die "cicada-update must upgrade channel packages only"
 grep -q 'channel-build-repo' "${ROOT}/iso/build.sh" || die "ISO build must call channel-build-repo"
 say "build + default-deny + channel pipeline wired"
 

@@ -67,5 +67,30 @@ for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desk
   fi
 done
 
+# Greeter must not list raw Arch compositor sessions — Cicada owns /usr/share/cicada/wayland-sessions.
+WS=/usr/share/wayland-sessions
+if [[ -d "${WS}" ]]; then
+  for base in hyprland.desktop sway.desktop niri.desktop; do
+    if [[ -f "${WS}/${base}" ]]; then
+      {
+        echo '[Desktop Entry]'
+        echo 'Hidden=true'
+        echo 'NoDisplay=true'
+        echo "Name=Hidden by Cicada (${base})"
+        echo 'Type=Application'
+      } > "${WS}/${base}.cicada-hide"
+      # Replace in-place so tuigreet scanning the Arch dir still skips them.
+      mv -f "${WS}/${base}" "${WS}/${base}.arch-orig" 2>/dev/null || true
+      {
+        echo '[Desktop Entry]'
+        echo 'Hidden=true'
+        echo 'NoDisplay=true'
+        echo "Name=Hidden by Cicada (${base})"
+        echo 'Type=Application'
+      } > "${WS}/${base}"
+    fi
+  done
+fi
+
 echo "hide-arch-desktops: hid ${count} Arch launchers under ${OVERRIDE}"
 touch "${MARKER}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Heli.OS-shaped gate: confirm + signed seal for high-impact actions only.
+# Authorization gate: confirm + signed seal for high-impact actions only.
 # Wi-Fi, radios, lock, and the duress beacon are NOT gated (daily-driver / coercion speed).
 set -euo pipefail
 

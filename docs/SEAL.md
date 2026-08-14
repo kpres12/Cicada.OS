@@ -1,6 +1,6 @@
 # Seal log + signed authorization
 
-Heli.OS pattern: the device key signs high-impact OS actions. Wi-Fi clicks are not prompts.
+The device key signs high-impact OS actions. Wi-Fi clicks are not prompts.
 
 ## `cicada-seal`
 

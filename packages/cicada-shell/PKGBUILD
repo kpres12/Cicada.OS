@@ -2,9 +2,9 @@
 pkgname=cicada-shell
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Cicada.OS Hyprland shell — OT / Evangelion visual language"
+pkgdesc="Cicada.OS desktop shell (session, dock, settings, skel)"
 arch=('any')
-url="https://github.com/cicada-os/Cicada.OS"
+url="https://github.com/kpresler12/Cicada.OS"
 license=('GPL-3.0-or-later')
 depends=(
   'hyprland'
@@ -13,7 +13,7 @@ depends=(
   'kitty'
   'ttf-jetbrains-mono-nerd'
 )
-provides=('cicada-desktop')
+# Product unit is packages/cicada-desktop (meta). This package is the file tree.
 source=()
 sha256sums=()
 

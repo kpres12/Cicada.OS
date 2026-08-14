@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Cicada.OS session — Hyprland is the compositor, not the product name.
+# Cicada.OS session — default product desk (compositor is an implementation detail).
 set -euo pipefail
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-Cicada:Cicada.OS}"
 export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-Cicada}"
 export XDG_SESSION_TYPE=wayland
-# Never advertise the upstream compositor in portals / about dialogs.
 export DESKTOP_SESSION=cicada
 exec Hyprland "$@"
