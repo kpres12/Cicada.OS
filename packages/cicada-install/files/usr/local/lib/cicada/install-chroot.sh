@@ -175,8 +175,8 @@ ID=cicada
 ID_LIKE=arch
 BUILD_ID=rolling
 ANSI_COLOR="1;33"
-HOME_URL="https://github.com/kpresler12/Cicada.OS"
-DOCUMENTATION_URL="https://github.com/kpresler12/Cicada.OS"
+HOME_URL="https://github.com/kpres12/Cicada.OS"
+DOCUMENTATION_URL="https://github.com/kpres12/Cicada.OS"
 LOGO=cicada
 CICADA_CODENAME=nimbus
 CICADA_CHANNEL=stable
@@ -188,8 +188,8 @@ ID=cicada
 ID_LIKE=arch
 BUILD_ID=rolling
 ANSI_COLOR="1;33"
-HOME_URL="https://github.com/kpresler12/Cicada.OS"
-DOCUMENTATION_URL="https://github.com/kpresler12/Cicada.OS"
+HOME_URL="https://github.com/kpres12/Cicada.OS"
+DOCUMENTATION_URL="https://github.com/kpres12/Cicada.OS"
 LOGO=cicada
 EOF
 

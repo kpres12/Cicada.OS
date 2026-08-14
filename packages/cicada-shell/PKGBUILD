@@ -4,7 +4,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="Cicada.OS desktop shell (session, dock, settings, skel)"
 arch=('any')
-url="https://github.com/kpresler12/Cicada.OS"
+url="https://github.com/kpres12/Cicada.OS"
 license=('GPL-3.0-or-later')
 depends=(
   'hyprland'
@@ -12,6 +12,11 @@ depends=(
   'wofi'
   'kitty'
   'ttf-jetbrains-mono-nerd'
+  # MAGI-04 pattern bay (cicada-wallpapers). All three are in [extra] —
+  # nothing here reaches into the AUR.
+  'quickshell'
+  'imagemagick'
+  'jq'
 )
 # Product unit is packages/cicada-desktop (meta). This package is the file tree.
 source=()

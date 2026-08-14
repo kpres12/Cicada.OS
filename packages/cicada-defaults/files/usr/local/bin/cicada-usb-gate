@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Kernel USB authorize gate for cicada-lock. Root only (NOPASSWD from lock path).
+# 0 = new devices stay unauthorized while locked; 1 = restore after unlock.
+# Does not touch already-authorized devices (MBA keyboard/trackpad stay up).
+set -euo pipefail
+[[ ${EUID} -eq 0 ]] || { echo "cicada-usb-gate: root only" >&2; exit 1; }
+v="${1:-}"
+[[ "${v}" == "0" || "${v}" == "1" ]] || {
+  echo "usage: cicada-usb-gate 0|1" >&2
+  exit 1
+}
+for h in /sys/bus/usb/devices/usb*/authorized_default; do
+  [[ -e "${h}" ]] || continue
+  echo "${v}" > "${h}" 2>/dev/null || true
+done
+exit 0

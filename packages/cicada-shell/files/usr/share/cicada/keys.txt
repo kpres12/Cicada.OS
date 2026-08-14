@@ -7,6 +7,7 @@ click the dock        terminal, files, Helium, settings, wifi
 click desktop icons   same apps — Cicada wrappers only
 Super+Space           Cicada launcher (not the Arch menu)
 Super+V               float this window
+Super+B               wallpapers — pattern bay
 Super+L               lock
 Super+I               app permissions (scopes)
 Super+/               first-boot sheet

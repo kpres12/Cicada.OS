@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# MAGI-04 // PATTERN BAY — open the wallpaper selector.
+#
+# Quickshell resolves shellPath()/shellDir relative to the .qml it was handed,
+# so the QML and its config.json have to live in the same directory. The shipped
+# copy under /usr/share is read-only, so the panel is staged into the user's
+# config dir: system files are refreshed from /usr/share on every open (an
+# update should never leave a stale panel behind), config.json is written once
+# and then left alone (it is the user's).
+set -euo pipefail
+
+SRC="/usr/share/cicada/quickshell/pattern-bay"
+DEST="${HOME}/.config/cicada/pattern-bay"
+CACHE="${HOME}/.cache/cicada/pattern-bay"
+WALLS="${HOME}/Pictures/Wallpapers"
+
+if ! command -v quickshell >/dev/null 2>&1; then
+  notify-send "Cicada" "quickshell is not installed — pattern bay unavailable" 2>/dev/null || true
+  exit 1
+fi
+
+mkdir -p "${DEST}" "${CACHE}" "${WALLS}"
+
+# System-owned parts, always current.
+install -m 0644 "${SRC}/shell.qml" "${DEST}/shell.qml"
+install -m 0755 "${SRC}/cache.sh" "${DEST}/cache.sh"
+
+# Seed the bay so a fresh install opens onto something rather than an empty
+# panel. Stock plates are copied, not symlinked, so the user can delete them.
+shopt -s nullglob
+existing=("${WALLS}"/*)
+if (( ${#existing[@]} == 0 )); then
+  for stock in /usr/share/cicada/wallpapers/*.png /usr/share/cicada/wallpapers/*.jpg; do
+    cp -n "${stock}" "${WALLS}/" 2>/dev/null || true
+  done
+fi
+
+# User-owned. Written once; edits survive updates.
+if [[ ! -f "${DEST}/config.json" ]]; then
+  cat > "${DEST}/config.json" <<EOF
+{
+  "wallpaper_path": "${WALLS}/",
+  "cache_path": "${CACHE}/",
+  "plates_across": 9,
+  "cache_batch_size": 4,
+  "color_void": "#000000",
+  "color_grid": "#1a1f24",
+  "color_path": "#c45c26",
+  "color_amber": "#ffb000",
+  "color_magi": "#6cffc8",
+  "color_phosphor": "#39ff14"
+}
+EOF
+fi
+
+exec quickshell -p "${DEST}/shell.qml"

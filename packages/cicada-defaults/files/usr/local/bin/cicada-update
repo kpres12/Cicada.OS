@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Channel-first updates. Never instruct users to raw `pacman -Syu` from Arch.
+# Fail closed: refuse to install from cicada-stable unless signatures are Required.
 set -euo pipefail
 
 die() {
@@ -17,7 +18,7 @@ info() {
   fi
 }
 
-[[ ${EUID} -eq 0 ]] || exec sudo -n "$0" "$@" 2>/dev/null || exec sudo "$0" "$@"
+[[ ${EUID} -eq 0 ]] || exec sudo "$0" "$@"
 
 if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
   /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf || true
@@ -26,9 +27,28 @@ fi
 pin="$(cat /etc/cicada/channel 2>/dev/null || cat /usr/share/cicada/channel/CURRENT 2>/dev/null || echo unknown)"
 echo "==> channel pin: ${pin}"
 
-# Import pubkey once when present.
-if [[ -f /etc/pacman.d/cicada-stable-key.gpg ]] && command -v pacman-key >/dev/null 2>&1; then
-  pacman-key --add /etc/pacman.d/cicada-stable-key.gpg 2>/dev/null || true
+# Key import + local signing happens in cicada-channel-enable.sh above, which is
+# also what firstboot and install-chroot call. Keeping a second copy here meant
+# the key got added but never locally signed, so SigLevel=Required rejected the
+# database as untrusted.
+
+# Unsigned remote upgrades + NOPASSWD would be root RCE via mirror MITM.
+has_key=0
+[[ -f /etc/pacman.d/cicada-stable-key.gpg || -f /etc/pacman.d/cicada-stable-key.asc ]] && has_key=1
+sig="$(awk '/^\[cicada-stable\]/{p=1;next} /^\[/{p=0} p && /^SigLevel/{print $3; exit}' \
+  /etc/pacman.d/cicada-repos.conf 2>/dev/null || true)"
+remote=0
+grep -qE '^Server = https?://' /etc/pacman.d/cicada-repos.conf 2>/dev/null && remote=1
+
+if [[ "${remote}" -eq 1 && "${has_key}" -eq 0 ]]; then
+  die "Hosted cicada-stable mirror is set, but no Cicada signing key is installed.
+
+Refusing to update (unsigned remote packages + root helper = fail open).
+Install /etc/pacman.d/cicada-stable-key.gpg from a trusted ISO, or remove
+/etc/cicada/channel-mirror.url and reflash for a new build."
+fi
+if [[ "${remote}" -eq 1 && "${sig}" != "Required" ]]; then
+  die "cicada-stable SigLevel is '${sig:-unset}', not Required. Refusing hosted update."
 fi
 
 echo "==> syncing cicada-stable"
@@ -45,6 +65,11 @@ Host a signed repo (scripts/channel-publish.sh) or reflash for a new build.
 
 Raw Arch rolling is not the Cicada update path."
   exit 0
+fi
+
+if [[ "${has_key}" -eq 0 ]]; then
+  # Local file:// repo only — still warn; do not pull https without a key.
+  info "Upgrading ${#channel_pkgs[@]} local channel package(s) (no signing key yet — file:// only)."
 fi
 
 echo "==> upgrading ${#channel_pkgs[@]} channel package(s)"

@@ -5,7 +5,7 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc="Cicada.OS desktop product (session, greeter, dock, files, browser hooks)"
 arch=('any')
-url="https://github.com/kpresler12/Cicada.OS"
+url="https://github.com/kpres12/Cicada.OS"
 license=('GPL-3.0-or-later')
 depends=(
   # Product layer (file trees shipped on ISO; named for the channel story)
@@ -19,6 +19,13 @@ depends=(
   'waybar'
   'wofi'
   'nwg-dock-hyprland'
+  # MAGI-04 pattern bay
+  'quickshell'
+  'imagemagick'
+  'jq'
+  # Already bound to XF86Audio* keys in skel hyprland.conf — the binds were
+  # shipped without the package that makes them work.
+  'playerctl'
   'kitty'
   'pcmanfm-qt'
   'gvfs'

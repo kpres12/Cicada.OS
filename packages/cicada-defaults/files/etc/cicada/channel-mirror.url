@@ -1,0 +1,10 @@
+# Hosted cicada-stable root. One Server line per URL; # starts a comment.
+#
+# This is the tested Arch snapshot the ISO was built from — kernel, openssl,
+# browser runtime and the rest — signed by the Cicada key that ships in
+# /etc/pacman.d/cicada-stable-key.gpg. `cicada-update` syncs only this repo;
+# raw Arch rolling is not the product update path.
+#
+# Nothing is fetched until the user runs cicada-update (Settings → Security →
+# Check updates). There is no background poll and no automatic upgrade.
+https://github.com/kpres12/Cicada.OS/releases/download/channel-latest

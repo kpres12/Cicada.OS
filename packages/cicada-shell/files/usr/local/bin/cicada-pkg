@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install software — Tirimid item 4 + daily apps.
-# Paths: official pacman packages, or curated Flatpak (Flathub). No AUR.
+# Paths: curated Arch packages, free-form official pacman (password), or Flatpak allowlist.
 set -euo pipefail
 
 die() {
@@ -10,53 +10,83 @@ die() {
 }
 
 command -v zenity >/dev/null 2>&1 || die "zenity missing"
+HELPER=/usr/local/bin/cicada-pkg-helper
+[[ -x "${HELPER}" ]] || die "cicada-pkg-helper missing"
+
+run_helper() {
+  if command -v pkexec >/dev/null 2>&1; then
+    pkexec "${HELPER}" "$@"
+  else
+    sudo "${HELPER}" "$@"
+  fi
+}
 
 pick="$(zenity --list --title="Install software" \
-  --text="Official Arch packages, or curated Flatpaks from Flathub.
+  --text="Curated apps (password once), or any official Arch package.
 No AUR. Needs Wi-Fi." \
   --column=Kind --column=Does --print-column=1 --hide-header \
-  --width=520 --height=320 \
-  "Arch package…" "pacman — e.g. htop, git, python-pip" \
-  "Spotify" "Flatpak — music" \
-  "Discord" "Flatpak — chat" \
-  "Signal" "Flatpak — messenger" \
-  "Telegram" "Flatpak — messenger" \
-  "VLC" "Flatpak — video" \
-  "LibreOffice" "Flatpak — documents" \
+  --width=560 --height=420 \
+  "Curated Arch…" "htop, git, code, python, …" \
+  "Any Arch package…" "official repo name (extra confirm)" \
+  "Spotify" "Flatpak — music (home denied)" \
+  "Discord" "Flatpak — chat (home denied)" \
+  "Signal" "Flatpak — messenger (home denied)" \
+  "Telegram" "Flatpak — messenger (home denied)" \
+  "VLC" "Flatpak — video (home denied)" \
+  "LibreOffice" "Flatpak — documents (home denied)" \
   2>/dev/null)" || exit 0
 
 flatpak_install() {
   local app_id="$1" name="$2"
   command -v flatpak >/dev/null 2>&1 || die "flatpak is not installed on this image"
-  [[ -x /usr/local/bin/cicada-pkg-helper ]] || die "cicada-pkg-helper missing"
   zenity --question --title="Install ${name}?" \
     --text="Install «${name}» from Flathub (${app_id})?
 
-Needs network. First Flatpak run also adds the Flathub remote." \
+Cicada will deny full home access after install (Downloads only, plus what the app needs).
+Needs network and your password." \
     --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
-  (
-    echo "5"; echo "# Adding Flathub (if needed)…"
-    if ! sudo -n /usr/local/bin/cicada-pkg-helper flatpak-remote; then
-      echo "100"; echo "# Failed"; exit 1
-    fi
-    echo "40"; echo "# Installing ${name}…"
-    if ! sudo -n /usr/local/bin/cicada-pkg-helper flatpak-install "${app_id}"; then
-      echo "100"; echo "# Failed"; exit 1
-    fi
-    echo "100"; echo "# Done"
-  ) | zenity --progress --title="Installing ${name}" --percentage=0 --auto-close --width=440 2>/dev/null \
+  run_helper flatpak-remote \
+    && run_helper flatpak-install "${app_id}" \
     && zenity --info --title="Install software" \
-         --text="Installed: ${name}\n\nOpen it from the app menu (Cicada launcher) or run:\n  flatpak run ${app_id}" 2>/dev/null \
-    || die "Could not install ${name}. Check Wi-Fi."
+         --text="Installed: ${name}\n\nOpen from the app menu or:\n  flatpak run ${app_id}" 2>/dev/null \
+    || die "Could not install ${name}. Check Wi-Fi / password."
 }
 
 case "${pick}" in
-  "Arch package…")
-    [[ -x /usr/local/bin/cicada-pkg-helper ]] || die "cicada-pkg-helper missing"
+  "Curated Arch…")
+    pkg="$(zenity --list --title="Curated Arch packages" \
+      --text="One-click curated list (still needs your password)." \
+      --column=Package --column=Why --print-column=1 --hide-header \
+      --width=520 --height=400 \
+      htop "process viewer" \
+      git "version control" \
+      code "VS Code (official Arch)" \
+      python "Python runtime" \
+      python-pip "pip" \
+      base-devel "gcc/make toolchain" \
+      curl "HTTP CLI" \
+      jq "JSON CLI" \
+      gimp "image editor" \
+      mpv "video player" \
+      keepassxc "password manager (also on ISO)" \
+      cowsay "hello Tirimid" \
+      2>/dev/null)" || exit 0
+    [[ -n "${pkg}" ]] || exit 0
+    zenity --question --title="Install ${pkg}?" \
+      --text="Install curated package «${pkg}»?
+
+Needs your password (admin install)." \
+      --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
+    run_helper install "${pkg}" \
+      && zenity --info --title="Install software" --text="Installed: ${pkg}" 2>/dev/null \
+      || die "Could not install ${pkg}. Check Wi-Fi and password."
+    ;;
+  "Any Arch package…")
     pkg="$(zenity --entry --title="Arch package" \
       --text="Official package name only (no AUR).
 
-Examples: htop  git  python-pip  cowsay  code" \
+Not on the curated list — still installable with your password.
+Examples: btop  ripgrep  docker" \
       --entry-text="" 2>/dev/null)" || exit 0
     pkg="$(echo "${pkg}" | tr -d '[:space:]')"
     [[ -n "${pkg}" ]] || exit 0
@@ -64,18 +94,14 @@ Examples: htop  git  python-pip  cowsay  code" \
       die "Invalid package name: ${pkg}"
     fi
     zenity --question --title="Install ${pkg}?" \
-      --text="Install «${pkg}» with pacman?" \
+      --text="Install «${pkg}» from official Arch repos?
+
+This is outside the curated list. Prefer Curated Arch… when you can.
+Needs your password." \
       --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
-    (
-      echo "10"; echo "# Resolving ${pkg}…"
-      if sudo -n /usr/local/bin/cicada-pkg-helper install "${pkg}"; then
-        echo "100"; echo "# Done"
-      else
-        echo "100"; echo "# Failed"; exit 1
-      fi
-    ) | zenity --progress --title="Installing ${pkg}" --percentage=0 --auto-close --width=420 2>/dev/null \
+    run_helper install-any "${pkg}" \
       && zenity --info --title="Install software" --text="Installed: ${pkg}" 2>/dev/null \
-      || die "Could not install ${pkg}. Check Wi-Fi and the name."
+      || die "Could not install ${pkg}. Check Wi-Fi, the name, and password."
     ;;
   Spotify) flatpak_install com.spotify.Client Spotify ;;
   Discord) flatpak_install com.discordapp.Discord Discord ;;

@@ -2,6 +2,6 @@
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-av-kill
 %wheel ALL=(root) NOPASSWD: /usr/bin/passwd cicada-work
 %wheel ALL=(root) NOPASSWD: /usr/local/lib/cicada/heal-helium.sh
-%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-pkg-helper
-%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-update
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-malloc
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-usb-gate
+# Package install / channel update require an interactive password (not listed above).

@@ -1,76 +1,81 @@
 #!/usr/bin/env bash
-# Put the stock Cicada art on the desk the user actually sees.
+# Put art on the desk the user actually sees.
+#
+#   cicada-wallpaper            session start — apply the saved/stock plate,
+#                               then stay as the hyprpaper process
+#   cicada-wallpaper set PATH   apply PATH now (pattern bay, Settings)
+#
 # pcmanfm-qt --desktop paints an opaque layer over hyprpaper — if WallpaperMode
-# is "color", the desk is pure void and hyprpaper is invisible. Drive both.
+# is "color", the desk is pure void and hyprpaper is invisible no matter what it
+# was told to show. Both planes have to be driven, and this is the only place
+# that knows how; everything else calls `cicada-wallpaper set`.
 set -euo pipefail
 
 STOCK="/usr/share/cicada/wallpapers/cicada-3301.png"
 FALLBACK="/usr/share/cicada/wallpapers/cicada-void.png"
 CONF="${HOME}/.config/hypr/hyprpaper.conf"
+LOCK="${HOME}/.config/hypr/hyprlock.conf"
 PCMAN="${HOME}/.config/pcmanfm-qt/default/settings.conf"
-mkdir -p "${HOME}/.config/hypr" "${HOME}/Pictures" "$(dirname "${PCMAN}")"
+STATE="${HOME}/.config/cicada/wallpaper"
 
-img=""
-for cand in "${STOCK}" "${FALLBACK}" "${HOME}/Pictures/cicada-wallpaper.png" \
-            "${HOME}/Pictures/cicada-wallpaper.jpg"; do
-  if [[ -f "${cand}" ]]; then
-    img="${cand}"
-    break
+# Copy the chosen image to a stable path. A wallpaper picked off a USB stick or
+# out of a sandboxed app's tree must not vanish from the desk at the next boot.
+stabilise() {
+  local img="$1" paper
+  paper="${HOME}/Pictures/cicada-wallpaper.${img##*.}"
+  if [[ ! -f "${paper}" ]] || ! cmp -s "${img}" "${paper}" 2>/dev/null; then
+    cp -f "${img}" "${paper}" 2>/dev/null || paper="${img}"
   fi
-done
+  printf '%s' "${paper}"
+}
 
-if [[ -z "${img}" ]]; then
-  notify-send "Cicada" "No wallpaper under /usr/share/cicada/wallpapers" 2>/dev/null || true
-  exit 0
-fi
+write_hyprpaper() {
+  local paper="$1" mon wall_line
 
-paper="${HOME}/Pictures/cicada-wallpaper.${img##*.}"
-if [[ ! -f "${paper}" ]] || ! cmp -s "${img}" "${paper}" 2>/dev/null; then
-  cp -f "${img}" "${paper}" 2>/dev/null || paper="${img}"
-fi
+  # Wait briefly for Hyprland IPC (exec-once race).
+  mon=""
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    mon="$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2; exit}')"
+    [[ -n "${mon}" ]] && break
+    sleep 0.3
+  done
 
-# Wait briefly for Hyprland IPC (exec-once race).
-mon=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  mon="$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2; exit}')"
-  [[ -n "${mon}" ]] && break
-  sleep 0.3
-done
+  # hyprpaper: bare comma = all monitors. Never "wallpaper = ,,path".
+  if [[ -n "${mon}" ]]; then
+    wall_line="wallpaper = ${mon},${paper}"
+  else
+    wall_line="wallpaper = ,${paper}"
+  fi
 
-# hyprpaper: bare comma = all monitors. Never "wallpaper = ,,path".
-if [[ -n "${mon}" ]]; then
-  wall_line="wallpaper = ${mon},${paper}"
-else
-  wall_line="wallpaper = ,${paper}"
-fi
-
-cat > "${CONF}" <<EOF
+  cat > "${CONF}" <<EOF
 preload = ${paper}
 ${wall_line}
 splash = false
 ipc = on
 EOF
+}
 
-# Desk layer the user sees (icons live here).
-if [[ -f "${PCMAN}" ]]; then
-  # Rewrite Desktop wallpaper keys without clobbering the rest of the file.
-  tmp="$(mktemp)"
-  awk -v paper="${paper}" '
-    BEGIN { in_desktop=0; done_w=0; done_m=0 }
-    /^\[Desktop\]/ { in_desktop=1; print; next }
-    /^\[/ { if (in_desktop && !done_w) { print "Wallpaper=" paper; done_w=1 }
-            if (in_desktop && !done_m) { print "WallpaperMode=stretch"; done_m=1 }
-            in_desktop=0 }
-    in_desktop && /^Wallpaper=/ { print "Wallpaper=" paper; done_w=1; next }
-    in_desktop && /^WallpaperMode=/ { print "WallpaperMode=stretch"; done_m=1; next }
-    { print }
-    END {
-      if (in_desktop && !done_w) print "Wallpaper=" paper
-      if (in_desktop && !done_m) print "WallpaperMode=stretch"
-    }
-  ' "${PCMAN}" > "${tmp}" && mv "${tmp}" "${PCMAN}"
-else
-  cat > "${PCMAN}" <<EOF
+write_desk() {
+  local paper="$1" tmp
+  if [[ -f "${PCMAN}" ]]; then
+    # Rewrite the Desktop wallpaper keys without clobbering the rest of the file.
+    tmp="$(mktemp)"
+    awk -v paper="${paper}" '
+      BEGIN { in_desktop=0; done_w=0; done_m=0 }
+      /^\[Desktop\]/ { in_desktop=1; print; next }
+      /^\[/ { if (in_desktop && !done_w) { print "Wallpaper=" paper; done_w=1 }
+              if (in_desktop && !done_m) { print "WallpaperMode=stretch"; done_m=1 }
+              in_desktop=0 }
+      in_desktop && /^Wallpaper=/ { print "Wallpaper=" paper; done_w=1; next }
+      in_desktop && /^WallpaperMode=/ { print "WallpaperMode=stretch"; done_m=1; next }
+      { print }
+      END {
+        if (in_desktop && !done_w) print "Wallpaper=" paper
+        if (in_desktop && !done_m) print "WallpaperMode=stretch"
+      }
+    ' "${PCMAN}" > "${tmp}" && mv "${tmp}" "${PCMAN}"
+  else
+    cat > "${PCMAN}" <<EOF
 [Desktop]
 Wallpaper=${paper}
 WallpaperMode=stretch
@@ -81,14 +86,90 @@ ShadowColor=#000000
 HideItems=false
 DesktopShortcuts=Home,Trash
 EOF
+  fi
+}
+
+# The lock screen shows the same plate as the desk. It is a static path, never
+# a screenshot of the running session — MAGI-03 must not leak what was on
+# screen at the moment it locked.
+write_lock() {
+  local paper="$1"
+  [[ -f "${LOCK}" ]] || return 0
+  sed -i "s|^[[:space:]]*path = .*|    path = ${paper}|" "${LOCK}" 2>/dev/null || true
+}
+
+apply() {
+  local img="$1" paper
+  paper="$(stabilise "${img}")"
+  write_hyprpaper "${paper}"
+  write_desk "${paper}"
+  write_lock "${paper}"
+  # Record the choice explicitly. Inferring it from whichever
+  # Pictures/cicada-wallpaper.* file happens to exist guesses wrong the moment
+  # the user switches between a .png and a .jpg.
+  mkdir -p "$(dirname "${STATE}")"
+  printf '%s\n' "${paper}" > "${STATE}"
+  printf '%s' "${paper}"
+}
+
+restart_desk() {
+  # pcmanfm has no reliable IPC for reloading Wallpaper=; restart the desk.
+  if pgrep -x pcmanfm-qt >/dev/null 2>&1; then
+    pkill -x pcmanfm-qt 2>/dev/null || true
+    sleep 0.3
+    pcmanfm-qt --desktop >/dev/null 2>&1 &
+  fi
+}
+
+mkdir -p "${HOME}/.config/hypr" "${HOME}/Pictures" "$(dirname "${PCMAN}")"
+
+case "${1:-}" in
+  set)
+    img="${2:-}"
+    if [[ -z "${img}" || ! -f "${img}" ]]; then
+      notify-send "Cicada" "No such image: ${img:-(none)}" 2>/dev/null || true
+      exit 1
+    fi
+    apply "${img}" >/dev/null
+    pkill -x hyprpaper 2>/dev/null || true
+    hyprpaper >/dev/null 2>&1 &
+    restart_desk
+    notify-send "Cicada" "Wallpaper set — $(basename "${img}")" 2>/dev/null || true
+    exit 0
+    ;;
+  "") ;;
+  *)
+    printf 'usage: cicada-wallpaper [set PATH]\n' >&2
+    exit 2
+    ;;
+esac
+
+# No argument: session start. The user's last choice wins over stock — before
+# this, every login copied the stock plate back over Pictures/cicada-wallpaper,
+# so a wallpaper picked on Monday was gone by Tuesday.
+img=""
+if [[ -r "${STATE}" ]]; then
+  saved="$(< "${STATE}")"
+  [[ -n "${saved}" && -f "${saved}" ]] && img="${saved}"
 fi
 
-pkill -x hyprpaper 2>/dev/null || true
-# Restart desk so it reloads Wallpaper= (pcmanfm has no reliable IPC for this).
-if pgrep -x pcmanfm-qt >/dev/null 2>&1; then
-  pkill -x pcmanfm-qt 2>/dev/null || true
-  sleep 0.3
-  pcmanfm-qt --desktop >/dev/null 2>&1 &
+if [[ -z "${img}" ]]; then
+  for cand in "${STOCK}" "${FALLBACK}"; do
+    if [[ -f "${cand}" ]]; then
+      img="${cand}"
+      break
+    fi
+  done
 fi
+
+if [[ -z "${img}" ]]; then
+  notify-send "Cicada" "No wallpaper under /usr/share/cicada/wallpapers" 2>/dev/null || true
+  exit 0
+fi
+
+apply "${img}" >/dev/null
+
+pkill -x hyprpaper 2>/dev/null || true
+restart_desk
 
 exec hyprpaper

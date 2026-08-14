@@ -83,7 +83,7 @@ Graphene's trick is the **settings page**, not the kernel. Cicada Scopes is that
 - Deny looks like "network down", not a crash — wrappers return ENETUNREACH / empty portal
 - Changing a scope restarts that sandbox only
 
-v0 ships the panel (Settings → App permissions / Super+I), the launcher catalog, and enforcement on Helium, Files, and KeePassXC. `cicada-run` defaults are **deny/deny**. Known apps ship `.env` overrides. Dock / Wofi / MIME only start Cicada wrappers — see [docs/PRODUCT.md](PRODUCT.md). Kitty / Settings / Wi-Fi stay host-admin (identity via app-id, no bwrap). Settings → **Camera & microphone** is the system software kill (not per-app scopes).
+v0 ships the panel (Settings → App permissions / Super+I), the launcher catalog, and enforcement on Helium, Files, KeePassXC, Doom, and Tor Browser. `cicada-run` defaults are **deny/deny**. System floors under `/usr/share/cicada/scopes` win over user loosens. Dock / Wofi / MIME only start Cicada wrappers — see [docs/PRODUCT.md](PRODUCT.md). Kitty / Settings / Wi-Fi stay host-admin (identity via app-id, no bwrap). Helium’s outer box skips `--unshare-pid`; the inner Chromium still needs `--no-sandbox`. Settings → **Camera & microphone** is the system software kill (not per-app scopes). Flatpak installs from `cicada-pkg` get home-deny overrides (not Cicada scopes).
 
 ## What we will not do
 

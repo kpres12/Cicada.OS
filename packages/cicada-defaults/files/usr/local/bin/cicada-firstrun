@@ -104,7 +104,7 @@ fi
 if ! has_session_duress; then
   ask "Enroll a lock-screen duress password?" \
 "Different threat: machine is already unlocked and someone forces you to
-unlock the session (hyprlock / sudo).
+unlock the session (hyprlock) or type a sudo password.
 
 Typing the session duress password erases LUKS and hard-resets.
 Must NOT be your login password.

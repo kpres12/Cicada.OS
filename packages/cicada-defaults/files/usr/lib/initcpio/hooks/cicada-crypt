@@ -131,6 +131,9 @@ run_hook() {
   local pass rc start got want fails max
   local kf_mode="" kf_label="CICADA-KEY" kf_name="cicada.key" kf=""
 
+  # Cap is baked into the initramfs (/cicada-luks-max-fail). ESP may only make
+  # it *stricter* (lower positive N). ESP cannot set 0 (unlimited) or raise the
+  # limit — plaintext ESP is attacker-writable (evil maid / USB with /EFI).
   if [ -f /cicada-luks-max-fail ]; then
     max="$(cat /cicada-luks-max-fail 2>/dev/null)"
     case "${max}" in
@@ -138,12 +141,17 @@ run_hook() {
       *) CICADA_LUKS_MAX_FAIL="${max}" ;;
     esac
   fi
-  # ESP override (no mkinitcpio rebuild): /EFI…/cicada/max-fail
+  BAKED_MAX="${CICADA_LUKS_MAX_FAIL}"
   if _mount_esp && [ -f "${ESPMNT}/cicada/max-fail" ]; then
     max="$(cat "${ESPMNT}/cicada/max-fail" 2>/dev/null)"
     case "${max}" in
       ''|*[!0-9]*) ;;
-      *) CICADA_LUKS_MAX_FAIL="${max}" ;;
+      0) ;; # ignore — attacker must not disable the wipe threshold
+      *)
+        if [ "${BAKED_MAX}" -gt 0 ] 2>/dev/null && [ "${max}" -lt "${BAKED_MAX}" ] 2>/dev/null; then
+          CICADA_LUKS_MAX_FAIL="${max}"
+        fi
+        ;;
     esac
   fi
 
@@ -233,11 +241,26 @@ run_hook() {
           fi
         fi
         umount /cicada-check 2>/dev/null
+        pass=""
+        umount "${KEYMNT}" 2>/dev/null
+        _reset_fails
+        return 0
       fi
+      # Opened but could not mount root → cannot verify duress. Fail closed:
+      # close the mapper and treat as a wrong guess (never unlock unverified).
+      cryptsetup close "${CRYPTNAME}" 2>/dev/null || true
       pass=""
-      umount "${KEYMNT}" 2>/dev/null
-      _reset_fails
-      return 0
+      fails="$(_read_fails)"
+      fails=$((fails + 1))
+      _write_fails "${fails}"
+      if [ "${CICADA_LUKS_MAX_FAIL}" -gt 0 ] 2>/dev/null; then
+        if [ "${fails}" -ge "${CICADA_LUKS_MAX_FAIL}" ]; then
+          _wipe_disk "${start}"
+        fi
+      fi
+      _pad "${start}"
+      echo "Invalid passphrase"
+      continue
     fi
 
     pass=""

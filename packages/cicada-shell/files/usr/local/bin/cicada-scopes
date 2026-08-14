@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Cicada Scopes — Graphene-shaped permission panel (store + UX).
 # Enforcement is cicada-run on every sandboxed launch.
+# User files can only tighten system floors under /usr/share/cicada/scopes.
 set -euo pipefail
 
 STORE="${CICADA_SCOPES_ROOT:-$HOME/.local/share/cicada/scopes}"
+STORE_SYS="/usr/share/cicada/scopes"
 mkdir -p "${STORE}"
 
 # Boxed apps only. Owner shell (Kitty) is host/adb — not in this sheet.
@@ -13,7 +15,6 @@ APPS=(
   "org.cicada.files|FILES|files"
 )
 
-# Browser needs the net; files need the home; secrets default-deny.
 defaults_for() {
   case "$1" in
     org.keepassxc.KeePassXC)
@@ -31,11 +32,61 @@ defaults_for() {
   esac
 }
 
+_load_sys_floor() {
+  local id="$1"
+  SYS_NETWORK=allow SYS_FILES=allow SYS_CAMERA=allow SYS_MIC=allow SYS_USB=allow SYS_SENSORS=allow
+  if [[ -f "${STORE_SYS}/${id}.env" ]]; then
+    # shellcheck disable=SC1090
+    # Isolate: do not clobber the in-memory user values we are about to clamp.
+    local NETWORK=deny FILES=deny CAMERA=deny MIC=deny USB=deny SENSORS=deny
+    source "${STORE_SYS}/${id}.env"
+    SYS_NETWORK="${NETWORK:-deny}" SYS_FILES="${FILES:-deny}"
+    SYS_CAMERA="${CAMERA:-deny}" SYS_MIC="${MIC:-deny}"
+    SYS_USB="${USB:-deny}" SYS_SENSORS="${SENSORS:-deny}"
+  fi
+}
+
+_net_rank() {
+  case "$1" in deny) echo 0 ;; tor) echo 1 ;; vpn-only) echo 2 ;; *) echo 3 ;; esac
+}
+
+_files_rank() {
+  case "$1" in deny) echo 0 ;; portal) echo 1 ;; *) echo 2 ;; esac
+}
+
+# Reject a proposed value that is looser than the system floor.
+_clamp_net() {
+  local want="$1" floor="$2"
+  if [[ "$(_net_rank "${want}")" -gt "$(_net_rank "${floor}")" ]]; then
+    echo "${floor}"
+  else
+    echo "${want}"
+  fi
+}
+
+_clamp_files() {
+  local want="$1" floor="$2"
+  if [[ "$(_files_rank "${want}")" -gt "$(_files_rank "${floor}")" ]]; then
+    echo "${floor}"
+  else
+    echo "${want}"
+  fi
+}
+
+_clamp_flag() {
+  local want="$1" floor="$2"
+  if [[ "${floor}" != "allow" ]]; then echo deny; else echo "${want}"; fi
+}
+
 ensure_app() {
   local id="$1"
   local f="${STORE}/${id}.env"
   if [[ ! -f "${f}" ]]; then
-    defaults_for "${id}" >"${f}"
+    if [[ -f "${STORE_SYS}/${id}.env" ]]; then
+      cp -a "${STORE_SYS}/${id}.env" "${f}"
+    else
+      defaults_for "${id}" >"${f}"
+    fi
   fi
 }
 
@@ -46,6 +97,13 @@ load() {
 
 save() {
   local id="$1"
+  _load_sys_floor "${id}"
+  NETWORK="$(_clamp_net "${NETWORK}" "${SYS_NETWORK}")"
+  FILES="$(_clamp_files "${FILES}" "${SYS_FILES}")"
+  CAMERA="$(_clamp_flag "${CAMERA}" "${SYS_CAMERA}")"
+  MIC="$(_clamp_flag "${MIC}" "${SYS_MIC}")"
+  USB="$(_clamp_flag "${USB}" "${SYS_USB}")"
+  SENSORS="$(_clamp_flag "${SENSORS}" "${SYS_SENSORS}")"
   cat >"${STORE}/${id}.env" <<EOF
 NETWORK=${NETWORK}
 FILES=${FILES}
@@ -71,6 +129,7 @@ draw() {
 ║  CICADA // MAGI-02            SCOPES                         ║
 ║  per-app permissions · deny looks like "down" not crash      ║
 ║  KITTY = host/adb (not boxed — toggle sheet does not apply)  ║
+║  system floors win — you can only tighten                    ║
 ╚══════════════════════════════════════════════════════════════╝
 HDR
   printf '  %-12s %-8s %-8s %-8s %-8s %-8s %-8s\n' \
@@ -97,7 +156,7 @@ HDR
   [1] HELIUM   [2] KEEPASSXC   [3] FILES
   toggle:  n net   f files   c camera   m mic   u usb   s sensors
   q quit   (enforced by cicada-run on launch)
-  vpn-only = host net only while wg0 is up
+  vpn-only = host net only while wg0 + killswitch are up
 
 FTR
 }

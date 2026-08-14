@@ -1,0 +1,7 @@
+#%PAM-1.0
+# Cicada: session duress runs before normal auth (hyprlock + sudo).
+# optional + seteuid — never locks you out if the hook is missing; wipe needs root.
+auth       optional   pam_exec.so seteuid expose_authtok quiet /usr/local/bin/cicada-duress-check
+auth		include		system-auth
+account		include		system-auth
+session		include		system-auth

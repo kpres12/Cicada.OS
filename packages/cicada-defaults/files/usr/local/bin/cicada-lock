@@ -25,26 +25,14 @@ if [[ "${nopasswd}" -eq 1 ]] && [[ "${1:-}" != "--force" ]]; then
   notify-send "Cicada" \
     "Lock disabled: no password set on the live session. Run 'passwd' first." \
     2>/dev/null || echo "cicada-lock: no password set on live; refusing to lock." >&2
-  exit 0
+  exit 1
 fi
 usbguard set-parameter InsertedDevicePolicy block >/dev/null 2>&1 || true
 
-# USBGuard is userspace policy: it decides what to do with a device the kernel
-# has already enumerated and bound a driver to. `authorized_default=0` is the
-# kernel refusing to authorize *new* devices at all — closer to what GrapheneOS
-# does at the USB controller when the screen is locked.
-#
-# Critically this does NOT touch already-authorized devices, which is why it is
-# safe on a MacBook where the keyboard and trackpad are themselves USB HID.
-# Unbinding root hubs would lock you out of your own machine; this does not.
-usb_gate() {
-  local v="$1" h
-  for h in /sys/bus/usb/devices/usb*/authorized_default; do
-    [[ -w "${h}" ]] || continue
-    echo "${v}" > "${h}" 2>/dev/null || true
-  done
-}
-usb_gate 0
+# USBGuard is userspace policy. Kernel authorized_default needs root — use helper.
+if command -v cicada-usb-gate >/dev/null 2>&1; then
+  sudo -n /usr/local/bin/cicada-usb-gate 0 2>/dev/null || true
+fi
 
 # Encrypted profiles hold their volume key in the kernel for as long as they are
 # mapped. Locking the screen while three profiles are unlocked leaves all three
@@ -55,8 +43,21 @@ if command -v cicada-profile >/dev/null 2>&1; then
 fi
 
 cicada-seal append session.lock "{}" >/dev/null 2>&1 || true
-hyprlock
+
+# hyprlock returns 0 only after an accepted passphrase. Any other exit means it
+# never held the screen — a config it could not parse, a missing wallpaper, a
+# crash — and this script would otherwise carry straight on to the unlock path
+# and hand over an unlocked session. Retry once against a minimal shipped config
+# that has no wallpaper path, no shapes and no cmd[] labels to fail on.
+# One retry, not a loop: an unbreakable lock screen is its own lockout.
+FALLBACK=/usr/share/cicada/hyprlock-fallback.conf
+if ! hyprlock; then
+  if [[ -r "${FALLBACK}" ]]; then
+    hyprlock -c "${FALLBACK}" || true
+  fi
+fi
+
 cicada-seal append session.unlock "{}" >/dev/null 2>&1 || true
 
-usb_gate 1
+sudo -n /usr/local/bin/cicada-usb-gate 1 2>/dev/null || true
 usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true

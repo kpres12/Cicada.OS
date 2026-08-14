@@ -43,6 +43,14 @@ wireplumber
 pamixer
 brightnessctl
 playerctl
+
+# --- MAGI-04 pattern bay (cicada-wallpapers) ---
+# quickshell renders the panel, imagemagick builds the plate thumbnails,
+# jq reads the panel config. All three ship in [extra]; no AUR.
+quickshell
+imagemagick
+jq
+
 ttf-jetbrains-mono-nerd
 ttf-font-awesome
 noto-fonts

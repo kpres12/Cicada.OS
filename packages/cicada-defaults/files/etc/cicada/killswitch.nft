@@ -5,14 +5,12 @@ table inet cicada_ks {
     type filter hook output priority 100; policy drop;
     oif "lo" accept
     oifname "wg0" accept
+    # Handshake: only to the configured Endpoint when cicada-vpn injects a
+    # peer allowrule; fallback below is port-only (still better than open net).
     udp dport 51820 accept
-    # DHCP renewal on the physical link. Without this the lease eventually
-    # expires, the link drops, and the tunnel dies with it — the kill switch
-    # kills the connection it was protecting. The disclosure is that a device
-    # already associated to this AP is still associated, which the AP knows by
-    # definition. That is not a leak worth an outage.
-    udp dport 67 accept
-    udp dport 547 accept
+    # DHCP client → broadcast/multicast only (not arbitrary UDP/67 exfil).
+    udp dport 67 ip daddr 255.255.255.255 accept
+    udp dport 547 ip6 daddr ff02::1:2 accept
     # NOTE: deliberately no `ct state established,related accept` here.
     # Output is the exfiltration path, and a conntrack exemption defeats the
     # whole switch twice over:

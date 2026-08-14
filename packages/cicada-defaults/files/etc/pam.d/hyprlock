@@ -6,7 +6,8 @@
 # carries on to the normal auth below exactly as if this line were absent.
 #
 # Enrol the session duress password with: cicada-duress-enroll --session
-auth       optional   pam_exec.so expose_authtok quiet /usr/local/bin/cicada-duress-check
+# seteuid: without it pam_exec runs as the locking user and luksErase/sysrq are no-ops.
+auth       optional   pam_exec.so seteuid expose_authtok quiet /usr/local/bin/cicada-duress-check
 auth       include    system-auth
 account    include    system-auth
 password   include    system-auth

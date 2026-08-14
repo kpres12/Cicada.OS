@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# MAGI gauges for the Waybar console. One script, no new packages.
+#
+# Every reading here must be honest about what it is. A gauge that silently
+# reports the wrong quantity is worse than a gauge that reports "--", because
+# the user makes decisions (close a tab, unplug, walk away) on it.
+set -euo pipefail
+
+# Fixed-width so the bar does not jitter as digits change. A console that
+# reflows on every sample reads as noise.
+pad2() { printf '%2d' "${1:-0}"; }
+
+# Highest-reading core-temperature sensor, in whole degrees C.
+#
+# waybar's own temperature module wants a hwmon index, and hwmonN is assigned in
+# probe order — it is not stable across boots, let alone across machines. Match
+# on the driver name instead. Order is preference, not fallback-on-error:
+# coretemp/k10temp are the CPU package; acpitz is the chassis and runs cooler,
+# so it is only used when there is no package sensor at all.
+temp() {
+  local hwmon name f best=-1 v
+  for pref in coretemp k10temp zenpower acpitz; do
+    for hwmon in /sys/class/hwmon/hwmon*; do
+      [[ -r "${hwmon}/name" ]] || continue
+      read -r name < "${hwmon}/name" 2>/dev/null || continue
+      [[ "${name}" == "${pref}" ]] || continue
+      for f in "${hwmon}"/temp*_input; do
+        [[ -r "${f}" ]] || continue
+        read -r v < "${f}" 2>/dev/null || continue
+        [[ "${v}" =~ ^[0-9]+$ ]] || continue
+        v=$(( v / 1000 ))
+        (( v > best )) && best="${v}"
+      done
+      # Found the preferred driver — do not fall through to a cooler sensor.
+      (( best >= 0 )) && { pad2 "${best}"; return 0; }
+    done
+  done
+  # Last resort: the generic thermal zone. Present on nearly everything.
+  if [[ -r /sys/class/thermal/thermal_zone0/temp ]]; then
+    read -r v < /sys/class/thermal/thermal_zone0/temp
+    [[ "${v}" =~ ^[0-9]+$ ]] && { pad2 $(( v / 1000 )); return 0; }
+  fi
+  printf '%s' '--'
+}
+
+# GPU load, or the closest honest proxy the kernel will hand a normal user.
+#
+# amdgpu and some others export a real busy percentage. Intel does not without
+# root (intel_gpu_top needs CAP_PERFMON), so we report the clock as a fraction
+# of its own range. That is a *frequency* ratio, not utilisation — it tracks
+# load closely enough to be useful and is labelled as such in the tooltip.
+gpu() {
+  local f v m max card
+  for card in /sys/class/drm/card*/device; do
+    if [[ -r "${card}/gpu_busy_percent" ]]; then
+      read -r v < "${card}/gpu_busy_percent" 2>/dev/null || continue
+      [[ "${v}" =~ ^[0-9]+$ ]] && { pad2 "${v}"; return 0; }
+    fi
+  done
+  for card in /sys/class/drm/card*; do
+    f="${card}/gt_act_freq_mhz"
+    max="${card}/gt_max_freq_mhz"
+    [[ -r "${f}" && -r "${max}" ]] || continue
+    read -r v < "${f}" 2>/dev/null || continue
+    read -r m < "${max}" 2>/dev/null || continue
+    [[ "${v}" =~ ^[0-9]+$ && "${m}" =~ ^[0-9]+$ && "${m}" -gt 0 ]] || continue
+    pad2 $(( v * 100 / m ))
+    return 0
+  done
+  printf '%s' '--'
+}
+
+# Which quantity gpu() actually managed to read. Drives the tooltip so the
+# number is never mistaken for something it is not.
+gpu_kind() {
+  local card
+  for card in /sys/class/drm/card*/device; do
+    [[ -r "${card}/gpu_busy_percent" ]] && { printf 'GPU busy (driver-reported)'; return 0; }
+  done
+  for card in /sys/class/drm/card*; do
+    [[ -r "${card}/gt_act_freq_mhz" ]] \
+      && { printf 'GPU clock as %% of max — not utilisation (busy%% needs root)'; return 0; }
+  done
+  printf 'No GPU load counter readable without root'
+}
+
+# Mission time. DESIGN.md calls for a Zulu readout; the bar clock stays local
+# because this is a daily driver, not a flight deck.
+# printf, not a bare `date`: every branch here emits its value without a
+# trailing newline and the single newline is added once at the end. A stray
+# blank second line makes waybar render the module empty.
+zulu() { printf '%s' "$(date -u +'%H:%MZ')"; }
+
+case "${1:-}" in
+  temp) temp ;;
+  gpu) gpu ;;
+  gpu-kind) gpu_kind ;;
+  zulu) zulu ;;
+  # Waybar forms: carry the reading and its caveat/threshold together, so the
+  # tooltip and the alert class can never drift from what was actually sampled.
+  gpu-json) printf '{"text":"%s","tooltip":"%s"}' "$(gpu)" "$(gpu_kind)" ;;
+  temp-json)
+    # pad2 left-pads for a non-jittering bar; strip it before comparing.
+    t="$(temp)"
+    t="${t// /}"
+    cls=""
+    # Thermal-throttle territory on the MBA-class prototype. Red is reserved
+    # for hostile or blocked, and a machine cooking itself qualifies.
+    if [[ "${t}" =~ ^[0-9]+$ ]] && (( t >= 80 )); then
+      cls="hot"
+    fi
+    printf '{"text":"%s","class":"%s"}' "${t}" "${cls}"
+    ;;
+  *)
+    printf 'usage: cicada-telemetry {temp|temp-json|gpu|gpu-json|gpu-kind|zulu}\n' >&2
+    exit 2
+    ;;
+esac
+printf '\n'

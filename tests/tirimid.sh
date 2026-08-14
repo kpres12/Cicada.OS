@@ -85,10 +85,16 @@ test -f "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper"
   || die "cicada-pkg-helper missing"
 grep -q 'pacman -Sy' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
   || die "helper must call pacman"
+grep -q 'CURATED_PACMAN\|is_curated_pacman' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "helper must curate pacman allowlist"
+grep -q 'nofilesystem=home' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "Flatpak path must override away full home"
 grep -q 'cicada-pkg-helper' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
-  || die "sudoers must NOPASSWD cicada-pkg-helper"
+  && die "cicada-pkg-helper must not be NOPASSWD" || true
+grep -q 'cicada-update' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
+  && die "cicada-update must not be NOPASSWD" || true
 grep -q 'Install software' "${settings}" || die "Settings must offer Install software"
-say "Settings → Install software… (pacman + Flatpak apps)"
+say "Settings → Install software… (curated pacman + Flatpak + password)"
 
 echo "==> 5 — Run a game (Doom)"
 test -f "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-doom" || die "cicada-doom missing"

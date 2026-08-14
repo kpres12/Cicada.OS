@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wallpapers
+Comment=MAGI-04 pattern bay — pick the desktop plate
+Exec=/usr/local/bin/cicada-wallpapers
+Icon=preferences-desktop-wallpaper
+Terminal=false
+StartupNotify=false
+Categories=Settings;DesktopSettings;

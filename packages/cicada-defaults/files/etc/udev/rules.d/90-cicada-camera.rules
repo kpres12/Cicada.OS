@@ -1,0 +1,3 @@
+# Camera nodes: video group only — never world-readable/writable.
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0660"
+KERNEL=="video*", GROUP="video", MODE="0660"

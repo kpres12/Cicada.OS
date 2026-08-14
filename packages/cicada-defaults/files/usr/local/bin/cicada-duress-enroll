@@ -2,10 +2,10 @@
 # Enroll a duress credential.
 #
 #   (default)   LUKS duress passphrase — fires at the power-on prompt only.
-#   --session   session duress password — fires at hyprlock/sudo/polkit, i.e.
-#               the case where you are coerced into unlocking a machine that is
-#               already running. The LUKS slot cannot help there because it is
-#               never asked for again after boot.
+#   --session   session duress password — fires at hyprlock and sudo (PAM).
+#               Coercion while the machine is already unlocked. The LUKS slot
+#               cannot help there because it is never asked again after boot.
+#               polkit/pkexec is not wired yet — do not rely on it for duress.
 #
 # Enrol both. They cover different rooms.
 set -euo pipefail
@@ -23,15 +23,40 @@ if [[ "${SESSION}" == 1 ]]; then
     exit 1
   fi
   command -v pam_exec.so >/dev/null 2>&1 || true
-  [[ -f /etc/pam.d/hyprlock ]] || echo "warning: /etc/pam.d/hyprlock missing; the hook will not run" >&2
+  [[ -f /etc/pam.d/hyprlock ]] || echo "warning: /etc/pam.d/hyprlock missing; lock-screen hook will not run" >&2
+  [[ -f /etc/pam.d/sudo ]] || echo "warning: /etc/pam.d/sudo missing; sudo duress hook will not run" >&2
   read -r -s -p "Session duress password (NOT your login password): " s1; echo
   read -r -s -p "Again: " s2; echo
   [[ "${s1}" == "${s2}" ]] || { echo "mismatch" >&2; exit 1; }
   [[ ${#s1} -ge 8 ]] || { echo "too short" >&2; exit 1; }
   # A duress secret identical to the real one would never fire — the real auth
   # would match first and you would believe you had protection you do not.
-  if [[ -n "${SUDO_USER:-}" ]] && command -v python3 >/dev/null 2>&1; then
-    echo "note: verify this differs from your login password; they are not comparable here" >&2
+  target_user="${SUDO_USER:-cicada}"
+  if command -v python3 >/dev/null 2>&1; then
+    if CICADA_DURESS_CANDIDATE="${s1}" CICADA_DURESS_USER="${target_user}" python3 - <<'PY'
+import crypt, os, spwd, sys
+u = os.environ.get("CICADA_DURESS_USER") or "cicada"
+cand = os.environ.get("CICADA_DURESS_CANDIDATE") or ""
+try:
+    h = spwd.getspnam(u).sp_pwd
+except KeyError:
+    sys.exit(0)
+if not h or h in ("*", "!", "!!") or h.startswith("!"):
+    sys.exit(0)
+if crypt.crypt(cand, h) == h:
+    sys.exit(2)
+sys.exit(0)
+PY
+    then
+      :
+    else
+      rc=$?
+      if [[ "${rc}" -eq 2 ]]; then
+        echo "duress must differ from the login password for ${target_user}" >&2
+        unset s1 s2
+        exit 1
+      fi
+    fi
   fi
   mkdir -p /etc/cicada
   printf '%s' "${s1}" | sha256sum | awk '{print $1}' > "${SHASH}"
@@ -41,9 +66,9 @@ if [[ "${SESSION}" == 1 ]]; then
   cat <<'EOF'
 Session duress enrolled.
 
-Typing it at the lock screen (or any sudo/polkit prompt) erases every LUKS
+Typing it at the lock screen or at a sudo password prompt erases every LUKS
 keyslot, smashes the header, and hard-resets the machine. It does not ask for
-confirmation and cannot be interrupted.
+confirmation and cannot be interrupted. (polkit/pkexec is not wired.)
 
 This destroys the disk. It does not get you out of the room, and in some
 jurisdictions destroying data under legal process is itself an offence. Enrol it

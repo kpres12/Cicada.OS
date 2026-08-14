@@ -16,41 +16,99 @@ if [[ "${1:-}" == "--" ]]; then
 fi
 [[ $# -ge 1 ]] || usage
 
-# Owner/admin UI talks to host services (NM, polkit, tty). Still an app-id —
-# just not boxed. Everything else is default-deny until its scopes file says so.
-#
-# Helium: Chromium's zygote cannot survive bwrap --unshare-pid (silent exit,
-# dock icon does nothing). Ship it unsandboxed like Files/Doom until Tier-2
-# Firejail/netns; scopes .env still documents the intended policy.
+# Host UI / TTY / NM / polkit — boxing these breaks the product.
+# Everything else goes through scopes + bwrap (Chromium family: no --unshare-pid).
 case "${APP_ID}" in
-  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start|org.cicada.files|org.cicada.doom|org.cicada.helium|org.torproject.torbrowser)
+  org.cicada.kitty|org.cicada.settings|org.cicada.wifi|org.cicada.install|org.cicada.start)
     export CICADA_APP_ID="${APP_ID}"
     exec "$@"
     ;;
 esac
 
-STORE="${CICADA_SCOPES_ROOT:-${HOME}/.local/share/cicada/scopes}"
+STORE_USER="${CICADA_SCOPES_ROOT:-${HOME}/.local/share/cicada/scopes}"
+STORE_SYS="/usr/share/cicada/scopes"
 CUR="${HOME}/.local/share/cicada/current-profile"
 if [[ -f "${CUR}" ]]; then
   # shellcheck disable=SC1090
   source "${CUR}"
   if [[ -n "${CICADA_PROFILE_HOME:-}" && -d "${CICADA_PROFILE_HOME}" ]]; then
     export HOME="${CICADA_PROFILE_HOME}"
-    STORE="${HOME}/.local/share/cicada/scopes"
+    STORE_USER="${HOME}/.local/share/cicada/scopes"
   fi
 fi
 
-ENVF="${STORE}/${APP_ID}.env"
-# Default-deny: unknown apps get no net and no home. Known apps ship a .env.
+# Default-deny. System floor + user file: deny always wins (user can only tighten).
 NETWORK=deny
 FILES=deny
 CAMERA=deny
 MIC=deny
 USB=deny
 SENSORS=deny
-if [[ -f "${ENVF}" ]]; then
+
+_load_scope() {
+  local f="$1"
+  [[ -f "${f}" ]] || return 0
   # shellcheck disable=SC1090
-  source "${ENVF}"
+  source "${f}"
+}
+
+_tighten_net() {
+  local a="$1" b="$2"
+  if [[ "${a}" == "deny" || "${b}" == "deny" ]]; then echo deny
+  elif [[ "${a}" == "tor" || "${b}" == "tor" ]]; then echo tor
+  elif [[ "${a}" == "vpn-only" || "${b}" == "vpn-only" ]]; then echo vpn-only
+  else echo allow
+  fi
+}
+
+_tighten_files() {
+  local a="$1" b="$2"
+  if [[ "${a}" == "deny" || "${b}" == "deny" ]]; then echo deny
+  elif [[ "${a}" == "portal" || "${b}" == "portal" ]]; then echo portal
+  else echo allow
+  fi
+}
+
+_tighten_flag() {
+  local a="$1" b="$2"
+  if [[ "${a}" == "allow" && "${b}" == "allow" ]]; then echo allow; else echo deny; fi
+}
+
+has_sys=0
+has_user=0
+SYS_NETWORK=deny SYS_FILES=deny SYS_CAMERA=deny SYS_MIC=deny SYS_USB=deny SYS_SENSORS=deny
+USER_NETWORK=deny USER_FILES=deny USER_CAMERA=deny USER_MIC=deny USER_USB=deny USER_SENSORS=deny
+
+if [[ -f "${STORE_SYS}/${APP_ID}.env" ]]; then
+  NETWORK=deny FILES=deny CAMERA=deny MIC=deny USB=deny SENSORS=deny
+  _load_scope "${STORE_SYS}/${APP_ID}.env"
+  SYS_NETWORK="${NETWORK}" SYS_FILES="${FILES}"
+  SYS_CAMERA="${CAMERA}" SYS_MIC="${MIC}" SYS_USB="${USB}" SYS_SENSORS="${SENSORS}"
+  has_sys=1
+fi
+if [[ -f "${STORE_USER}/${APP_ID}.env" ]]; then
+  NETWORK=deny FILES=deny CAMERA=deny MIC=deny USB=deny SENSORS=deny
+  _load_scope "${STORE_USER}/${APP_ID}.env"
+  USER_NETWORK="${NETWORK}" USER_FILES="${FILES}"
+  USER_CAMERA="${CAMERA}" USER_MIC="${MIC}" USER_USB="${USB}" USER_SENSORS="${SENSORS}"
+  has_user=1
+fi
+
+if [[ "${has_sys}" -eq 1 && "${has_user}" -eq 1 ]]; then
+  NETWORK="$(_tighten_net "${SYS_NETWORK}" "${USER_NETWORK}")"
+  FILES="$(_tighten_files "${SYS_FILES}" "${USER_FILES}")"
+  CAMERA="$(_tighten_flag "${SYS_CAMERA}" "${USER_CAMERA}")"
+  MIC="$(_tighten_flag "${SYS_MIC}" "${USER_MIC}")"
+  USB="$(_tighten_flag "${SYS_USB}" "${USER_USB}")"
+  SENSORS="$(_tighten_flag "${SYS_SENSORS}" "${USER_SENSORS}")"
+elif [[ "${has_sys}" -eq 1 ]]; then
+  NETWORK="${SYS_NETWORK}" FILES="${SYS_FILES}" CAMERA="${SYS_CAMERA}"
+  MIC="${SYS_MIC}" USB="${SYS_USB}" SENSORS="${SYS_SENSORS}"
+elif [[ "${has_user}" -eq 1 ]]; then
+  NETWORK="${USER_NETWORK}" FILES="${USER_FILES}" CAMERA="${USER_CAMERA}"
+  MIC="${USER_MIC}" USB="${USER_USB}" SENSORS="${USER_SENSORS}"
+else
+  NETWORK=deny FILES=deny CAMERA=deny MIC=deny USB=deny SENSORS=deny
 fi
 
 # System AV kill (Settings → Camera & microphone) overrides per-app allows.
@@ -90,12 +148,20 @@ case "${APP_ID}" in
   org.keepassxc.KeePassXC)
     mkdir -p "${HOME}/.config/keepassxc" "${HOME}/.local/share/keepassxc"
     ;;
+  org.torproject.torbrowser)
+    mkdir -p "${HOME}/.local/share/torbrowser" "${HOME}/.cache/torbrowser"
+    ;;
+esac
+
+# Chromium / Tor Browser: --unshare-pid kills the zygote. Keep other isolation.
+UNSHARE_PID=1
+case "${APP_ID}" in
+  org.cicada.helium|org.torproject.torbrowser) UNSHARE_PID=0 ;;
 esac
 
 args=(
   bwrap
   --die-with-parent
-  --unshare-pid
   --unshare-uts
   --unshare-cgroup
   --proc /proc
@@ -104,6 +170,7 @@ args=(
   --ro-bind /usr /usr
   --ro-bind /etc /etc
 )
+[[ "${UNSHARE_PID}" -eq 1 ]] && args+=(--unshare-pid)
 
 [[ -d /opt ]] && args+=(--ro-bind /opt /opt)
 [[ -L /bin ]] && args+=(--symlink usr/bin /bin) || bind_opt /bin
@@ -123,7 +190,6 @@ else
   bind_opt /sys/fs /sys/fs
   bind_opt /sys/kernel /sys/kernel
   bind_opt /sys/module /sys/module
-  # Hide sensor buses if present under the class/bus mounts by overlaying empty dirs.
   for sensor_path in /sys/class/hidraw /sys/bus/iio /sys/bus/hid; do
     if [[ -e "${sensor_path}" ]]; then
       args+=(--tmpfs "${sensor_path}")
@@ -136,13 +202,12 @@ bind_rw /dev/shm
 bind_opt /run/systemd/resolve
 
 # MIC=deny: selective XDG_RUNTIME_DIR (Wayland + portal sock only).
-# MIC=allow: full runtime dir (PipeWire / Pulse accessible).
+# Omit pipewire / pulse / pipewire-0 sockets so deny feels like mic unplugged.
 if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
   if [[ "${MIC}" == "allow" ]]; then
     args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
   else
     args+=(--tmpfs "${XDG_RUNTIME_DIR}")
-    # Wayland display
     if [[ -n "${WAYLAND_DISPLAY:-}" && -e "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]]; then
       bind_rw "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
     fi
@@ -150,11 +215,7 @@ if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
       [[ -e "${wsock}" ]] || continue
       bind_rw "${wsock}"
     done
-    # Portal / bus sockets the filtered proxy will use
-    [[ -S "${XDG_RUNTIME_DIR}/bus" ]] && bind_rw "${XDG_RUNTIME_DIR}/bus"
-    [[ -S "${XDG_RUNTIME_DIR}/pulse/native" ]] || true
-    # Do NOT bind pipewire*, pulse*, speech-dispatcher* when MIC=deny.
-    # dconf / at-spi sometimes needed for GTK portals
+    # Do not bind the real session bus — xdg-dbus-proxy below is the only D-Bus.
     [[ -d "${XDG_RUNTIME_DIR}/dconf" ]] && bind_rw "${XDG_RUNTIME_DIR}/dconf"
     [[ -d "${XDG_RUNTIME_DIR}/at-spi" ]] && bind_rw "${XDG_RUNTIME_DIR}/at-spi"
   fi
@@ -167,7 +228,6 @@ fi
 if [[ "${USB}" == "allow" ]]; then
   bind_rw /dev/bus/usb
 fi
-# SENSORS=allow also exposes iio device nodes when present
 if [[ "${SENSORS}" == "allow" ]]; then
   for iio in /dev/iio:device*; do
     [[ -e "${iio}" ]] || continue
@@ -181,20 +241,14 @@ case "${NETWORK}" in
     args+=(--unshare-net)
     ;;
   vpn-only)
-    # Real definition: host net only while WireGuard wg0 is up; else airplane.
     if ! ip link show wg0 >/dev/null 2>&1; then
+      args+=(--unshare-net)
+    elif ! nft list table inet cicada_ks >/dev/null 2>&1; then
+      echo "cicada-run: ${APP_ID} is vpn-only but killswitch is down — denying net." >&2
       args+=(--unshare-net)
     fi
     ;;
   tor)
-    # Run inside the onion namespace, whose only route is Tor. Deliberately no
-    # --unshare-net here: that would give the app a fresh empty namespace and
-    # cut it off from Tor as well, which fails safe but always looks like "the
-    # internet is broken" rather than a policy decision.
-    #
-    # Fail closed, loudly. Silently falling back to direct network for a scope
-    # the user chose *because* direct network is dangerous is the worst thing
-    # this program could do.
     if ! ip netns list 2>/dev/null | grep -qw onion; then
       echo "cicada-run: ${APP_ID} requires Tor, but the onion namespace is down." >&2
       echo "  sudo systemctl start cicada-tor-netns   (then: cicada-tor check)" >&2
@@ -214,8 +268,6 @@ case "${FILES}" in
     args+=(--tmpfs "${HOME}")
     ;;
   portal)
-    # Storage scopes: Downloads + app config. File picker via xdg-desktop-portal.
-    # Not full $HOME. Native apps that ignore portals only see Downloads.
     export GTK_USE_PORTAL=1
     export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals"
     args+=(--tmpfs "${HOME}")
@@ -231,6 +283,10 @@ case "${FILES}" in
       org.keepassxc.KeePassXC)
         args+=(--bind "${HOME}/.config/keepassxc" "${HOME}/.config/keepassxc")
         args+=(--bind "${HOME}/.local/share/keepassxc" "${HOME}/.local/share/keepassxc")
+        ;;
+      org.torproject.torbrowser)
+        args+=(--bind "${HOME}/.local/share/torbrowser" "${HOME}/.local/share/torbrowser")
+        args+=(--bind "${HOME}/.cache/torbrowser" "${HOME}/.cache/torbrowser")
         ;;
       *)
         mkdir -p "${HOME}/.local/share/${APP_ID}"
@@ -250,16 +306,11 @@ cleanup() {
   [[ -n "${sock}" ]] && rm -f "${sock}" 2>/dev/null || true
   return 0
 }
-# Must be a trap, not a call after the exec line: `set -e` means a non-zero exit
-# from the sandboxed app aborts this script immediately, so any cleanup placed
-# after the bwrap invocation never runs and the proxy is orphaned holding a
-# live bus connection. Every app that exits non-zero used to leak one.
 trap cleanup EXIT INT TERM
 
 if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
   sock="${XDG_RUNTIME_DIR}/cicada-${APP_ID}.sock"
   rm -f "${sock}"
-  # Host creates the proxy sock; sandbox must see it under MIC=deny selective bind.
   xdg-dbus-proxy "${DBUS_SESSION_BUS_ADDRESS}" "${sock}" --filter \
       --talk=org.freedesktop.portal.Desktop \
       --talk=org.freedesktop.portal.Documents \
@@ -274,7 +325,6 @@ if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && 
   sleep 0.15
   if [[ -S "${sock}" ]]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=${sock}"
-    # Re-bind the proxy socket into the sandbox args if we used selective runtime.
     if [[ "${MIC}" != "allow" ]]; then
       bind_rw "${sock}"
     fi
@@ -284,17 +334,11 @@ if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && 
   fi
 fi
 
-# Chromium's inner namespace sandbox fights nested bwrap; outer box is the sandbox.
+# Chromium inner namespace sandbox fights nested bwrap; outer box is the sandbox.
 if [[ "${APP_ID}" == "org.cicada.helium" ]]; then
   set -- "$@" --disable-namespace-sandbox --disable-setuid-sandbox
 fi
 
-# Not `exec` — that would replace this shell and the EXIT trap would never fire,
-# leaking the proxy again. `|| rc=$?` keeps set -e from aborting before we can
-# propagate the sandboxed app's real exit code; cleanup runs from the trap.
 rc=0
-# netns_wrap is empty for every scope except tor, where it enters the onion
-# namespace first and drops straight back to this user. bwrap runs inside it,
-# so the sandbox is nested within the network restriction rather than beside it.
 "${netns_wrap[@]}" "${args[@]}" "$@" || rc=$?
 exit "${rc}"

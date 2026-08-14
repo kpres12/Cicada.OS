@@ -1,15 +1,90 @@
+/* Cicada console bar — Sentry HUD / Eva MAGI / OT tactical.
+ *
+ * Grammar (docs/DESIGN.md): a readout region is a hairline-bordered panel
+ * carrying an inverted label tab on its leading edge. Amber is structure,
+ * magi is live data, phosphor is identity, alert is hostile or blocked.
+ * Square corners, 1px rules, no shadow, no blur — blur costs input latency
+ * and this bar redraws every two seconds.
+ */
+
+@define-color void   #000000;
+@define-color steel  #0b0d10;
+@define-color grid   #1a1f24;
+@define-color path   #c45c26;
+@define-color amber  #ffb000;
+@define-color magi   #6cffc8;
+@define-color phosphor #39ff14;
+@define-color alert  #ff3b00;
+
 * {
   border: none;
   border-radius: 0;
   font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
   font-size: 13px;
   min-height: 0;
+  /* No hover growth. A console does not resize under the pointer. */
+  transition: none;
 }
 
 window#waybar {
-  background: #000000;
-  color: #ffb000;
-  border-bottom: 2px solid #ffb000;
+  background: @void;
+  color: @amber;
+  border-bottom: 2px solid @amber;
+}
+
+/* ---- Panels -------------------------------------------------------------
+ * Grouped readouts sit inside a hairline box so the eye reads "instrument",
+ * not "row of words". The gap is margin, never a rounded pill.
+ */
+#magi,
+#sys {
+  border: 1px solid @path;
+  margin: 5px 6px;
+}
+
+/* Label tabs. Inverted block, tracked out, flush against the panel rule —
+ * the "HELIO MAP" / "DATA FEED" construction from the reference consoles. */
+#custom-magi-tab,
+#custom-sys-tab {
+  background: @path;
+  color: @void;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 0 8px;
+  margin: 0;
+}
+
+/* ---- MAGI gauges --------------------------------------------------------
+ * Live telemetry is magi; it is the only thing on the bar that changes on
+ * its own, so it gets the colour reserved for live data.
+ */
+#cpu,
+#memory,
+#custom-gpu,
+#custom-temp {
+  color: @magi;
+  padding: 0 10px;
+  border-left: 1px solid @grid;
+}
+
+#custom-magi-tab + #cpu {
+  border-left: none;
+}
+
+/* Saturation is hostile. Same rule as RF-blocked and BAT CRIT. */
+#cpu.hot,
+#memory.hot,
+#custom-temp.hot {
+  color: @alert;
+  font-weight: 700;
+}
+
+/* ---- Identity and navigation -------------------------------------------- */
+#custom-cicada {
+  color: @phosphor;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  padding: 0 16px;
 }
 
 #custom-term,
@@ -19,23 +94,16 @@ window#waybar {
 #custom-close,
 #custom-swaync {
   padding: 0 12px;
-  color: #ffb000;
-  border-left: 1px solid #1a1f24;
-}
-
-#custom-cicada {
-  color: #39ff14;
-  letter-spacing: 0.14em;
-  font-weight: 700;
-  padding: 0 16px;
+  color: @amber;
+  border-left: 1px solid @grid;
 }
 
 #custom-settings {
-  color: #6cffc8;
+  color: @magi;
 }
 
 #custom-close {
-  color: #ff3b00;
+  color: @alert;
   font-weight: 700;
 }
 
@@ -46,35 +114,68 @@ window#waybar {
 }
 
 #workspaces button.active {
-  color: #39ff14;
-  border-bottom: 2px solid #ff3b00;
+  color: @phosphor;
+  border-bottom: 2px solid @alert;
 }
 
 #window {
-  color: #6cffc8;
+  color: @magi;
   letter-spacing: 0.06em;
+  padding: 0 12px;
 }
 
-#clock,
-#battery,
+#custom-profile {
+  padding: 0 12px;
+  color: @magi;
+  letter-spacing: 0.08em;
+  border-left: 1px solid @grid;
+}
+
+/* ---- System panel ------------------------------------------------------- */
 #network,
 #pulseaudio,
 #backlight,
-#custom-profile {
-  padding: 0 12px;
-  color: #ffb000;
-  border-left: 1px solid #1a1f24;
+#battery {
+  padding: 0 10px;
+  color: @amber;
+  border-left: 1px solid @grid;
 }
 
-#custom-profile {
-  color: #6cffc8;
-  letter-spacing: 0.08em;
+#custom-sys-tab + #network {
+  border-left: none;
 }
 
 #network.disconnected {
-  color: #ff3b00;
+  color: @alert;
 }
 
 #battery.critical {
-  color: #ff3b00;
+  color: @alert;
+}
+
+/* ---- Mission time ------------------------------------------------------- */
+/* Zulu readout sits outside the panel, ahead of the local clock, the way a
+ * mission timer sits apart from wall time on the reference consoles. */
+#custom-zulu {
+  color: @path;
+  letter-spacing: 0.08em;
+  padding: 0 10px;
+}
+
+#clock {
+  padding: 0 14px;
+  color: @amber;
+  font-weight: 700;
+  border-left: 1px solid @grid;
+}
+
+tooltip {
+  background: @steel;
+  border: 1px solid @path;
+  border-radius: 0;
+}
+
+tooltip label {
+  color: @amber;
+  font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
 }

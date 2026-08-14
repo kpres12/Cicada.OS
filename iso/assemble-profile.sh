@@ -121,14 +121,34 @@ if [[ -x "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-cha
   cp -a "${ROOT}/packages/cicada-defaults/files/etc/pacman.d/"* \
     "${PROFILE}/airootfs/etc/pacman.d/" 2>/dev/null || true
 fi
-for repo_src in "${ROOT}/out/channel-repo" "${ROOT}/channel/repo"; do
-  if [[ -d "${repo_src}" ]] && compgen -G "${repo_src}/cicada-stable.db*" >/dev/null 2>&1; then
-    echo "==> embedding cicada-stable repo from ${repo_src}"
-    rsync -a "${repo_src}/" "${PROFILE}/airootfs/var/cache/cicada/repo/"
-    break
-  fi
-done
+# The channel repo is the tested Arch snapshot — ~2 GiB. Embedding it would take
+# the ISO from 3 GiB to over 5 and duplicate every package already inside the
+# squashfs, to no purpose: an update needs the network anyway, so it can reach
+# the hosted mirror. The directory ships empty and cicada-channel-enable omits
+# the file:// Server unless a database is genuinely present, so pacman never
+# tries to sync a repo that is not there.
+#
+# CICADA_EMBED_CHANNEL=1 restores the old behaviour for a fully offline build.
+if [[ "${CICADA_EMBED_CHANNEL:-0}" == "1" ]]; then
+  for repo_src in "${ROOT}/out/channel-repo" "${ROOT}/channel/repo"; do
+    if [[ -d "${repo_src}" ]] && compgen -G "${repo_src}/cicada-stable.db*" >/dev/null 2>&1; then
+      echo "==> embedding cicada-stable repo from ${repo_src} (CICADA_EMBED_CHANNEL=1)"
+      rsync -a "${repo_src}/" "${PROFILE}/airootfs/var/cache/cicada/repo/"
+      break
+    fi
+  done
+fi
 # hide-arch-desktops runs on firstboot / install-chroot (needs the real airootfs package set).
+
+# Channel pin, so `cicada-update` can name the snapshot this image was cut from
+# instead of printing "channel pin: unknown".
+# BSD install (macOS, where this assembles) has no -D, so create the parent
+# first rather than relying on it.
+if [[ -f "${ROOT}/channel/CURRENT" ]]; then
+  mkdir -p "${PROFILE}/airootfs/usr/share/cicada/channel"
+  install -m644 "${ROOT}/channel/CURRENT" \
+    "${PROFILE}/airootfs/usr/share/cicada/channel/CURRENT"
+fi
 
 mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
 cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
@@ -321,12 +341,18 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-pkg"]="0:0:755"
   ["/usr/local/bin/cicada-pkg-helper"]="0:0:755"
   ["/usr/local/bin/cicada-wallpaper"]="0:0:755"
+  ["/usr/local/bin/cicada-wallpapers"]="0:0:755"
+  ["/usr/local/bin/cicada-telemetry"]="0:0:755"
+  ["/usr/share/cicada/quickshell/pattern-bay/cache.sh"]="0:0:755"
+  ["/usr/share/cicada/quickshell/pattern-bay/shell.qml"]="0:0:644"
+  ["/usr/share/cicada/hyprlock-fallback.conf"]="0:0:644"
   ["/usr/local/bin/cicada-session"]="0:0:755"
   ["/usr/local/bin/cicada-session-sway"]="0:0:755"
   ["/usr/local/bin/cicada-session-niri"]="0:0:755"
   ["/usr/local/bin/cicada-login"]="0:0:755"
   ["/usr/local/bin/cicada-update"]="0:0:755"
   ["/usr/local/bin/cicada-malloc"]="0:0:755"
+  ["/usr/local/bin/cicada-usb-gate"]="0:0:755"
   ["/usr/local/bin/cicada-banner"]="0:0:755"
   ["/usr/local/bin/cicada-brightness"]="0:0:755"
   ["/usr/local/bin/cicada-tor-browser"]="0:0:755"

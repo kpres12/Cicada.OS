@@ -47,6 +47,8 @@ grep -A1 'animations {' "${hypr}" | grep -q 'enabled = false' || die "animations
 grep -q 'fullscreen on' "${hypr}" && die "desktop must not be fullscreen over the dock" || true
 grep -q 'style=default' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/wofi/config" && die "wofi style=default ignores Cicada CSS" || true
 grep -q 'QuickExec=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" || die "desktop icons will prompt Open vs Execute"
+grep -q 'AutoRun=false' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
+  || die "pcmanfm AutoRun must be off (USB autorun)"
 grep -q SETTINGS "${ROOT}/packages/cicada-shell/files/etc/skel/.config/waybar/config.jsonc" || die "waybar missing SETTINGS"
 grep -q 'bind = $mainMod, M, exit' "${hypr}" && die "Super+M must not kill the session" || true
 grep -q 'WLR_NO_HARDWARE_CURSORS' "${ROOT}/packages/cicada-shell/files/etc/skel/.bash_profile" && die "software cursors lag HD 6000" || true
@@ -63,8 +65,24 @@ grep -q 'WallpaperMode=stretch' "${ROOT}/packages/cicada-shell/files/etc/skel/.c
 grep -q 'Wallpaper=/usr/share/cicada/wallpapers/cicada-3301.png' \
   "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
   || die "pcmanfm must ship stock wallpaper path"
-grep -q 'org.cicada.helium)' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
-  || die "Helium must be unsandboxed (bwrap kills Chromium zygote)"
+grep -q 'UNSHARE_PID=0' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "Helium/Tor must set UNSHARE_PID=0 (zygote dies with --unshare-pid)"
+grep -q 'org.cicada.helium|org.torproject.torbrowser' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "Helium/Tor must be boxed without unshare-pid"
+grep -q 'STORE_SYS=' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "cicada-run must load system scope floors"
+test -f "${ROOT}/packages/cicada-shell/files/usr/share/cicada/scopes/org.cicada.helium.env" \
+  || die "system scope floors missing under usr/share/cicada/scopes"
+grep -q 'cicada-usb-gate' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-lock" \
+  || die "lock must call cicada-usb-gate (root sysfs)"
+test -f "${ROOT}/packages/cicada-defaults/files/etc/udev/rules.d/90-cicada-camera.rules" \
+  || die "camera udev 660/video rule missing"
+grep -q 'flatpak override' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "Flatpak installs must apply home-deny overrides"
+grep -q 'install-any' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  || die "pkg-helper must separate curated vs install-any"
+test -f "${ROOT}/packages/cicada-defaults/files/etc/pacman.d/cicada-stable-key.gpg" \
+  || die "ISO must ship cicada-stable pubkey"
 grep -q 'SidePaneMode=places' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
   || die "Files must show Places sidebar"
 grep -q 'UseTrash=true' "${ROOT}/packages/cicada-shell/files/etc/skel/.config/pcmanfm-qt/default/settings.conf" \
@@ -182,13 +200,13 @@ echo "==> cicada-run is not bind-all"
 grep -q -- '--bind / /' "${RUN_BIN}/cicada-run" && die "cicada-run still bind-mounts /" || true
 grep -q -- '--ro-bind /usr /usr' "${RUN_BIN}/cicada-run" || die "no ro-bind /usr"
 # Homebrew must not supply bwrap — sandboxed apps fail closed when it is missing.
-# Helium is deliberately unsandboxed (zygote dies under bwrap); probe KeePassXC.
 expect_exit 78 "cicada-run without bwrap" \
   env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.keepassxc.KeePassXC -- true
-# Helium must still launch when bwrap is absent (dock Web must not be a no-op).
-# Use `true` on PATH — macOS may lack /bin/true in restricted PATH probes.
-expect_exit 0 "Helium without bwrap still runs" \
+expect_exit 78 "Helium without bwrap fails closed" \
   env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.helium -- true
+# Host-admin apps still launch when bwrap is absent (terminal must not be a no-op).
+expect_exit 0 "Kitty without bwrap still runs" \
+  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.kitty -- true
 
 echo "==> fail-closed CLIs"
 bash "${INSTALL_BIN}/cicada-install" -h >/dev/null || die "install -h"
@@ -316,7 +334,8 @@ grep -q 'ip protocol icmp accept' "${nft}" || die "no ICMP: path MTU discovery b
 # Same trap inside the kill switch: without renewal the lease lapses, the link
 # drops, and the switch kills the very connection it was protecting.
 ks="${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft"
-grep -q 'udp dport 67 accept' "${ks}" || die "kill switch blocks DHCP renewal: tunnel dies when the lease expires"
+grep -q 'udp dport 67 ip daddr 255.255.255.255 accept' "${ks}" \
+  || die "kill switch must allow DHCP discover to broadcast only (not raw udp/67 exfil)"
 grep -q 'udp sport 67 udp dport 68 accept' "${ks}" || die "kill switch blocks DHCP replies"
 grep -q 'policy drop' "${ROOT}/packages/cicada-defaults/files/etc/cicada/killswitch.nft" || die "killswitch not drop"
 # The output chain must NOT exempt established flows: that lets pre-tunnel
@@ -477,6 +496,7 @@ test -x "${dc}" || die "cicada-duress-check missing"
 pam="${ROOT}/packages/cicada-defaults/files/etc/pam.d/hyprlock"
 grep -q 'expose_authtok' "${pam}" || die "pam hook cannot see the typed secret"
 grep -q '^auth *optional *pam_exec' "${pam}" || die "duress hook must be optional or it can lock you out"
+grep -q 'pam_exec.so seteuid' "${pam}" || die "session duress pam_exec must seteuid (else wipe is no-op)"
 python3 - <<PY || die "duress pam_exec must precede system-auth or pam_unix consumes the token"
 import pathlib, sys
 t = pathlib.Path("${pam}").read_text()

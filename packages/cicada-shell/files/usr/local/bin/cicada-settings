@@ -201,7 +201,8 @@ appearance() {
   pick="$(zenity --list --title="Appearance" \
     --text="Theme, desktop icons, wallpaper. Changes apply to this session." \
     --column=Setting --column=Does --print-column=1 --hide-header \
-    --width=520 --height=400 \
+    --width=520 --height=440 \
+    "Pattern bay…" "MAGI-04 — browse Pictures/Wallpapers visually" \
     "Wallpaper…" "Pick an image (saved under Pictures)" \
     "Stock wallpaper" "Cicada default from /usr/share/cicada/wallpapers" \
     "Dark" "Black / amber (default)" \
@@ -213,6 +214,7 @@ appearance() {
     2>/dev/null)" || return 0
   case "${pick}" in
     "Desktop session…") desktop_session_picker; return 0 ;;
+    "Pattern bay…") exec cicada-wallpapers ;;
     "Wallpaper…")
       mkdir -p "${HOME}/Pictures"
       img="$(zenity --file-selection --title="Wallpaper" \
@@ -268,42 +270,15 @@ appearance() {
   fi
 }
 
+# Setting a wallpaper means driving two planes (hyprpaper and the pcmanfm desk
+# layer that covers it) plus the lock screen. That knowledge lives in exactly
+# one place. This used to be a second implementation here that set the desk to
+# WallpaperMode=color, which paints an opaque void layer *over* hyprpaper — the
+# chosen image was written to disk and then never seen.
 apply_wallpaper() {
-  local img="$1" paper conf lock
+  local img="$1"
   [[ -f "${img}" ]] || { notify-send "Cicada" "Wallpaper file missing" 2>/dev/null || true; return 1; }
-  mkdir -p "${HOME}/Pictures" "${HOME}/.config/hypr" "$(dirname "${PCMAN_CONF}")"
-  # Keep a stable copy so sandboxed paths / USB mounts do not break the desk.
-  paper="${HOME}/Pictures/cicada-wallpaper.${img##*.}"
-  cp -f "${img}" "${paper}"
-  conf="${HOME}/.config/hypr/hyprpaper.conf"
-  cat > "${conf}" <<EOF
-preload = ${paper}
-wallpaper = ,${paper}
-EOF
-  # Desktop icons stay on a solid void layer; hyprpaper is the art plane.
-  mkdir -p "$(dirname "${PCMAN_CONF}")"
-  if [[ -f "${PCMAN_CONF}" ]]; then
-    grep -q '^WallpaperMode=' "${PCMAN_CONF}" \
-      && sed -i 's|^WallpaperMode=.*|WallpaperMode=color|' "${PCMAN_CONF}" \
-      || printf 'WallpaperMode=color\n' >> "${PCMAN_CONF}"
-    grep -q '^Wallpaper=' "${PCMAN_CONF}" \
-      && sed -i 's|^Wallpaper=.*|Wallpaper=|' "${PCMAN_CONF}" \
-      || true
-    grep -q '^BgColor=' "${PCMAN_CONF}" \
-      && sed -i 's|^BgColor=.*|BgColor=#000000|' "${PCMAN_CONF}" \
-      || printf 'BgColor=#000000\n' >> "${PCMAN_CONF}"
-  else
-    printf '[Desktop]\nWallpaper=\nWallpaperMode=color\nBgColor=#000000\n' > "${PCMAN_CONF}"
-  fi
-  lock="${HOME}/.config/hypr/hyprlock.conf"
-  if [[ -f "${lock}" ]]; then
-    sed -i "s|^[[:space:]]*path = .*|    path = ${paper}|" "${lock}" 2>/dev/null || true
-  fi
-  pkill -x hyprpaper 2>/dev/null || true
-  hyprpaper >/dev/null 2>&1 &
-  pkill -f '[p]cmanfm-qt --desktop' 2>/dev/null || true
-  pcmanfm-qt --desktop >/dev/null 2>&1 &
-  notify-send "Cicada" "Wallpaper updated" 2>/dev/null || true
+  cicada-wallpaper set "${img}"
 }
 
 screenshot() {
@@ -468,6 +443,7 @@ case "${1:-}" in
   brightness|Brightness) brightness; exit 0 ;;
   displays|Displays) displays; exit 0 ;;
   appearance|Appearance) appearance; exit 0 ;;
+  wallpapers|bay) exec cicada-wallpapers ;;
   security|Security) security; exit 0 ;;
   pkg|install|"Install software") exec cicada-pkg ;;
   power|Power) exec cicada-power ;;

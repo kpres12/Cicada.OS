@@ -14,15 +14,27 @@ bash "${ROOT}/scripts/channel-sign.sh" "${REPO}"
 
 pin="$(cat "${ROOT}/channel/CURRENT" 2>/dev/null || echo unknown)"
 notes="$(mktemp)"
+slug="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo kpres12/Cicada.OS)"
+root="https://github.com/${slug}/releases/download/${TAG}"
+
 cat > "${notes}" <<EOF
 Cicada.OS channel mirror (${pin}).
 
-On a machine:
-  echo 'https://github.com/OWNER/REPO/releases/download/${TAG}' | sudo tee /etc/cicada/channel-mirror.url
-  sudo cicada-channel-enable.sh
-  sudo cicada-update
+This is the tested Arch snapshot the matching ISO was built from — kernel,
+openssl, browser runtime and the rest. The database is signed with the Cicada
+stable key that ships in \`/etc/pacman.d/cicada-stable-key.gpg\`; each package
+keeps its original Arch developer signature. \`cicada-update\` syncs only this
+repository. Raw Arch rolling is not the product update path.
 
-Replace OWNER/REPO with this GitHub repository.
+Cicada.OS images from this release onward point here automatically — there is
+nothing to configure. Updates are pulled only when the user runs
+\`cicada-update\` (Settings → Security → Check updates); nothing polls.
+
+To point an older install at it by hand:
+
+  echo '${root}' | sudo tee /etc/cicada/channel-mirror.url
+  sudo /usr/local/lib/cicada/cicada-channel-enable.sh
+  sudo cicada-update
 EOF
 
 # Upload every pkg + db + sig (may be large).

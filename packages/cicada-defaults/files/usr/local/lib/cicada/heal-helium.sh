@@ -17,10 +17,8 @@ for name in helium chrome helium-wrapper chrome-wrapper \
   fi
 done
 if [[ -f /opt/helium/chrome_sandbox && ! -L /opt/helium/chrome_sandbox ]]; then
-  # Nested sandbox unused under cicada-run; still restore a sane mode if present.
-  if [[ ! -u /opt/helium/chrome_sandbox ]]; then
-    chmod 4755 /opt/helium/chrome_sandbox 2>/dev/null || chmod 755 /opt/helium/chrome_sandbox || true
-  fi
+  # Nested setuid sandbox unused under --no-sandbox; never leave a setuid helper.
+  chmod 755 /opt/helium/chrome_sandbox 2>/dev/null || true
 fi
 [[ "${fixed}" -eq 1 ]] && logger -t cicada "healed Helium exec bits under /opt/helium" 2>/dev/null || true
 exit 0

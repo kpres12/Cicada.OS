@@ -431,8 +431,17 @@ copy_product /mnt
 printf '%s' "${u1}" > /mnt/root/.cicada-user-pass
 chmod 600 /mnt/root/.cicada-user-pass
 unset u1 u2
+# If chroot aborts, never leave the plaintext login password on the volume.
+cleanup_user_pass() {
+  if [[ -f /mnt/root/.cicada-user-pass ]]; then
+    shred -u /mnt/root/.cicada-user-pass 2>/dev/null || rm -f /mnt/root/.cicada-user-pass
+  fi
+}
+trap cleanup_user_pass EXIT
 
 arch-chroot /mnt /usr/local/lib/cicada/install-chroot.sh
+trap - EXIT
+cleanup_user_pass
 
 cat > /mnt/etc/cicada/install-stamp <<EOF
 installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)

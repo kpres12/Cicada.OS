@@ -17,16 +17,18 @@ Users should never be told to “just add Arch mirrors and `pacman -Syu`.” Pro
 
 ## Operator pipeline
 
-1. Build ISO (`./scripts/build-iso-docker.sh`) — persists pacman cache → `out/channel-repo/`
-2. `scripts/channel-sign.sh out/channel-repo` — signs db; exports pubkey
-3. Rebuild ISO so assemble embeds `var/cache/cicada/repo` + pubkey
-4. Firstboot / etch runs `cicada-channel-enable.sh` so `[cicada-stable]` is preferred before `[core]`
-5. `scripts/channel-publish.sh` — upload signed repo as GitHub Release `channel-latest`
-6. On machines:  
-   `echo 'https://github.com/OWNER/REPO/releases/download/channel-latest' | sudo tee /etc/cicada/channel-mirror.url`  
-   then `sudo cicada-update`
+1. Build ISO (`./scripts/build-iso-docker.sh`) — the builder's pacman cache becomes `out/channel-repo/`
+2. `scripts/channel-sign.sh out/channel-repo` — signs the db, writes the `.db.sig` / `.files.sig` short names pacman actually requests, exports the pubkey
+3. `scripts/channel-publish.sh out/channel-repo channel-latest` — uploads the signed repo
+4. `scripts/prepare-release.sh` — then the ISO, which already points at step 3
 
-Private key: `channel/keys/gnupg/` (gitignored). Public: `channel/keys/cicada-stable.pub` and `/etc/pacman.d/cicada-stable-key.gpg` on the ISO.
+Order matters: the ISO ships `/etc/cicada/channel-mirror.url`, so publishing an image before the channel it names leaves `pacman -Sy` failing on every machine that installs it.
+
+On the user's side there is nothing to configure. `cicada-channel-enable.sh` (run by firstboot and by `cicada-install`) imports the pubkey, **locally signs it** so pacman will trust the database, and writes `[cicada-stable]` ahead of `[core]`. It omits the `file://` server when no local database exists, so the empty `/var/cache/cicada/repo` on the ISO cannot break `pacman -Sy`.
+
+Private key: `channel/keys/gnupg/` (gitignored, single copy — back it up). Public: `channel/keys/cicada-stable.pub` and `/etc/pacman.d/cicada-stable-key.gpg` on the ISO.
+
+Packages are copied into the repo **with their `.sig` files**. `SigLevel = Required` is package-required as well as database-required: our key signs the database, each package keeps its Arch developer signature.
 
 ## Snapshots
 

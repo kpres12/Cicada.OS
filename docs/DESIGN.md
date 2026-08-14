@@ -28,12 +28,29 @@ Type: JetBrains Mono + Share Tech (site mark). HUD labels are ALL CAPS, tracked 
 - CRT bloom is CSS glow on titles only — do not blur the whole desktop.
 - Site hero: brand first (`CICADA.OS`), one headline, one lede, CTA row, full-bleed wireframe sentry — no card grid in the first viewport.
 
+## Panel grammar
+
+Every readout region is built the same way, so the bar, the launcher, the lock and the pattern bay read as one instrument rather than four themes.
+
+1. **Panel** — a 1px `path` hairline box. Square. No fill beyond `void`, no shadow, no blur.
+2. **Label tab** — a caps, tracked-out block on the panel's leading edge, either inverted (`path` fill, `void` text) or outlined. This is the `HELIO MAP` / `DATA FEED` construction; it names the instrument.
+3. **Readouts** — monospace, fixed width, separated by `grid` hairlines. A gauge must not change width as its digits change; a console that reflows every two seconds reads as noise.
+4. **Legend row** — glyph + caps label + value, at the foot of the panel. Says what the marks mean and which keys act.
+5. **Ruler** — tick marks as a scale, with the cursor tick in `phosphor`. Position through a set is shown, not narrated.
+
+Colour carries state, not decoration: `phosphor` = identity or live selection, `magi` = live data, `amber` = structure and primary values, `path` = held or inactive, `alert` = hostile, blocked, or thermally out of range.
+
 ## Shell mapping (v0)
 
-- **Waybar** = Sentry header (`CICADA // MAGI-01`, USR profile, SCOPES, RF, Zulu clock)
+- **Waybar** = Sentry header — `CICADA` mark, nav, USR profile, `MAGI-01` gauge panel (CPU/GPU/MEM/TMP), `SYS` panel (net/vol/bri/bat), Zulu + local clock
 - **Super+I** = MAGI-02 scopes panel (per-app permission sheet)
-- **Super+L** = MAGI-03 lock (hyprlock)
+- **Super+L** = MAGI-03 lock (hyprlock) — static plate, `hide_input`, no media, no session contents
+- **Super+B** = MAGI-04 pattern bay (`cicada-wallpapers`) — wallpaper selector, phosphor reticle on the live plate
 - **Super+Space** = phosphor wofi launcher
 - **Hyprland dwindle** = MAGI panes (no rounding, phosphor active / steel inactive)
 - **Kitty** = amber-on-void data feed
 - **Wallpaper** = `usr/share/cicada/wallpapers/cicada-void.png`
+
+## Lock screen is not a surface for features
+
+MAGI-03 shows time, date, and one input. It does not show now-playing, notification counts, hostname, or a blurred screenshot of the session. Everything on it is read by whoever picks the machine up, not by the owner. Blur is not redaction — window titles and document text survive it well enough to read.

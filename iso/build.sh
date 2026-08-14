@@ -90,8 +90,13 @@ PKG_CACHE=""
 for cand in \
   "${WORK}/mkarchiso/x86_64/airootfs/var/cache/pacman/pkg" \
   "${WORK}/mkarchiso/airootfs/var/cache/pacman/pkg" \
-  "${WORK}/mkarchiso/pacman/pkg"
+  "${WORK}/mkarchiso/pacman/pkg" \
+  /var/cache/pacman/pkg
 do
+  # mkarchiso pacstraps with -c, so the packages land in the *builder's* cache
+  # (a persistent docker volume), not in the airootfs. The airootfs paths are
+  # kept first for older archiso behaviour; /var/cache/pacman/pkg is the one
+  # that actually has anything today.
   if [[ -d "${cand}" ]] && compgen -G "${cand}/*.pkg.tar.*" >/dev/null 2>&1; then
     PKG_CACHE="${cand}"
     break
@@ -99,12 +104,13 @@ do
 done
 if [[ -n "${PKG_CACHE}" ]]; then
   echo "==> channel repo from ${PKG_CACHE}"
-  mkdir -p "${OUT}/channel-repo" "${ROOT}/channel/repo"
+  mkdir -p "${OUT}/channel-repo"
   if [[ -x "${ROOT}/scripts/channel-build-repo.sh" ]] || [[ -f "${ROOT}/scripts/channel-build-repo.sh" ]]; then
     bash "${ROOT}/scripts/channel-build-repo.sh" "${PKG_CACHE}" "${OUT}/channel-repo" || \
       echo "==> channel-build-repo skipped (non-fatal)"
-    # Keep a tree copy for the next assemble-profile embed
-    rsync -a "${OUT}/channel-repo/" "${ROOT}/channel/repo/" 2>/dev/null || true
+    # No tree copy into channel/repo: /src is mounted read-only in the builder,
+    # so it never worked, and the repo is ~2 GiB — it belongs in out/ (published
+    # to the channel-latest release), not in the git tree or on the ISO.
   fi
 else
   echo "==> no pacman pkg cache found under ${WORK}/mkarchiso (channel repo deferred)"

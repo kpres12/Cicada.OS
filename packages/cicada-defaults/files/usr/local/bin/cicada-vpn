@@ -30,12 +30,14 @@ case "${1:-}" in
       echo "  Edit ${KS} to match, or move the endpoint to 51820." >&2
       exit 1
     fi
-    wg-quick up wg0
-    # Fail closed: a tunnel without a killswitch is worse than no tunnel, because
-    # it looks protected. If the ruleset will not load, tear the tunnel back down.
+    # Load killswitch BEFORE raising the tunnel so there is no clearnet window.
     if ! nft -f "${KS}"; then
-      echo "cicada-vpn: killswitch failed to load — taking the tunnel down." >&2
-      wg-quick down wg0 2>/dev/null || true
+      echo "cicada-vpn: killswitch failed to load — refusing to bring the tunnel up." >&2
+      nft delete table inet cicada_ks 2>/dev/null || true
+      exit 1
+    fi
+    if ! wg-quick up wg0; then
+      echo "cicada-vpn: tunnel failed — removing killswitch so Wi-Fi still works." >&2
       nft delete table inet cicada_ks 2>/dev/null || true
       exit 1
     fi
@@ -77,6 +79,14 @@ case "${1:-}" in
     fi
     if ! grep -q 'udp dport 51820 accept' "${KS}"; then
       echo "FAIL: handshake udp/51820 must be allowed"; fail=1
+    fi
+    if ! grep -q 'udp dport 67 ip daddr 255.255.255.255 accept' "${KS}" \
+      && ! grep -q 'udp dport 67 accept' "${KS}"; then
+      echo "FAIL: DHCP client path missing"; fail=1
+    fi
+    if grep -qE '^[[:space:]]*udp dport 67 accept$' "${KS}"; then
+      echo "FAIL: DHCP must not allow arbitrary udp/67 (broadcast-only)"
+      fail=1
     fi
     if [[ -f "${CONF}" ]] && grep -q '^PrivateKey' "${CONF}"; then
       port="$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=.*:\([0-9]\+\).*/\1/p' "${CONF}" | head -1)"
