@@ -41,7 +41,9 @@
         <a class="btn btn-amber" href="../install/">Install instructions</a>
         <a class="btn btn-ghost" href="https://github.com/kpres12/Cicada.OS">Source tree</a>
       </div>
-      <pre style="margin-top:1rem"># after downloading all .part-* files + .sha256 from the release
+      <pre style="margin-top:1rem"># after downloading all .part-* files + .sha256 + .sha256.asc + cicada-stable.pub
+gpg --import cicada-stable.pub
+gpg --verify cicada-2026.08.14-x86_64.iso.sha256.asc cicada-2026.08.14-x86_64.iso.sha256
 cat cicada-2026.08.14-x86_64.iso.part-* &gt; cicada-2026.08.14-x86_64.iso
 shasum -a 256 -c cicada-2026.08.14-x86_64.iso.sha256</pre>
     </div>
@@ -54,9 +56,23 @@ shasum -a 256 -c cicada-2026.08.14-x86_64.iso.sha256</pre>
           Prefer the release assets page — not a random Drive link.
         </li>
         <li>
+          <strong>Verify the signature — this is the step that matters</strong>
+          A checksum on its own authenticates nothing: whoever could replace the
+          ISO could replace the hash sitting next to it. Only the signature tells
+          you the image came from us.
+          <pre>gpg --import cicada-stable.pub
+gpg --fingerprint stable@cicada.os
+# must equal: CAAC 3467 D0BB B357 231A  04A6 4755 854B FFDF 59F9
+gpg --verify cicada-*.iso.sha256.asc cicada-*.iso.sha256
+# want: "Good signature from Cicada.OS stable"</pre>
+          Check that fingerprint against this page, not against the release —
+          a key shipped beside the thing it signs proves only that both came from
+          the same place.
+        </li>
+        <li>
           <strong>Check the sha256</strong>
-          <pre>shasum -a 256 cicada-*.iso
-# compare to the published checksum on the release</pre>
+          <pre>shasum -a 256 -c cicada-*.iso.sha256</pre>
+          This confirms the bytes match the hash you just proved was signed.
         </li>
         <li>
           <strong>Flash (macOS example)</strong>

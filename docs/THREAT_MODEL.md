@@ -75,8 +75,15 @@ a given machine is actually on.
 - Everything in Tier 1, plus:
 - Own Secure Boot keys enrolled (`cicada-sbctl-enroll`), so the firmware refuses
   to execute anything you did not sign
-- Kernel + initramfs as a signed UKI, measured into PCR 11, and the disk key
-  sealed to 0+7+11 — a modified initramfs cannot unseal the disk
+- Kernel, initramfs, cmdline and os-release as one signed UKI (`cicada-uki`),
+  measured into PCR 11, and the disk key sealed to 0+7+11 — a modified initramfs
+  or an edited kernel command line cannot unseal the disk
+- The unsigned type-1 loader entries are removed once every UKI is built *and*
+  verified, so there is no second, editable way to boot the same machine
+- `cicada-tpm-enroll` reads PCR 11 before including it. A UKI sitting on the ESP
+  is not evidence that one booted; sealing against an all-zero PCR 11 would bind
+  the disk to "booted *without* a UKI", which is the state this tier exists to
+  make unbootable. `cicada-hw-trust` reports the tier on the same evidence
 - **This is as close to GrapheneOS as commodity x86 gets:** a verified boot
   chain plus hardware-throttled unlock. What is still missing versus a Pixel is
   a discrete secure element holding the key material and per-app hardware
@@ -120,11 +127,52 @@ process in one profile from reading another's files. It does nothing once the
 disk is unlocked: every profile's home is plaintext on the same volume at that
 point. Profiles are a blast-radius tool, not an encryption boundary.
 
-**The ESP is plaintext, unsigned and unmeasured.** Evil maid does not need to
-touch Apple EFI to win — modifying `/boot`'s initramfs to capture the passphrase
-is a screwdriver-and-USB attack with the same outcome. On this hardware there is
-no detection for it. This is the softest of the physical-access attacks, not the
-most exotic one, and it should be ranked accordingly.
+**The ESP is plaintext.** Evil maid does not need to touch Apple EFI to win —
+modifying `/boot`'s initramfs to capture the passphrase is a screwdriver-and-USB
+attack with the same outcome. This is the softest of the physical-access attacks,
+not the most exotic one, and it should be ranked accordingly.
+
+*Signed and measured on Tier 1+ since the UKI work.* The kernel, initramfs,
+cmdline and os-release now ship as one signed PE (`cicada-uki`), so tampering
+with the initramfs or appending `init=/bin/sh` to a loader entry breaks the
+signature, and systemd-stub measures the image into PCR 11 so the TPM refuses to
+unseal a modified boot. Until that landed, `sbctl` signed `vmlinuz` and nothing
+else — the initramfs is a cpio and a loader entry is a text file, neither of
+which can carry a signature — so the boot chain was "verified" everywhere except
+the two components an attacker would actually edit. **On Tier 0 (Apple EFI, no
+TPM) none of this applies: there is no Secure Boot to enforce the signature and
+no PCR to measure into, so the ESP remains plaintext, unsigned and unmeasured,
+with no detection.**
+
+**The LUKS attempt-cap counter lives on that same writable ESP.** An attacker who
+rewrites `cicada/luks-fail.count` between power cycles gets unlimited guesses, so
+`CICADA_LUKS_MAX_FAIL` is a courtesy against a shoulder-surfed short secret, not
+a guarantee. There is no fix at Tier 0 — a machine with no TPM has nowhere
+tamper-proof to keep a counter, and a secret baked into the initramfs is not
+secret, because the initramfs ships unencrypted on the ESP (signing is not
+confidentiality). What actually holds the line is elsewhere: on Tier 0 the
+passphrase carries 80–100 bits by construction, so unlimited offline guessing is
+already the assumed threat; on Tier 1+ the short secret is a TPM PIN and the
+TPM's own dictionary-attack lockout rate-limits it in silicon — a counter the CPU
+cannot reset.
+
+**A LUKS header backup reverses the wipes.** `cicada-luks-header` exists because
+the attempt cap and the duress passphrase both destroy keyslots on purpose, which
+makes header damage routine here rather than exotic, and a damaged header means
+permanent total data loss. But the same file undoes both wipes for whoever holds
+it, and keeps working with passphrases you have since revoked. If your threat
+model is coercion rather than hardware failure, the correct choice may be to have
+no header backup at all. The tool states this every time rather than letting you
+discover it later.
+
+**`/usr` is not verity-protected, and mostly does not need to be.** Graphene
+relies on dm-verity because Android's system partition is *unencrypted* and
+therefore offline-modifiable. Here `/usr` lives inside the LUKS volume, so an
+offline attacker cannot read or modify it at all — full-disk encryption already
+covers that threat. What verity would add and FDE does not is protection against
+an **online** attacker who gains root and persists in `/usr`. Closing that
+requires an immutable, image-based, signed root filesystem, which is a different
+operating system from a pacman-managed rolling release, not a patch to this one.
 
 ## Non-claims
 

@@ -153,6 +153,43 @@ Apple EFI: skip (will fail). Framework / Heads: yes." && run_in_terminal cicada-
   fi
 fi
 
+# ---- UKI repair -----------------------------------------------------------
+# The installer builds these; this only fires when that failed (no systemd-ukify
+# in the image, an ESP it could not write). Without a UKI the kernel command line
+# and the initramfs sit unsigned on the ESP, so Secure Boot covers the one
+# component an attacker has no reason to touch.
+if command -v cicada-uki >/dev/null 2>&1 \
+   && ! compgen -G "/boot/EFI/Linux/*.efi" >/dev/null 2>&1 \
+   && ! compgen -G "/efi/EFI/Linux/*.efi" >/dev/null 2>&1; then
+  ask "Rebuild the signed boot image?" \
+"This machine has no unified kernel image, so the kernel command line and
+the initramfs are NOT covered by Secure Boot — an attacker with a few
+minutes and a USB stick can edit either one on the EFI partition.
+
+This rebuilds and signs them. Safe: the current boot entries stay until
+the new image is built and verified." && run_in_terminal cicada-uki build
+fi
+
+# ---- LUKS header backup ---------------------------------------------------
+# Asked once, here, because this is the moment a USB stick is most likely to be
+# in someone's hand — and because the attempt cap and the duress passphrase both
+# destroy keyslots by design, which makes header damage a routine outcome on this
+# system rather than an exotic one.
+if command -v cicada-luks-header >/dev/null 2>&1 \
+   && [[ ! -f /var/lib/cicada/header-backed-up ]]; then
+  ask "Back up the LUKS header to a USB?" \
+"The header holds the wrapped master key. If the first 16 MB of the disk
+is damaged, everything on it is gone — no passphrase can recover it.
+
+Read the warning first: the backup also UNDOES the duress wipe and the
+wrong-guess wipe for anyone holding it, and keeps working with
+passphrases you later revoke. Store it away from the laptop, or decline.
+
+Shows the instructions; nothing is written without your confirmation." && {
+    run_in_terminal bash -c 'cicada-luks-header; echo; echo "Plug in a USB, then:"; echo "  sudo cicada-luks-header backup /run/media/'"${USER}"'/USB/cicada-header.img"; echo; exec bash'
+  }
+fi
+
 # ---- Channel pin (updates stay Cicada, not raw Arch rolling) --------------
 if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
   sudo /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf >/dev/null 2>&1 || true

@@ -42,7 +42,7 @@
 
 - [x] Site (GitHub Pages) + honest live vs install messaging
 - [x] `docs/RELEASE.md` + `scripts/prepare-release.sh`
-- [ ] First GitHub Release with ISO + sha256 (`prepare-release.sh`)
+- [ ] First GitHub Release with ISO + signed sha256 (`prepare-release.sh`)
 - [ ] One successful `cicada-install` smoke on spare disk (human)
 - [ ] Hosted signed channel (blocks calling updates “done”)
 
@@ -52,5 +52,13 @@
 - [x] TPM2 enroll helper + Pixel quote bundle (`cicada-tpm-enroll`, `cicada-attest`)
 - [x] restic wrapper (`cicada-backup`)
 - [x] Amnesic live USB (`docs/AMNESIC.md`)
-- [ ] Signed ISO + reproducible build CI
+- [x] Unified kernel images so Secure Boot covers the cmdline + initramfs, and
+      PCR 11 exists to seal against (`cicada-uki`, `tests/uki.sh`)
+- [x] LUKS header backup/verify/restore (`cicada-luks-header`) — the attempt cap
+      and duress wipe make header damage routine, so the escape hatch is not optional
+- [x] age-sealed restic repository key (`cicada-backup seal`)
+- [x] Signed ISO (detached GPG over the sha256, verified in a clean keyring)
+- [ ] Reproducible build CI
+- [ ] Immutable signed rootfs (the only thing dm-verity would add over FDE — a
+      redesign, not a patch; see docs/GRAPHENE_PARITY.md)
 - [ ] Tier-3 hardware docs (Librem / NitroPad / Heads)

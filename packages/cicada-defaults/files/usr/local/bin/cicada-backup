@@ -20,10 +20,32 @@ need_repo() {
 
 need_restic() { command -v restic >/dev/null || die "restic not installed"; }
 
+# The repository key is the whole confidentiality of the backup: restic
+# encrypts with it, so a plaintext copy of it sitting in $HOME means anything
+# that can read $HOME can decrypt every snapshot ever taken — including the ones
+# on a USB stick the attacker found separately, and including history the live
+# disk no longer contains. cicada-run default-denies files precisely so apps
+# cannot do that, but anything host-admin still can.
+#
+# `cicada-backup seal` moves it behind an age passphrase. The sealed file is the
+# preferred one when both exist; restic gets the key on stdout from a command,
+# so the decrypted copy never lands on disk at all.
+SEALED="${PASS}.age"
+
 export RESTIC_REPOSITORY="${REPO:-}"
-if [[ -f "${PASS}" ]]; then
+if [[ -f "${SEALED}" ]]; then
+  command -v age >/dev/null || die "sealed key at ${SEALED} but age is not installed"
+  export RESTIC_PASSWORD_COMMAND="age -d ${SEALED}"
+elif [[ -f "${PASS}" ]]; then
   export RESTIC_PASSWORD_FILE="${PASS}"
 fi
+
+warn_plaintext() {
+  [[ -f "${PASS}" && ! -f "${SEALED}" ]] || return 0
+  echo "cicada-backup: ${PASS} is plaintext — anything that can read your home" >&2
+  echo "               directory can decrypt every snapshot. Seal it:" >&2
+  echo "                 cicada-backup seal" >&2
+}
 
 cmd="${1:-}"
 case "${cmd}" in
@@ -31,20 +53,51 @@ case "${cmd}" in
     need_restic
     [[ -n "${REPO}" ]] || die "CICADA_BACKUP_REPO=/run/media/cicada/USB/cicada-backup"
     mkdir -p "${REPO}" "$(dirname "${PASS}")"
+    # A sealed key already exists: minting a fresh one here would silently orphan
+    # every snapshot in the old repository.
+    [[ -f "${SEALED}" ]] && die "${SEALED} exists — this machine already has a repository key"
     if [[ ! -f "${PASS}" ]]; then
       umask 077
       # restic password is not the LUKS passphrase (backup leak ≠ disk unlock)
       openssl rand -base64 32 > "${PASS}"
-      echo "wrote ${PASS} — copy this file off-machine (age it if you want)."
+      echo "wrote ${PASS} — copy this file off-machine, then run 'cicada-backup seal'"
+      echo "to put it behind a passphrase instead of leaving it readable in \$HOME."
     fi
     export RESTIC_REPOSITORY="${REPO}"
     export RESTIC_PASSWORD_FILE="${PASS}"
     restic init
     command -v cicada-seal >/dev/null && cicada-seal append backup.init "{}" >/dev/null 2>&1 || true
     ;;
+  seal)
+    command -v age >/dev/null || die "age not installed"
+    [[ -f "${SEALED}" ]] && die "${SEALED} already exists"
+    [[ -f "${PASS}" ]] || die "no ${PASS} to seal (run cicada-backup init first)"
+    echo "Choose a passphrase for the backup key. You will need it to restore, so"
+    echo "it must be recoverable from memory or from a password manager that is"
+    echo "NOT only on this laptop — a backup you cannot decrypt is not a backup."
+    echo
+    echo "age will ask twice: once to seal, once to prove the sealed copy decrypts"
+    echo "back to the original before the plaintext is destroyed."
+    umask 077
+    age -p -o "${SEALED}.new" < "${PASS}" || die "age failed"
+    # Prove the sealed copy round-trips to the exact original before destroying
+    # the only usable key. Shredding first and discovering the problem later
+    # means every existing snapshot is permanently unreadable.
+    if ! diff -q <(age -d "${SEALED}.new") "${PASS}" >/dev/null 2>&1; then
+      rm -f "${SEALED}.new"
+      die "sealed key did not decrypt back to the original — nothing changed"
+    fi
+    mv -f "${SEALED}.new" "${SEALED}"
+    chmod 600 "${SEALED}"
+    shred -u "${PASS}" 2>/dev/null || rm -f "${PASS}"
+    echo "sealed → ${SEALED} (plaintext shredded)"
+    echo "Keep a copy of ${SEALED} off-machine: it is useless without the passphrase."
+    command -v cicada-seal >/dev/null && cicada-seal append backup.seal "{}" >/dev/null 2>&1 || true
+    ;;
   backup)
     need_restic
     need_repo
+    warn_plaintext
     restic backup \
       --one-file-system \
       --exclude "${HOME}/.cache" \
@@ -77,12 +130,22 @@ cicada-backup — restic, key separate from LUKS
 
   export CICADA_BACKUP_REPO=/run/media/cicada/USB/cicada-backup
   cicada-backup init
+  cicada-backup seal            # put the repo key behind an age passphrase
   cicada-backup backup
   cicada-backup snapshots
   cicada-backup check
   cicada-backup restore [dir]
 
 Password file: ~/.local/share/cicada/backup.pass (not the disk passphrase).
+After `seal` it becomes backup.pass.age and the plaintext is shredded; restic
+then receives the key on stdout and it never touches the disk again.
+
+Unsealed, that file is the confidentiality of every snapshot you have ever
+taken — including the ones on a stick someone else is now holding.
+
+Sealing makes backups interactive: age prompts for the passphrase on the
+terminal, so a sealed key cannot be driven from a timer. That is the trade — an
+unattended backup needs a key something unattended can read.
 EOF
     exit 1
     ;;

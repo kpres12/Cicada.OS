@@ -1,0 +1,24 @@
+# Rebuild the unified kernel images after anything that changes their contents.
+#
+# Named zy- rather than zz- on purpose. Pacman runs PostTransaction hooks in
+# filename order, so this must sort AFTER mkinitcpio's 90-mkinitcpio-install.hook
+# (or we would bake the previous initramfs into the new UKI) and BEFORE
+# zz-cicada-sbctl.hook (or sbctl would sign the old image and leave the new one
+# unsigned, which on a Secure Boot machine means it will not boot at all).
+#
+# cicada-uki signs what it builds itself, so the ordering is belt and braces
+# rather than the only thing holding this together.
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = File
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/systemd/boot/efi/*.efi.stub
+Target = usr/lib/initcpio/*
+Target = etc/kernel/cmdline
+
+[Action]
+Description = Cicada: rebuild + sign unified kernel images
+When = PostTransaction
+Exec = /usr/local/bin/cicada-uki build

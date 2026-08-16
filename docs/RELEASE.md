@@ -25,11 +25,27 @@ Or manually:
 ```bash
 ISO=out/cicada-YYYY.MM.DD-x86_64.iso
 shasum -a 256 "$ISO" | tee "${ISO}.sha256"
+GNUPGHOME=channel/keys/gnupg gpg --armor --detach-sign \
+  --default-key stable@cicada.os "${ISO}.sha256"
+GNUPGHOME=channel/keys/gnupg gpg --armor --export stable@cicada.os > cicada-stable.pub
 gh release create "vYYYY.MM.DD-beta" \
   --title "Cicada.OS YYYY.MM.DD (public beta)" \
   --notes-file docs/release-notes-beta.md \
-  "$ISO" "${ISO}.sha256"
+  "$ISO" "${ISO}.sha256" "${ISO}.sha256.asc" cicada-stable.pub
 ```
+
+**Never publish unsigned.** A sha256 next to the ISO authenticates nothing:
+whoever can replace the image can replace the hash beside it. The signature is
+the only thing that makes the download verifiable, which is why
+`prepare-release.sh` refuses to proceed without a signing key unless you set
+`CICADA_ALLOW_UNSIGNED=1`. It signs the `.sha256` rather than the 3 GiB image —
+SHA-256 already binds that file to the exact bytes, and downloaders reassemble
+from parts anyway.
+
+The verifying key must not be only the copy inside the ISO: that copy is
+authenticated by the very thing it is supposed to authenticate. Publish
+`cicada-stable.pub` as a release asset **and** put its fingerprint on the site,
+so a downloader can cross-check the two.
 
 Site Download button already points at `releases/latest`.
 
@@ -39,7 +55,9 @@ Site Download button already points at `releases/latest`.
 2. Rebuild ISO (includes 2-entry boot menu)
 3. Flash USB, smoke: Wi-Fi, Helium, Files, Settings wallpaper (on **install**)
 4. Run `cicada-install` onto a spare disk once; confirm firstrun wizard (not on live)
-5. Attach ISO + sha256 to the GitHub Release
+5. Attach ISO + sha256 + **signature + pubkey** to the GitHub Release
+   (`prepare-release.sh` verifies the signature in a throwaway keyring first —
+   signing then verifying with the secret key still present proves only that gpg ran)
 6. Announce: live = beta demo, install = keep your files
 
 ## First-run (installed only)

@@ -48,12 +48,23 @@ Graphene: enhanced verified boot, signed fs-verity for app updates, hardware att
 - [x] `cicada-install`: LUKS2 Argon2id + btrfs `@`/`@home` + systemd-boot (`--internal` for non-Apple NVMe)
 - [x] Device Ed25519 key + hash-chained seal log (`cicada-seal`); high-impact actions gated by `cicada-auth` ([docs/SEAL.md](SEAL.md))
 - [x] `cicada-attest` / `cicada-quote-verify`: TPM2 quote if `/dev/tpmrm0` exists; otherwise export pubkey for a Pixel to pin ([docs/ATTEST.md](ATTEST.md))
-- [x] `cicada-tpm-enroll`: PCR 0,1,2,3,7 + passphrase fallback (exit 2 if no TPM)
-- [x] `cicada-sbctl-enroll`: Setup Mode only (exit 2 on Apple EFI)
+- [x] `cicada-tpm-enroll`: PCR 0+7, or 0+7+11 when PCR 11 shows a UKI actually measured; passphrase fallback (exit 2 if no TPM)
+- [x] `cicada-sbctl-enroll`: Setup Mode only (exit 2 on Apple EFI); builds and signs the UKIs so the enrolment covers more than `vmlinuz`
+- [x] `cicada-uki`: kernel + initramfs + cmdline + os-release as one signed PE, built at install and rebuilt by pacman hook. Unsigned type-1 entries are retired only after every image verifies
+- [x] Signed releases (`prepare-release.sh`): detached GPG signature over the ISO's sha256, verified in a clean keyring against the published pubkey
 - [ ] Measured boot as default unlock (enroll is opt-in after first boot)
 - [ ] Later: Pixel verifies laptop `tpm2_quote` in an app (not Graphene Auditor)
 
 **Gap:** Apple EFI on the prototype MBA cannot match Pixel+Titan verified boot. The Pixel pin is an identity for the seal log, not a Titan substitute.
+
+**On dm-verity specifically:** Graphene needs it because Android's system
+partition is *unencrypted* and therefore offline-modifiable. Cicada's `/usr` is
+inside the LUKS volume, so the offline-tampering threat verity addresses is
+already covered — an attacker who cannot unlock the disk cannot read `/usr`, let
+alone modify it. The residual gap is an **online** attacker with root persisting
+in `/usr`, and closing that needs an immutable image-based signed rootfs. That is
+a different OS from a pacman-managed rolling release, so it is a redesign to
+consider, not a checkbox to tick.
 
 ## 4. Auto reboot / duress / memory clearing
 

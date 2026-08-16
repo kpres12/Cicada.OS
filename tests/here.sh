@@ -772,6 +772,83 @@ echo "==> LUKS max-fail behavioral + product spine"
 bash "${ROOT}/tests/luks-max-fail.sh" || die "luks-max-fail (run tests/luks-max-fail.sh for detail)"
 say "attempt-cap wired: install→hook→ESP; session typos safe; daily-driver intact"
 
+# The attempt cap and the duress passphrase both destroy keyslots on purpose,
+# which makes this the one distro where a damaged header is routine rather than
+# exotic. The escape hatch has to exist AND has to refuse the two placements that
+# make it useless (same volume, same physical disk).
+echo "==> LUKS header backup (the only way back from a dead header)"
+lh="${CICADA_BIN}/cicada-luks-header"
+test -x "${lh}" || die "cicada-luks-header missing: header damage would be unrecoverable"
+grep -q 'luksHeaderBackup' "${lh}" || die "no backup path"
+grep -q 'luksHeaderRestore' "${lh}" || die "no restore path"
+grep -q 'refusing to overwrite an existing header backup' "${lh}" || die "backup would clobber an existing one"
+grep -q 'header backup there protects nothing' "${lh}" || die "must refuse a backup onto the encrypted root"
+grep -q 'the same physical disk' "${lh}" || die "must refuse a backup onto the ESP of the same disk"
+# A header from a different install dumps cleanly and restores cleanly and
+# leaves an undecryptable volume. UUID is the only thing that catches it.
+grep -q 'luksUUID' "${lh}" || die "restore does not check the header belongs to this volume"
+grep -q 'DIFFERENT volume' "${lh}" || die "UUID mismatch is not refused"
+# Verify the artefact, not the exit status: a truncated header is discovered
+# only in the emergency it was supposed to cover.
+grep -q 'not a readable LUKS header' "${lh}" || die "backup is never verified after writing"
+# This tool is also a bypass. Silence about that would be dishonest.
+grep -q 'UNDOES the duress wipe' "${lh}" || die "must state that a header backup reverses the duress/attempt-cap wipe"
+grep -q 'passphrases you later revoke' "${lh}" || die "must state that old passphrases keep working"
+say "backup/verify/restore, refuses same-disk, UUID-checked, states the bypass"
+
+echo "==> UKI behavioral (Secure Boot must cover the cmdline and initramfs)"
+bash "${ROOT}/tests/uki.sh" || die "uki (run tests/uki.sh for detail)"
+say "UKI built+verified before the unsigned fallback is retired; PCR 11 honest"
+
+echo "==> backup repository key is not left in plaintext"
+cb="${CICADA_BIN}/cicada-backup"
+grep -q 'RESTIC_PASSWORD_COMMAND' "${cb}" || die "sealed key path missing — key would have to hit disk"
+grep -q 'backup.pass}.age\|SEALED="${PASS}.age"' "${cb}" || die "no sealed key file"
+grep -q 'cicada-backup seal' "${cb}" || die "seal is never suggested"
+# Shredding the plaintext before proving the sealed copy decrypts would make
+# every existing snapshot permanently unreadable.
+python3 - <<PY || die "seal shreds the plaintext before verifying the sealed copy round-trips"
+import pathlib, sys
+t = pathlib.Path("${cb}").read_text()
+sys.exit(0 if t.index("did not decrypt back to the original") < t.index("shred -u \"\${PASS}\"") else 1)
+PY
+grep -q 'already exists' "${cb}" || die "init could mint a second key and orphan the repo"
+say "age-sealed repo key, round-trip proven before the plaintext is shredded"
+
+echo "==> releases are signed (a sha256 authenticates nothing)"
+pr="${ROOT}/scripts/prepare-release.sh"
+grep -q 'detach-sign' "${pr}" || die "release is published unsigned"
+grep -q 'CICADA_ALLOW_UNSIGNED' "${pr}" || die "unsigned publishing must be an explicit opt-in"
+# Verifying with the secret key still in the keyring proves only that gpg ran.
+grep -q 'GNUPGHOME="${vhome}"' "${pr}" || die "signature is never verified against the published pubkey alone"
+grep -q 'cicada-stable.pub' "${pr}" || die "verifying key is not published as an asset"
+grep -q 'gpg --verify' "${pr}" || die "downloader instructions skip the signature"
+grep -q 'gpg --verify' "${ROOT}/site/download/index.html" || die "download page does not tell anyone to verify"
+grep -q 'authenticates nothing' "${ROOT}/site/download/index.html" || die "download page must say why a checksum alone is not enough"
+
+# The site publishes the key fingerprint out of band, which is the only thing
+# that makes the shipped pubkey worth anything — and a hardcoded fingerprint is
+# exactly the kind of string that silently stops matching the key. Pin it to the
+# tracked public key so a rotation cannot ship a site that vouches for the old one.
+pub="${ROOT}/channel/keys/cicada-stable.pub"
+if command -v gpg >/dev/null 2>&1 && [[ -f "${pub}" ]]; then
+  vh="$(mktemp -d)"
+  if GNUPGHOME="${vh}" gpg --batch --quiet --import "${pub}" 2>/dev/null; then
+    real_fpr="$(GNUPGHOME="${vh}" gpg --with-colons --fingerprint stable@cicada.os 2>/dev/null \
+                | awk -F: '/^fpr:/{print $10; exit}')"
+    site_fpr="$(grep -oE '([0-9A-F]{4} ){5} ?([0-9A-F]{4} ?){5}' "${ROOT}/site/download/index.html" \
+                | head -1 | tr -d ' ')"
+    if [[ -n "${real_fpr}" && -n "${site_fpr}" ]]; then
+      [[ "${real_fpr}" == "${site_fpr}" ]] \
+        || die "site fingerprint ${site_fpr} != signing key ${real_fpr} — the download page vouches for the wrong key"
+    else
+      die "could not extract a fingerprint from the site or the pubkey"
+    fi
+  fi
+  rm -rf "${vh}"
+fi
+say "sha256 signed, verified in a clean keyring, pubkey shipped, site fingerprint pinned"
+
 echo "==> Tirimid OS checklist (Wi-Fi + Helium wiring)"
 bash "${ROOT}/tests/tirimid.sh" || die "tirimid (run tests/tirimid.sh for detail)"
 say "Tirimid items 2+7 wired in tree"

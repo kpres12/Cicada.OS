@@ -36,6 +36,14 @@ if [[ -n "${CICADA_BTRFS_SUBVOL:-}" ]]; then
   CMDLINE="${CMDLINE} rootflags=subvol=${CICADA_BTRFS_SUBVOL}"
 fi
 
+# The command line has to live in a file, not just in loader entries, because a
+# UKI bakes it into the signed image and reads it from here. Keeping one source
+# means the type-1 fallback and the UKI can never disagree about how this machine
+# boots. cicada-uki appends lockdown=confidentiality for the hardened kernel.
+mkdir -p /etc/kernel
+printf '%s\n' "${CMDLINE}" > /etc/kernel/cmdline
+chmod 644 /etc/kernel/cmdline
+
 ucode=""
 [[ -f /boot/intel-ucode.img ]] && ucode="initrd /intel-ucode.img"
 [[ -f /boot/amd-ucode.img ]] && ucode="${ucode}"$'\n'"initrd /amd-ucode.img"
@@ -67,6 +75,24 @@ initrd /initramfs-linux.img
 options ${CMDLINE}
 EOF
 fi
+
+# Unified kernel images. The type-1 entries above are written first and on
+# purpose: they are the thing that boots this machine if the UKI build fails, and
+# cicada-uki only deletes them once every UKI has been built AND verified to be a
+# real PE carrying .linux/.initrd/.cmdline.
+#
+# This is not a nicety. Without a UKI, sbctl signs vmlinuz and nothing else — the
+# initramfs is a cpio and the loader entry is a text file, neither of which can
+# hold a signature. An evil maid appends init=/bin/sh to cicada.conf and Secure
+# Boot waves it through, because the kernel it checked was never modified. It is
+# also what makes PCR 11 exist to seal against, so it is the difference between
+# the Tier 2 the README promises and the Tier 1 that was actually shipping.
+/usr/local/bin/cicada-uki build || {
+  echo "==> WARNING: no unified kernel image was built."
+  echo "    This machine will boot, but the kernel command line and the"
+  echo "    initramfs are NOT covered by Secure Boot, and there is no PCR 11"
+  echo "    to seal the disk against. Run 'cicada-uki status' after first boot."
+}
 
 # User: no autologin. Empty live password must not follow onto disk.
 id cicada >/dev/null 2>&1 || useradd -m -G wheel,video,audio,storage,rfkill,network,input,users -s /bin/bash cicada

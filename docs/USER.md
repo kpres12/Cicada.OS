@@ -58,16 +58,48 @@ Open Terminal (dock). Nothing here is required for browsing; do it when you care
 sudo cicada-duress-enroll    # second disk passphrase; see below
 sudo cicada-tpm-enroll       # skip / exit 2 on Apple EFI
 sudo cicada-sbctl-enroll     # skip unless firmware is in Setup Mode
+cicada-uki status            # is the boot image signed? (installer builds it)
 cicada-attest                # copy ~/cicada-attest/device.pub onto a Pixel you own
 ```
+
+`cicada-uki status` should show a ✓ per kernel and **no** leftover type-1
+entries. Those entries are an editable copy of your kernel command line on an
+unencrypted partition; the signed image exists so that editing it stops working.
+If it reports none, run `sudo cicada-uki build`.
+
+### Back up the LUKS header — read the warning first
+
+The header holds the wrapped master key. Damage the first 16 MB of the disk and
+everything on it is gone permanently; no passphrase recovers it. That matters
+more here than elsewhere, because the duress passphrase and the 20-wrong-guess
+cap both destroy keyslots *on purpose*.
+
+The same backup undoes both of those wipes for anyone holding the file, and keeps
+working with passphrases you later revoke. If you are more worried about coercion
+than about hardware failure, not having one is a legitimate choice.
+
+```bash
+sudo cicada-luks-header backup /run/media/cicada/YOURUSB/cicada-header.img
+```
+
+Store it away from the laptop. It refuses to write to this disk or its EFI
+partition, because a header backup that dies with the disk is not a backup.
+
+### Backups
 
 Backups go to a **different** USB, never this disk:
 
 ```bash
 export CICADA_BACKUP_REPO=/run/media/cicada/YOURUSB/cicada-backup
 cicada-backup init
+cicada-backup seal           # put the repo key behind a passphrase
 cicada-backup backup
 ```
+
+`seal` matters: without it, `~/.local/share/cicada/backup.pass` sits in plaintext
+in your home directory, and that one file decrypts every snapshot you have ever
+taken — including the ones on a stick someone else is now holding. Sealing makes
+backups interactive (age prompts on the terminal), which is the trade.
 
 ---
 

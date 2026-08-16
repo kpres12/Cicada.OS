@@ -101,6 +101,10 @@ libnotify
 lynis
 linux-hardened
 sbctl
+# Builds the unified kernel images (cicada-uki). Without this, sbctl signs the
+# kernel but not the cmdline or the initramfs, and there is no PCR 11 to seal
+# the disk against — i.e. Tier 2 is unreachable.
+systemd-ukify
 tpm2-tools
 hypridle
 qt6ct

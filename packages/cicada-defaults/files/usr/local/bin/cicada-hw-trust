@@ -92,7 +92,21 @@ tpm2=0; sb_user=0; uki=0
 [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]] && \
   [[ "$(cat /sys/class/tpm/tpm0/tpm_version_major 2>/dev/null)" == 2 ]] && tpm2=1
 command -v sbctl >/dev/null 2>&1 && sbctl status 2>/dev/null | grep -qiE 'setup mode.*(enabled|yes)|owner' && sb_user=1
-[[ -d /efi/EFI/Linux || -d /boot/EFI/Linux ]] && uki=1
+# An empty EFI/Linux directory is not a UKI, and a UKI sitting on the ESP is not
+# a UKI that booted. PCR 11 is the only honest answer: systemd-stub extends it
+# with the image's own sections, so non-zero means this boot was measured and
+# all-zero means it was not. Claiming Tier 2 off a directory listing is exactly
+# the kind of check that let the old tier report disagree with reality.
+if compgen -G "/boot/EFI/Linux/*.efi" >/dev/null 2>&1 || compgen -G "/efi/EFI/Linux/*.efi" >/dev/null 2>&1; then
+  uki=1
+  if [[ "${tpm2}" == 1 ]]; then
+    uki=0
+    for _p in /sys/class/tpm/tpm0/pcr-sha256/11 /sys/class/tpm/tpm0/pcrs; do
+      [[ -r "${_p}" ]] || continue
+      [[ -n "$(tr -d '[:space:]' < "${_p}" 2>/dev/null | tr -d '0')" ]] && uki=1
+    done
+  fi
+fi
 
 if [[ "${tpm2}" == 0 ]]; then
   printf '  \033[1mTier 0\033[0m — no TPM2. The passphrase is the whole boundary and\n'

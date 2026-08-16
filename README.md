@@ -71,9 +71,27 @@ Full detail: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
   would make the disk unlock itself on power-on
 - USB unlock token as a second factor (`cicada-keyfile-enroll`), `--and` mode
   requires two tokens so a lost stick cannot destroy the disk
+- LUKS header backup/verify/restore (`cicada-luks-header`) — refuses to write to
+  the disk it protects, and says out loud that the backup also undoes the duress
+  and attempt-cap wipes
 - No disk swap ever; **zram** (RAM-only, no writeback) for memory relief
 - Core dumps refused at both systemd and kernel level
 - `noatime`, free-RAM scrub at shutdown
+
+**Boot chain**
+- **Unified kernel images** (`cicada-uki`) — kernel, initramfs, cmdline and
+  os-release in one signed PE. Without this, Secure Boot signs `vmlinuz` and
+  nothing else: an initramfs is a cpio and a loader entry is a text file, so an
+  evil maid edits `options … init=/bin/sh` on the plaintext ESP and the firmware
+  boots it, having verified only the component nobody needed to touch
+- That is also what creates **PCR 11**, so `cicada-tpm-enroll --pcrs 0+7+11`
+  binds the disk key to this exact kernel+initramfs+cmdline
+- Type-1 entries are removed only after every UKI is built *and* verified to be
+  a real PE carrying `.linux`/`.initrd`/`.cmdline`; `cicada-uki restore` reverses it
+- Your own Secure Boot keys via `cicada-sbctl-enroll`; kernel upgrades rebuild
+  and re-sign the UKI through a pacman hook
+- Releases are **GPG-signed** — a published sha256 authenticates nothing, since
+  whoever can swap the ISO can swap the hash beside it
 
 **Anti-forensics** (mapped against *The Law Enforcement and Forensic Examiner's
 Introduction to Linux*, which is the actual playbook)

@@ -1,0 +1,432 @@
+#!/usr/bin/env bash
+# Build the Unified Kernel Images that make the Tier 2 claim true.
+#
+# THE HOLE THIS CLOSES
+#
+# A type-1 systemd-boot entry is three separate things on a plaintext ESP: the
+# kernel, the initramfs, and a text file holding the kernel command line. Secure
+# Boot verifies exactly one of them. sbctl signs PE binaries — vmlinuz and the
+# bootloader — but an initramfs is a cpio archive and a loader entry is a .conf,
+# and neither can carry a signature. So on a machine with our own Secure Boot
+# keys enrolled, an evil maid still edits
+#
+#     /boot/loader/entries/cicada.conf   ->   options ... init=/bin/sh
+#
+# or swaps initramfs-linux.img outright, and the firmware boots it happily,
+# because the only signature it checked was the kernel's and the kernel is
+# untouched. Secure Boot without a UKI protects the one component nobody needed
+# to modify.
+#
+# A UKI puts the stub, the cmdline, the os-release and the initramfs into the
+# *sections of a single PE binary*, which is then signed as a unit. Changing any
+# byte of the cmdline or the initramfs breaks that one signature. That is the
+# whole point, and it is also what makes PCR 11 meaningful: systemd-stub measures
+# the UKI's sections into PCR 11, so `cicada-tpm-enroll --pcrs 0+7+11` seals the
+# disk key to *this exact kernel+initramfs+cmdline*. Boot anything else and the
+# TPM simply refuses to unseal.
+#
+# FAILURE MODE IS THE DESIGN CONSTRAINT
+#
+# A machine that will not boot is far worse than a machine that boots with a
+# weaker chain. So: type-1 entries are only removed after every expected UKI has
+# been built AND verified to be a real PE with the sections we asked for. If
+# anything is missing, ukify is absent, or a build fails, we leave the type-1
+# entries exactly where they are and say so. `cicada-uki restore` puts them back
+# from /etc/kernel/cmdline at any time.
+set -euo pipefail
+
+say()  { printf '%s\n' "$*"; }
+warn() { printf 'cicada-uki: %s\n' "$*" >&2; }
+die()  { warn "$*"; exit 1; }
+
+# --- ESP ---------------------------------------------------------------------
+
+find_esp() {
+  local p
+  if command -v bootctl >/dev/null 2>&1; then
+    p="$(bootctl --print-esp-path 2>/dev/null || true)"
+    [[ -n "${p}" && -d "${p}" ]] && { printf '%s' "${p}"; return 0; }
+  fi
+  for p in /efi /boot/efi /boot; do
+    [[ -d "${p}/EFI" || -d "${p}/loader" ]] && { printf '%s' "${p}"; return 0; }
+  done
+  return 1
+}
+
+ESP="${CICADA_ESP:-$(find_esp || true)}"
+[[ -n "${ESP}" ]] || die "no ESP found (looked at bootctl, /efi, /boot/efi, /boot)"
+UKIDIR="${ESP}/EFI/Linux"
+ENTRIES="${ESP}/loader/entries"
+CMDLINE_FILE="${CICADA_CMDLINE_FILE:-/etc/kernel/cmdline}"
+
+# Seams for tests/uki.sh, which drives this script against a fake kernel tree so
+# the "does it keep the fallback entries when a build fails" behaviour is proven
+# rather than asserted by grep. Nothing outside the harness sets these; on a real
+# machine every one of them is the normal path.
+MODDIR="${CICADA_MODULES_DIR:-/usr/lib/modules}"
+BOOTDIR="${CICADA_BOOTDIR:-/boot}"
+MKINITCPIO_CONF="${CICADA_MKINITCPIO_CONF:-/etc/mkinitcpio.conf}"
+OSRELEASE="${CICADA_OS_RELEASE:-/etc/os-release}"
+
+need_root() {
+  [[ "${CICADA_UKI_ASSUME_ROOT:-0}" == "1" ]] && return 0
+  [[ ${EUID} -eq 0 ]] || die "run as root"
+}
+
+# --- kernels -----------------------------------------------------------------
+
+# Arch stamps the owning package into /usr/lib/modules/<kver>/pkgbase. That is
+# the only reliable link from an installed kernel to the initramfs mkinitcpio
+# generated for it — parsing version strings out of filenames breaks the first
+# time someone installs linux-lts or a -rc.
+kernels() {
+  local mod pkgbase
+  shopt -s nullglob
+  for mod in "${MODDIR}"/*/pkgbase; do
+    pkgbase="$(cat "${mod}" 2>/dev/null || true)"
+    [[ -n "${pkgbase}" ]] || continue
+    [[ -f "$(dirname "${mod}")/vmlinuz" ]] || continue
+    printf '%s %s\n' "${pkgbase}" "$(basename "$(dirname "${mod}")")"
+  done
+  shopt -u nullglob
+}
+
+# linux-hardened is the etched default (lockdown + the hardened allocator); stock
+# linux is the fallback that keeps out-of-tree Broadcom wl working on the MBA.
+# Order matters only for picking loader.conf's default.
+preferred_pkgbase() {
+  local pkgbase _kver
+  while read -r pkgbase _kver; do
+    [[ "${pkgbase}" == "linux-hardened" ]] && { printf 'linux-hardened'; return 0; }
+  done < <(kernels)
+  while read -r pkgbase _kver; do
+    printf '%s' "${pkgbase}"; return 0
+  done < <(kernels)
+  return 1
+}
+
+uki_path()  { printf '%s/cicada-%s.efi' "${UKIDIR}" "$1"; }
+uki_title() {
+  case "$1" in
+    linux-hardened) printf 'Cicada.OS' ;;
+    linux)          printf 'Cicada.OS (Wi-Fi / Broadcom)' ;;
+    *)              printf 'Cicada.OS (%s)' "$1" ;;
+  esac
+}
+
+# The hardened kernel carries lockdown=confidentiality, which the stock fallback
+# must not: lockdown blocks the unsigned module loads that out-of-tree wl needs,
+# and a Wi-Fi rescue entry that cannot load Wi-Fi is not a rescue entry.
+# A per-flavour file wins over this, so the choice stays the operator's.
+cmdline_for() {
+  local pkgbase="$1" base extra=""
+  [[ -f "${CMDLINE_FILE}-${pkgbase}" ]] && { cat "${CMDLINE_FILE}-${pkgbase}"; return 0; }
+  [[ -f "${CMDLINE_FILE}" ]] || return 1
+  base="$(tr -d '\n' < "${CMDLINE_FILE}")"
+  [[ "${pkgbase}" == "linux-hardened" ]] && extra=" lockdown=confidentiality"
+  printf '%s%s' "${base}" "${extra}"
+}
+
+# --- verification ------------------------------------------------------------
+
+# A truncated or half-written UKI is a brick, and we are about to delete the
+# entries that would have rescued it. So do not trust exit status alone: prove
+# the artefact is a PE and that the two sections whose integrity is the entire
+# reason for doing this actually landed in it.
+verify_uki() {
+  local f="$1" magic size
+  [[ -s "${f}" ]] || { warn "verify: ${f} missing or empty"; return 1; }
+  magic="$(head -c2 "${f}" 2>/dev/null || true)"
+  [[ "${magic}" == "MZ" ]] || { warn "verify: ${f} is not a PE binary"; return 1; }
+  size="$(stat -c%s "${f}" 2>/dev/null || stat -f%z "${f}" 2>/dev/null || echo 0)"
+  # A kernel plus an initramfs is tens of MiB. Anything under 1 MiB means the
+  # sections did not get attached, however cleanly ukify exited.
+  [[ "${size}" -ge 1048576 ]] || { warn "verify: ${f} is only ${size} bytes"; return 1; }
+  if command -v ukify >/dev/null 2>&1; then
+    local sections
+    sections="$(ukify inspect "${f}" 2>/dev/null || true)"
+    if [[ -n "${sections}" ]]; then
+      grep -q '\.linux'   <<<"${sections}" || { warn "verify: ${f} has no .linux section"; return 1; }
+      grep -q '\.initrd'  <<<"${sections}" || { warn "verify: ${f} has no .initrd section"; return 1; }
+      grep -q '\.cmdline' <<<"${sections}" || { warn "verify: ${f} has no .cmdline section"; return 1; }
+    fi
+  fi
+  return 0
+}
+
+# --- build -------------------------------------------------------------------
+
+build_one() {
+  local pkgbase="$1" kver="$2"
+  local vmlinuz="${MODDIR}/${kver}/vmlinuz"
+  local initrd="${BOOTDIR}/initramfs-${pkgbase}.img"
+  local out tmp cmdline
+  out="$(uki_path "${pkgbase}")"
+
+  [[ -f "${vmlinuz}" ]] || { warn "no kernel image for ${pkgbase} (${vmlinuz})"; return 1; }
+  [[ -f "${initrd}" ]]  || { warn "no initramfs for ${pkgbase} (${initrd}) — run mkinitcpio -P"; return 1; }
+  cmdline="$(cmdline_for "${pkgbase}")" \
+    || { warn "no ${CMDLINE_FILE} — cannot bake a command line"; return 1; }
+  [[ -n "${cmdline}" ]] || { warn "${CMDLINE_FILE} is empty"; return 1; }
+
+  local -a initrds=("${initrd}")
+  # With the `microcode` mkinitcpio hook the early ucode is already inside the
+  # image. Without it we must prepend the ucode archives ourselves, or the CPU
+  # runs unpatched — which on some Intel parts means the machine is missing the
+  # microcode fixes for the very side-channel bugs the hardened kernel assumes.
+  if ! grep -qE '^HOOKS=.*\bmicrocode\b' "${MKINITCPIO_CONF}" 2>/dev/null; then
+    local uc
+    for uc in "${BOOTDIR}/intel-ucode.img" "${BOOTDIR}/amd-ucode.img"; do
+      [[ -f "${uc}" ]] && initrds=("${uc}" "${initrds[@]}")
+    done
+  fi
+
+  mkdir -p "${UKIDIR}"
+  # Build to a temp name in the same directory and rename into place, so a
+  # crash mid-write never leaves a half-UKI where a bootable one used to be.
+  tmp="${out}.new"
+  rm -f "${tmp}"
+
+  local -a args=(
+    build
+    --linux="${vmlinuz}"
+    --cmdline="${cmdline}"
+    --uname="${kver}"
+    --output="${tmp}"
+  )
+  local i
+  for i in "${initrds[@]}"; do args+=(--initrd="${i}"); done
+  # systemd-boot reads the menu title out of the embedded os-release, which is
+  # already branded Cicada.OS by the installer.
+  [[ -f "${OSRELEASE}" ]] && args+=(--os-release="@${OSRELEASE}")
+
+  if ! ukify "${args[@]}"; then
+    warn "ukify failed for ${pkgbase}"
+    rm -f "${tmp}"
+    return 1
+  fi
+
+  if ! verify_uki "${tmp}"; then
+    rm -f "${tmp}"
+    return 1
+  fi
+  mv -f "${tmp}" "${out}"
+  say "  built  $(uki_title "${pkgbase}")  ->  ${out#"${ESP}"}"
+  return 0
+}
+
+# sbctl sign -s both signs the file and records it in sbctl's database, so the
+# existing zz-cicada-sbctl.hook re-signs it on every later kernel bump without
+# knowing anything about UKIs.
+sign_ukis() {
+  command -v sbctl >/dev/null 2>&1 || return 0
+  sbctl status 2>/dev/null | grep -qiE 'setup mode.*(disabled|no)|installed.*true' || true
+  local f signed=0
+  shopt -s nullglob
+  for f in "${UKIDIR}"/cicada-*.efi; do
+    if sbctl sign -s "${f}" >/dev/null 2>&1; then
+      signed=$((signed + 1))
+    fi
+  done
+  shopt -u nullglob
+  [[ "${signed}" -gt 0 ]] && say "  signed ${signed} UKI(s) with sbctl"
+  return 0
+}
+
+# Type-1 entries are the fallback we are trying to make unnecessary. Leaving them
+# next to a UKI is not merely untidy: on a Tier 2 machine they are an
+# attacker-editable cmdline sitting one menu keypress away from the signed one.
+# (PCR 11 sealing means booting them would fail to unseal the disk — but on a
+# machine with Secure Boot and no TPM there is nothing to catch it.)
+drop_type1() {
+  local e removed=0
+  # `rm -f` succeeds on a file that was never there, so count existence, not the
+  # exit status, or this reports removing entries that did not exist.
+  for e in "${ENTRIES}"/cicada.conf "${ENTRIES}"/cicada-wifi.conf "${ENTRIES}"/cicada-hardened.conf; do
+    [[ -e "${e}" ]] || continue
+    rm -f "${e}" && removed=$((removed + 1))
+  done
+  [[ "${removed}" -gt 0 ]] && say "  removed ${removed} unsigned type-1 loader entr(ies)"
+  return 0
+}
+
+# Rewritten rather than sed -i'd: the ESP is vfat, and an in-place edit that
+# fails halfway leaves loader.conf truncated, which is a machine that boots to a
+# bootloader with no default and no menu. Write beside it, then rename.
+set_default() {
+  local pkgbase="$1" conf="${ESP}/loader/loader.conf" tmpconf line seen=0
+  [[ -f "${conf}" ]] || return 0
+  tmpconf="${conf}.new"
+  : > "${tmpconf}"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    if [[ "${line}" == default\ * ]]; then
+      printf 'default cicada-%s.efi\n' "${pkgbase}" >> "${tmpconf}"
+      seen=1
+    else
+      printf '%s\n' "${line}" >> "${tmpconf}"
+    fi
+  done < "${conf}"
+  [[ "${seen}" == 1 ]] || printf 'default cicada-%s.efi\n' "${pkgbase}" >> "${tmpconf}"
+  mv -f "${tmpconf}" "${conf}"
+}
+
+cmd_build() {
+  need_root
+  command -v ukify >/dev/null 2>&1 || {
+    warn "ukify not installed (pacman -S systemd-ukify)."
+    warn "Keeping the unsigned type-1 loader entries: without a UKI the kernel"
+    warn "command line and the initramfs are NOT covered by Secure Boot."
+    return 2
+  }
+
+  local -a found=()
+  local pkgbase kver
+  while read -r pkgbase kver; do
+    [[ -n "${pkgbase}" ]] && found+=("${pkgbase} ${kver}")
+  done < <(kernels)
+  [[ "${#found[@]}" -gt 0 ]] || die "no kernels found under /usr/lib/modules"
+
+  say "==> building unified kernel images in ${UKIDIR}"
+  local ok=0 fail=0 entry
+  for entry in "${found[@]}"; do
+    # shellcheck disable=SC2086
+    if build_one ${entry}; then ok=$((ok + 1)); else fail=$((fail + 1)); fi
+  done
+
+  if [[ "${ok}" -eq 0 ]]; then
+    warn "no UKI could be built — leaving type-1 entries in place"
+    return 1
+  fi
+
+  sign_ukis
+  local pref
+  pref="$(preferred_pkgbase || true)"
+  [[ -n "${pref}" && -f "$(uki_path "${pref}")" ]] && set_default "${pref}"
+
+  if [[ "${fail}" -eq 0 ]]; then
+    drop_type1
+  else
+    warn "${fail} kernel(s) failed to build a UKI — keeping type-1 entries as a fallback"
+  fi
+
+  # Stale UKIs for kernels that are no longer installed would still boot, and
+  # would still be signed. Remove them.
+  local f base
+  shopt -s nullglob
+  for f in "${UKIDIR}"/cicada-*.efi; do
+    base="$(basename "${f}" .efi)"; base="${base#cicada-}"
+    if ! kernels | awk '{print $1}' | grep -qx "${base}"; then
+      rm -f "${f}" && say "  pruned stale ${base} UKI"
+    fi
+  done
+  shopt -u nullglob
+
+  command -v cicada-seal >/dev/null 2>&1 && \
+    cicada-seal append uki.build "{\"built\":${ok},\"failed\":${fail}}" >/dev/null 2>&1 || true
+
+  say
+  say "Kernel command line and initramfs are now inside the signed image."
+  if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+    say "PCR 11 now measures this UKI. Bind the disk to it:"
+    say "    cicada-tpm-enroll --pcrs 0+7+11"
+  fi
+  return 0
+}
+
+cmd_restore() {
+  need_root
+  [[ -f "${CMDLINE_FILE}" ]] || die "no ${CMDLINE_FILE} to rebuild entries from"
+  mkdir -p "${ENTRIES}"
+  local pkgbase kver cmdline name ucode=""
+  [[ -f "${BOOTDIR}/intel-ucode.img" ]] && ucode="initrd /intel-ucode.img"
+  [[ -f "${BOOTDIR}/amd-ucode.img" ]] && ucode="${ucode}"$'\n'"initrd /amd-ucode.img"
+
+  while read -r pkgbase kver; do
+    [[ -n "${pkgbase}" ]] || continue
+    cmdline="$(cmdline_for "${pkgbase}")" || continue
+    case "${pkgbase}" in
+      linux-hardened) name="cicada.conf" ;;
+      linux)          name="cicada-wifi.conf" ;;
+      *)              name="cicada-${pkgbase}.conf" ;;
+    esac
+    cat > "${ENTRIES}/${name}" <<EOF
+title $(uki_title "${pkgbase}")
+linux /vmlinuz-${pkgbase}
+${ucode}
+initrd /initramfs-${pkgbase}.img
+options ${cmdline}
+EOF
+    say "  restored ${ENTRIES#"${ESP}"}/${name}"
+  done < <(kernels)
+  warn "type-1 entries are back: the cmdline and initramfs are again unsigned."
+  return 0
+}
+
+cmd_status() {
+  local pkgbase kver f n=0
+  say "ESP           ${ESP}"
+  say "UKI directory ${UKIDIR}"
+  say "cmdline       ${CMDLINE_FILE}$( [[ -f ${CMDLINE_FILE} ]] || printf ' (MISSING)' )"
+  say
+  shopt -s nullglob
+  for f in "${UKIDIR}"/cicada-*.efi; do
+    n=$((n + 1))
+    if verify_uki "${f}" 2>/dev/null; then
+      printf '  \033[32m✓\033[0m %s\n' "$(basename "${f}")"
+    else
+      printf '  \033[31m!\033[0m %s (failed verification)\n' "$(basename "${f}")"
+    fi
+    if command -v sbctl >/dev/null 2>&1; then
+      if sbctl verify 2>/dev/null | grep -q "$(basename "${f}")"; then
+        printf '      signed: yes\n'
+      fi
+    fi
+  done
+  local stale=""
+  local nstale=0
+  for f in "${ENTRIES}"/cicada*.conf; do
+    stale="${stale}      ${f}"$'\n'
+    nstale=$((nstale + 1))
+  done
+  shopt -u nullglob
+
+  if [[ "${n}" -eq 0 ]]; then
+    printf '  \033[31m!\033[0m no UKI — cmdline and initramfs are unsigned (Tier 1 at best)\n'
+    printf '      fix: cicada-uki build\n'
+  fi
+  if [[ "${nstale}" -gt 0 ]]; then
+    printf '  \033[33m!\033[0m %d unsigned type-1 entr(ies) still bootable:\n' "${nstale}"
+    printf '%s' "${stale}"
+  fi
+  while read -r pkgbase kver; do
+    [[ -n "${pkgbase}" ]] || continue
+    [[ -f "$(uki_path "${pkgbase}")" ]] || printf '  \033[33m!\033[0m %s (%s) has no UKI\n' "${pkgbase}" "${kver}"
+  done < <(kernels)
+  return 0
+}
+
+case "${1:-build}" in
+  build)   cmd_build ;;
+  restore) cmd_restore ;;
+  status)  cmd_status ;;
+  -h|--help|help)
+    cat <<'EOF'
+cicada-uki — unified kernel images, so Secure Boot covers the cmdline and initramfs
+
+  cicada-uki build     build + sign a UKI per installed kernel, then remove the
+                       unsigned type-1 loader entries (only if every build passed)
+  cicada-uki status    what exists, what verifies, what is still unsigned
+  cicada-uki restore   put the type-1 entries back (recovery; weakens the chain)
+
+Without a UKI, sbctl signs the kernel but NOT the kernel command line or the
+initramfs — both live unauthenticated on a plaintext ESP. A UKI makes them one
+signed PE binary, and lets systemd-stub measure them into PCR 11 so
+`cicada-tpm-enroll --pcrs 0+7+11` binds the disk key to this exact boot.
+
+Command line lives in /etc/kernel/cmdline (per-kernel: /etc/kernel/cmdline-<pkgbase>).
+Rebuild after editing it. Kernel upgrades rebuild automatically via
+/etc/pacman.d/hooks/zy-cicada-uki.hook.
+EOF
+    ;;
+  *) die "unknown command: $1 (try --help)" ;;
+esac

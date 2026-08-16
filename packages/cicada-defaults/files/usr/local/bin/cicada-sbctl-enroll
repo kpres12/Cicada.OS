@@ -15,5 +15,21 @@ fi
 sbctl create-keys
 sbctl enroll-keys --microsoft || sbctl enroll-keys
 sbctl sign-all -g || true
+
+# Enrolling keys without a UKI signs vmlinuz and leaves the kernel command line
+# and the initramfs unauthenticated on the ESP — the boot chain then looks
+# verified while the two components an evil maid would actually edit are not
+# covered by anything. Build the UKIs now so the enrolment means what it looks
+# like it means. cicada-uki signs whatever it produces.
+if command -v cicada-uki >/dev/null 2>&1; then
+  echo
+  cicada-uki build || echo "==> WARNING: no UKI — cmdline and initramfs remain unsigned (cicada-uki status)"
+fi
+
 command -v cicada-seal >/dev/null && cicada-seal append sbctl.enroll "{}" >/dev/null 2>&1 || true
 echo "sbctl enrolled. Kernel updates re-sign via /etc/pacman.d/hooks/zz-cicada-sbctl.hook"
+echo "UKIs rebuild + re-sign via /etc/pacman.d/hooks/zy-cicada-uki.hook"
+if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+  echo
+  echo "Reboot into the UKI, then bind the disk to it:  cicada-tpm-enroll --pcrs 0+7+11"
+fi

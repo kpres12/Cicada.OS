@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# Back up, verify and restore the LUKS2 header.
+#
+# WHY THIS MATTERS MORE HERE THAN ON A NORMAL DISTRO
+#
+# The header holds the keyslots. The master key that actually encrypts the disk
+# is stored only there, wrapped by your passphrase. Lose the first ~16 MiB of the
+# partition — a mis-typed dd, a firmware that decides to "repair" a partition
+# table, a bad sector — and every byte on the volume is unrecoverable noise. No
+# passphrase helps, because there is nothing left to unwrap.
+#
+# Cicada raises that stake on purpose. cicada-crypt erases the keyslots after
+# CICADA_LUKS_MAX_FAIL wrong guesses, and the duress passphrase does the same
+# immediately. Those are features. But they mean this system has two automatic
+# paths to a permanently dead disk, and until now no path back from a fat-finger.
+#
+# THE SAME BACKUP IS A BYPASS — READ THIS BEFORE MAKING ONE
+#
+# A header backup defeats every one of those wipes. Restore it and the erased
+# keyslots come back, so the attempt-cap wipe and the duress wipe become
+# undo-able by anyone holding the file and the passphrase. It also revives
+# passphrases you have since revoked: a backup taken before you changed your
+# passphrase still contains a slot that opens with the OLD one, forever.
+#
+# So this is a deliberate trade, not a default. A header backup belongs on
+# removable media that does not travel with the laptop, and if your threat model
+# is coercion rather than hardware failure you may rationally decide not to have
+# one at all. The tool says all of this out loud every time rather than letting
+# you find out later.
+set -euo pipefail
+
+die()  { printf 'cicada-luks-header: %s\n' "$*" >&2; exit 1; }
+say()  { printf '%s\n' "$*"; }
+
+need_root() { [[ ${EUID} -eq 0 ]] || die "run as root"; }
+need_cryptsetup() { command -v cryptsetup >/dev/null || die "cryptsetup missing"; }
+
+# Same discovery order as cicada-tpm-enroll: the installer's record first, then
+# whatever is actually open, so this works on a running system and from a rescue
+# shell after `cryptsetup open`.
+luks_device() {
+  local dev=""
+  if [[ -f /etc/cicada/install.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/cicada/install.env
+    [[ -n "${CICADA_LUKS_UUID:-}" ]] && dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
+  fi
+  if [[ -z "${dev}" || ! -e "${dev}" ]]; then
+    dev="$(cryptsetup status cicada 2>/dev/null | awk '/device:/{print $2}')"
+  fi
+  [[ -n "${dev}" && -e "${dev}" ]] || return 1
+  printf '%s' "${dev}"
+}
+
+# The one placement rule that matters: a header backup stored on the volume it
+# unlocks is not a backup. Neither is one on the ESP of the same disk, which is
+# also where an evil maid already has write access.
+reject_same_disk() {
+  local dest="$1" dev="$2" destdisk devdisk destsrc
+  destsrc="$(df -P "$(dirname "${dest}")" 2>/dev/null | awk 'NR==2{print $1}')"
+  [[ -n "${destsrc}" ]] || return 0
+
+  # Same filesystem as the unlocked root? Then it dies with the disk.
+  if findmnt -n -o SOURCE / >/dev/null 2>&1; then
+    local rootsrc
+    rootsrc="$(findmnt -n -o SOURCE / | sed 's/\[.*//')"
+    [[ "${destsrc}" == "${rootsrc}" ]] && \
+      die "destination is on the encrypted root — a header backup there protects nothing"
+  fi
+
+  # Same physical disk, even via a different partition (e.g. the ESP).
+  devdisk="$(lsblk -no PKNAME "$(readlink -f "${dev}")" 2>/dev/null | head -1 || true)"
+  destdisk="$(lsblk -no PKNAME "$(readlink -f "${destsrc}")" 2>/dev/null | head -1 || true)"
+  if [[ -n "${devdisk}" && "${devdisk}" == "${destdisk}" ]]; then
+    die "destination is on /dev/${devdisk} — the same physical disk as the header. Use removable media."
+  fi
+  return 0
+}
+
+header_hash() {
+  # LUKS2 keeps two header copies plus the keyslot area in the first 16 MiB.
+  # cryptsetup decides the real size; for a fingerprint we hash the whole file.
+  sha256sum "$1" | awk '{print $1}'
+}
+
+cmd_backup() {
+  need_root; need_cryptsetup
+  local dev dest
+  dev="$(luks_device)" || die "cannot find the LUKS device (boot the installed system)"
+
+  dest="${1:-}"
+  [[ -n "${dest}" ]] || die "usage: cicada-luks-header backup /run/media/cicada/USB/cicada-header.img"
+  [[ -d "$(dirname "${dest}")" ]] || die "no such directory: $(dirname "${dest}")"
+  [[ -e "${dest}" ]] && die "${dest} exists — refusing to overwrite an existing header backup"
+  reject_same_disk "${dest}" "${dev}"
+
+  cat <<'WARN'
+A LUKS header backup is a master key envelope. Understand what you are creating:
+
+  * Anyone with this file AND your passphrase can decrypt the disk, even after
+    the disk itself has been wiped.
+  * It UNDOES the duress wipe and the wrong-guess attempt cap. Restoring it
+    brings erased keyslots back.
+  * It keeps working with passphrases you later revoke. Change your passphrase
+    and this file still opens the disk with the old one.
+
+Keep it on removable media that does not travel with the laptop.
+WARN
+  read -r -p "Type BACKUP to continue: " ans
+  [[ "${ans}" == "BACKUP" ]] || { say "aborted"; exit 1; }
+
+  ( umask 077; : > "${dest}" )
+  cryptsetup luksHeaderBackup "${dev}" --header-backup-file "${dest}" \
+    || die "luksHeaderBackup failed"
+  chmod 600 "${dest}"
+
+  # Verify the artefact rather than trusting the exit status: a truncated header
+  # is worse than no header, because it will be discovered only in the emergency
+  # it was supposed to cover.
+  cryptsetup luksDump "${dest}" >/dev/null 2>&1 \
+    || { rm -f "${dest}"; die "the file written is not a readable LUKS header — removed it"; }
+
+  local h
+  h="$(header_hash "${dest}")"
+  say
+  say "header backup : ${dest}"
+  say "device        : ${dev}"
+  say "sha256        : ${h}"
+  say
+  say "Record that hash somewhere separate. cicada-luks-header verify checks the"
+  say "file against it, so a silently rotting USB stick is caught before you need it."
+  command -v cicada-seal >/dev/null && \
+    cicada-seal append luks.header.backup "{\"sha256\":\"${h}\"}" >/dev/null 2>&1 || true
+}
+
+cmd_verify() {
+  need_cryptsetup
+  local file="${1:-}" want="${2:-}"
+  [[ -n "${file}" ]] || die "usage: cicada-luks-header verify FILE [sha256]"
+  [[ -f "${file}" ]] || die "no such file: ${file}"
+
+  cryptsetup luksDump "${file}" >/dev/null 2>&1 \
+    || die "${file} is not a readable LUKS header"
+  local got
+  got="$(header_hash "${file}")"
+  say "sha256   ${got}"
+
+  if [[ -n "${want}" ]]; then
+    [[ "${got}" == "${want}" ]] || die "HASH MISMATCH — expected ${want}"
+    say "matches the hash you supplied"
+  fi
+
+  # Does it still belong to this machine's disk? A header from an older install
+  # will dump cleanly and restore cleanly and leave you with an undecryptable
+  # volume, because the master key it wraps is not the one this data was
+  # encrypted with. The UUID is what tells them apart.
+  local dev fuuid duuid
+  if dev="$(luks_device 2>/dev/null)"; then
+    fuuid="$(cryptsetup luksUUID "${file}" 2>/dev/null || true)"
+    duuid="$(cryptsetup luksUUID "${dev}" 2>/dev/null || true)"
+    if [[ -n "${fuuid}" && -n "${duuid}" ]]; then
+      if [[ "${fuuid}" == "${duuid}" ]]; then
+        say "UUID     ${fuuid} (matches ${dev})"
+      else
+        say "UUID     ${fuuid}"
+        die "this header belongs to a DIFFERENT volume than ${dev} (${duuid}). Restoring it would destroy the disk."
+      fi
+    fi
+  fi
+  local slots
+  slots="$(cryptsetup luksDump "${file}" 2>/dev/null | grep -cE '^[[:space:]]*[0-9]+: luks2' || true)"
+  say "keyslots ${slots:-unknown}"
+  say "ok"
+}
+
+cmd_restore() {
+  need_root; need_cryptsetup
+  local file="${1:-}" dev
+  [[ -n "${file}" ]] || die "usage: cicada-luks-header restore FILE"
+  [[ -f "${file}" ]] || die "no such file: ${file}"
+  dev="$(luks_device)" || die "cannot find the LUKS device"
+
+  # Never restore a header we have not proved belongs here. Getting this wrong
+  # is not recoverable: the current header is overwritten by the wrong one and
+  # both the old and the new master key are gone.
+  cmd_verify "${file}" >/dev/null || die "refusing to restore a header that failed verification"
+
+  cat <<WARN
+
+RESTORING A HEADER OVERWRITES THE CURRENT ONE.
+
+  device : ${dev}
+  header : ${file}
+
+If the disk currently has a working keyslot you are about to replace it. Every
+passphrase, TPM enrolment and USB token added since this backup was taken will
+be gone, and every passphrase that was valid when it was taken comes back.
+
+If this disk was wiped by duress or by the attempt cap, this is the undo — which
+also means anyone who compelled that wipe can compel this.
+WARN
+  read -r -p "Type RESTORE ${dev} to continue: " ans
+  [[ "${ans}" == "RESTORE ${dev}" ]] || { say "aborted"; exit 1; }
+
+  cryptsetup luksHeaderRestore "${dev}" --header-backup-file "${file}" \
+    || die "luksHeaderRestore failed"
+  say "restored. The TPM keyslot (if any) will not match current PCRs — re-run cicada-tpm-enroll."
+  command -v cicada-seal >/dev/null && \
+    cicada-seal append luks.header.restore "{\"sha256\":\"$(header_hash "${file}")\"}" >/dev/null 2>&1 || true
+}
+
+case "${1:-}" in
+  backup)  shift; cmd_backup "$@" ;;
+  verify)  shift; cmd_verify "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  *)
+    cat <<'EOF'
+cicada-luks-header — the only way back from a damaged LUKS header
+
+  cicada-luks-header backup /run/media/cicada/USB/cicada-header.img
+  cicada-luks-header verify FILE [sha256]
+  cicada-luks-header restore FILE
+
+Without a backup, damage to the first ~16 MiB of the LUKS partition destroys the
+volume permanently — no passphrase can recover it, because the wrapped master
+key lived only there.
+
+With a backup, the duress passphrase and the wrong-guess attempt cap become
+reversible by whoever holds the file. That is the trade. Store it on removable
+media that does not travel with the laptop, or decide not to have one.
+EOF
+    exit 1 ;;
+esac

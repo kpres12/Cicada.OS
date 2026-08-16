@@ -71,11 +71,42 @@ fi
 # PCRs 1 and 3 are firmware *configuration* and option ROMs: they churn on
 # unrelated setting changes and dock/GPU swaps, which trains users to re-enroll
 # reflexively and defeats the point of a tamper signal.
+
+# The existence of a UKI on the ESP is NOT evidence that one booted. If the
+# machine came up through a leftover type-1 entry, PCR 11 is still all-zeros, and
+# sealing to it would bind the disk to "booted without a UKI" — the exact state
+# we are trying to make unbootable. The next real UKI boot would then fail to
+# unseal and the user would be back on the passphrase, blaming the TPM.
+#
+# So ask the TPM what actually happened. systemd-stub extends PCR 11 with each
+# UKI section, so a non-zero PCR 11 means a UKI measured itself this boot, and an
+# all-zero one means nothing did.
+uki_measured() {
+  local f v
+  for f in /sys/class/tpm/tpm0/pcr-sha256/11 /sys/class/tpm/tpm0/pcrs; do
+    [[ -r "${f}" ]] || continue
+    v="$(tr -d '[:space:]' < "${f}" 2>/dev/null | tr -d '0')"
+    [[ -n "${v}" ]] && return 0
+  done
+  if command -v tpm2_pcrread >/dev/null 2>&1; then
+    v="$(tpm2_pcrread sha256:11 2>/dev/null | tr -d '[:space:]' | sed 's/.*0x//' | tr -d '0')"
+    [[ -n "${v}" ]] && return 0
+  fi
+  return 1
+}
+
 if [[ -z "${PCRS}" ]]; then
-  if [[ -f /etc/kernel/uki.conf || -d /efi/EFI/Linux || -d /boot/EFI/Linux ]]; then
+  if uki_measured; then
     PCRS="0+7+11"
   else
     PCRS="0+7"
+    if compgen -G "/boot/EFI/Linux/*.efi" >/dev/null 2>&1 \
+       || compgen -G "/efi/EFI/Linux/*.efi" >/dev/null 2>&1; then
+      echo "Note: a UKI exists on the ESP but PCR 11 is empty, so this boot did" >&2
+      echo "not come from it. Sealing to 0+7 only. Remove the leftover type-1" >&2
+      echo "entries (cicada-uki build), reboot into the UKI, and re-run this to" >&2
+      echo "get the full 0+7+11 binding." >&2
+    fi
   fi
 fi
 

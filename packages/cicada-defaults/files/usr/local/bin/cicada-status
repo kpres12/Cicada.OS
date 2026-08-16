@@ -17,6 +17,27 @@ r() { printf '  \033[31m●\033[0m %-22s %s\n' "$1" "$2"; }
 echo "Cicada posture"
 echo "=============="
 
+# --- boot chain -------------------------------------------------------------
+# The interesting state is not "does a UKI exist" but "is there still an
+# unsigned way to boot this machine" — a leftover type-1 entry is an editable
+# kernel command line on an unencrypted partition, one menu keypress away.
+_esp=""
+for _p in /efi /boot/efi /boot; do
+  [[ -d "${_p}/EFI" || -d "${_p}/loader" ]] && { _esp="${_p}"; break; }
+done
+if [[ -n "${_esp}" ]]; then
+  _uki=0; _t1=0
+  compgen -G "${_esp}/EFI/Linux/*.efi" >/dev/null 2>&1 && _uki=1
+  compgen -G "${_esp}/loader/entries/cicada*.conf" >/dev/null 2>&1 && _t1=1
+  if [[ "${_uki}" == 1 && "${_t1}" == 0 ]]; then
+    g "boot image" "signed UKI — cmdline and initramfs are covered"
+  elif [[ "${_uki}" == 1 ]]; then
+    y "boot image" "signed UKI, but unsigned entries remain: sudo cicada-uki build"
+  else
+    r "boot image" "no UKI — cmdline and initramfs unsigned: sudo cicada-uki build"
+  fi
+fi
+
 # --- time -------------------------------------------------------------------
 if ! systemctl is-active chronyd >/dev/null 2>&1; then
   r "time" "chronyd not running — HTTPS will fail once the clock drifts"

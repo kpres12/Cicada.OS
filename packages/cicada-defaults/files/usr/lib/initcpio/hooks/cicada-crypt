@@ -134,6 +134,21 @@ run_hook() {
   # Cap is baked into the initramfs (/cicada-luks-max-fail). ESP may only make
   # it *stricter* (lower positive N). ESP cannot set 0 (unlimited) or raise the
   # limit — plaintext ESP is attacker-writable (evil maid / USB with /EFI).
+  #
+  # KNOWN LIMIT, stated plainly: the *count* still lives on that same writable
+  # ESP, so an attacker who can rewrite luks-fail.count between power cycles gets
+  # unlimited guesses. There is no fix for this at Tier 0 — a machine with no TPM
+  # has nowhere tamper-proof to keep a counter, and a secret baked into the
+  # initramfs is not secret, because the initramfs ships unencrypted on the ESP
+  # (signed, since the UKI work, but signing is not confidentiality).
+  #
+  # That is survivable because the attempt cap was never the thing holding the
+  # line. On Tier 0 the passphrase carries 80-100 bits by construction
+  # (cicada-install generates it), so unlimited offline guessing is already the
+  # assumed threat and the cap is only a courtesy against a shoulder-surfed
+  # short secret. On Tier 1+ the short secret is a TPM PIN, and the TPM's own
+  # dictionary-attack lockout rate-limits it in silicon — a counter the CPU
+  # cannot reset, which is exactly what this file is not.
   if [ -f /cicada-luks-max-fail ]; then
     max="$(cat /cicada-luks-max-fail 2>/dev/null)"
     case "${max}" in
