@@ -3,4 +3,5 @@ Name=Cicada.OS
 Comment=Cicada.OS desktop (default)
 Exec=cicada-session
 Type=Application
+Icon=cicada
 DesktopNames=Cicada;Cicada.OS

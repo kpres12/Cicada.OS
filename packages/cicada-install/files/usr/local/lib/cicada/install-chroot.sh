@@ -233,9 +233,13 @@ echo 'Cicada.OS' > /etc/issue.net
 # Installed system is not the live ISO — no getty autologin, no live sudo.
 rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf
 rm -f /etc/sudoers.d/cicada-live
-# Drop Install/Etch icon from the etched desktop (live-only surface).
+# Drop Install/Etch icon from the etched desktop (live-only surface). Clear it
+# from skel too, or the next account created on this box gets an Etch icon that
+# only ever made sense from the USB. install.desktop is a pre-0.1 duplicate of
+# etch.desktop — still removed so upgraded images do not keep a stale twin.
 rm -f /home/cicada/Desktop/install.desktop \
       /home/cicada/Desktop/etch.desktop \
-      /etc/skel/Desktop/install.desktop 2>/dev/null || true
+      /etc/skel/Desktop/install.desktop \
+      /etc/skel/Desktop/etch.desktop 2>/dev/null || true
 
 echo "==> chroot done host=${HOST} luks=${CICADA_LUKS_UUID}"

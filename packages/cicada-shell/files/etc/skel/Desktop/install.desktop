@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Etch Cicada
-Comment=Install Cicada onto a disk
-Exec=cicada-etch
-Icon=drive-harddisk
-StartupNotify=true
-Terminal=false

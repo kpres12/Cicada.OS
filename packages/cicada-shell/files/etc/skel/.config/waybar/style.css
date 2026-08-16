@@ -149,7 +149,14 @@ window#waybar {
   color: @alert;
 }
 
-#battery.critical {
+/* Escalation, not decoration: path for "start looking for a charger", alert for
+ * "you are about to lose the session". Charging outranks both — a battery at 8%
+ * on the wall is not an emergency. */
+#battery.warning:not(.charging) {
+  color: @path;
+}
+
+#battery.critical:not(.charging) {
   color: @alert;
 }
 

@@ -2,5 +2,13 @@
 # The only app picker. drun sees Cicada launchers, not Arch's /usr/share/applications.
 set -euo pipefail
 export XDG_DATA_HOME=/usr/share/cicada/launchers
+# icon-root exists so the monopoly does not also blank the icons. GTK builds its
+# icon search path from $XDG_DATA_DIRS/*/icons, so dropping /usr/share to hide
+# Arch's applications/ also hides Papirus — every row renders as a blank square.
+# icon-root ships icons -> ../../icons and pixmaps -> ../../pixmaps and nothing
+# else, so themes resolve while applications/ stays Cicada-only.
 export XDG_DATA_DIRS=/usr/share/cicada/launchers:/usr/share/cicada/icon-root
+# Last-ditch: if the icon root ever goes missing, take icons over the monopoly —
+# a launcher with stray Arch entries beats a launcher of blank squares.
+[[ -d /usr/share/cicada/icon-root/icons ]] || export XDG_DATA_DIRS="${XDG_DATA_DIRS}:/usr/local/share:/usr/share"
 exec wofi --show drun "$@"

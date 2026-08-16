@@ -28,6 +28,33 @@ Type: JetBrains Mono + Share Tech (site mark). HUD labels are ALL CAPS, tracked 
 - CRT bloom is CSS glow on titles only — do not blur the whole desktop.
 - Site hero: brand first (`CICADA.OS`), one headline, one lede, CTA row, full-bleed wireframe sentry — no card grid in the first viewport.
 
+## The mark
+
+A cicada seen from above — wings spread, body segmented — in phosphor on
+nothing. Identity is the one thing phosphor names, so the mark is never amber,
+never filled with a background plate, and never boxed in a rounded tile.
+
+Generated, not hand-drawn: `scripts/gen-cicada-icon.py` emits the whole hicolor
+set from one geometry, so proportions stay in register across sizes. Detail is a
+function of size, and the cutoffs come from looking at rasterised pixels rather
+than from taste:
+
+| Sizes | Treatment |
+|---|---|
+| 16–32 | solid silhouette, optically bolded (hairlines and the vein fan collide into a blob below 48) |
+| 48 | line art, two veins, three segment rules |
+| 64+ and `scalable` | full drawing — four veins, five rules, eyes |
+
+Installed as `cicada` in `/usr/share/icons/hicolor`, which is the fallback every
+theme inherits, so `Icon=cicada` resolves no matter what icon theme is set. This
+is the name `os-release` already declares in `LOGO=`. It marks Cicada's own
+surfaces — `Start here`, the session entries, the site favicon — and not
+individual apps: Terminal and Files keep their Papirus icons, because a launcher
+where every row is the same green cicada is a launcher you cannot scan.
+
+To change the mark, edit the geometry constants and re-run the script; do not
+hand-edit the SVGs, they are build output.
+
 ## Panel grammar
 
 Every readout region is built the same way, so the bar, the launcher, the lock and the pattern bay read as one instrument rather than four themes.

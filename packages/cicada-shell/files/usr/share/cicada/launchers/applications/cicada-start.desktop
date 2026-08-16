@@ -2,6 +2,6 @@
 Type=Application
 Name=Start here
 Exec=cicada-run org.cicada.start -- kitty --title CICADA-START -e less /usr/share/cicada/FIRST-BOOT.txt
-Icon=help-about
+Icon=cicada
 Terminal=false
 StartupNotify=false

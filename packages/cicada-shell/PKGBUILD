@@ -17,6 +17,11 @@ depends=(
   'quickshell'
   'imagemagick'
   'jq'
+  # The brand mark installs into /usr/share/icons/hicolor, so the theme that
+  # owns that tree (and declares its directories in index.theme) is a real
+  # dependency, not an incidental one. gtk-update-icon-cache's pacman hook
+  # rebuilds the cache on install — no post-install step here.
+  'hicolor-icon-theme'
 )
 # Product unit is packages/cicada-desktop (meta). This package is the file tree.
 source=()

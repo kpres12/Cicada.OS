@@ -129,10 +129,20 @@
     "tooltip-format": "<tt>{:%Y-%m-%d %H:%M:%S %Z}</tt>"
   },
   "battery": {
+    // Without states, waybar never assigns the .critical class, so both
+    // format-critical below and #battery.critical in style.css are dead text —
+    // the bar reads "BAT 4" in calm amber right up to the shutdown.
+    "states": { "warning": 25, "critical": 12 },
     "format": "BAT {capacity}",
     "format-charging": "BAT+ {capacity}",
     "format-plugged": "AC {capacity}",
-    "format-critical": "BAT CRIT {capacity}"
+    "format-warning": "BAT LOW {capacity}",
+    "format-critical": "BAT CRIT {capacity}",
+    // Waybar resolves format-{state}-{status} before format-{state}, so without
+    // these two a charging pack at 8% would still shout CRIT. On the wall it is
+    // not an emergency — say so.
+    "format-warning-charging": "BAT+ {capacity}",
+    "format-critical-charging": "BAT+ {capacity}"
   },
   "network": {
     "format-wifi": "WIFI {essid}",

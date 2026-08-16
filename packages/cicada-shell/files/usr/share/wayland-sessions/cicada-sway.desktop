@@ -3,4 +3,5 @@ Name=Cicada.OS (Sway)
 Comment=Optional minimal tiling session
 Exec=cicada-session-sway
 Type=Application
+Icon=cicada
 DesktopNames=Cicada;Cicada.OS

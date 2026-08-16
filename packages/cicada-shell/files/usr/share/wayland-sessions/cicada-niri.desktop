@@ -3,4 +3,5 @@ Name=Cicada.OS (niri)
 Comment=Optional scrollable tiling session
 Exec=cicada-session-niri
 Type=Application
+Icon=cicada
 DesktopNames=Cicada;Cicada.OS
