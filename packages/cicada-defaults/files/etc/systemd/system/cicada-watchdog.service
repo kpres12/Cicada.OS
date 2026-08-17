@@ -20,5 +20,43 @@ TimeoutStopSec=20
 # No TPM/watchdog on this board is a legitimate state, not a failure.
 SuccessExitStatus=2
 
+# --- confinement -------------------------------------------------------------
+# This is a root daemon that runs for the whole uptime of the machine, so it is
+# the one with the largest window for an attacker to reuse. What it actually
+# needs is small: one character device, /proc, and a way to reboot.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# /dev/watchdog is the entire job. DevicePolicy=closed leaves only the standard
+# null/zero/random nodes besides it.
+DevicePolicy=closed
+DeviceAllow=/dev/watchdog rw
+DeviceAllow=/dev/watchdog0 rw
+# CAP_SYS_BOOT for the reboot fallback. Everything else goes.
+CapabilityBoundingSet=CAP_SYS_BOOT
+AmbientCapabilities=
+# NOT ProtectKernelTunables: the last-resort disarm path writes /proc/sysrq-trigger
+# when the chipset watchdog turns out to be a no-op on this board, and that
+# directive would remount it read-only. A control whose failure mode is "the
+# machine never resets" does not get to lose its fallback for a lint score.
+# NOT ProtectProc: the AFU logic asks whether hyprlock (a different user) is
+# running, and hidepid would make a locked session look unlocked — fail-open on
+# exactly the check this daemon exists to make.
+SystemCallFilter=@system-service @reboot
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target

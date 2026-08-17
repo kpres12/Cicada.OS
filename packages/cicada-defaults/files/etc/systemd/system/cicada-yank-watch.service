@@ -9,5 +9,24 @@ Type=simple
 ExecStart=/usr/local/bin/cicada-yank-watch
 Restart=no
 
+# --- confinement -------------------------------------------------------------
+# NOTE: cicada-yank-watch ends in `exec /usr/local/bin/cicada-panic`, so this is
+# the *same process* and everything set here also binds the panic path. That is
+# why the capability set is cicada-panic.service's set rather than the watcher's
+# own (which needs none of it), and why there is no SystemCallFilter — a filter
+# tight enough for a loop that stats one path would EPERM the reboot it turns
+# into. Keep these two units' [Service] sections in sync.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_BOOT
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target

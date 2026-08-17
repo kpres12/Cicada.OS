@@ -10,5 +10,31 @@ EnvironmentFile=/etc/cicada/defaults.env
 ExecStart=/usr/local/bin/cicada-radios-off
 ExecStop=/usr/bin/rfkill unblock wifi bluetooth
 
+# --- confinement -------------------------------------------------------------
+# Two rfkill calls. It needs one device node and one capability.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+DevicePolicy=closed
+DeviceAllow=/dev/rfkill rw
+CapabilityBoundingSet=CAP_NET_ADMIN
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target

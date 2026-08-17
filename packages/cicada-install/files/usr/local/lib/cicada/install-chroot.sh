@@ -31,7 +31,15 @@ console-mode max
 editor no
 EOF
 
-CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw quiet loglevel=3 systemd.show_status=false rd.udev.log_level=3 intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on"
+# lsm= is not decoration. Arch's stock `linux` builds AppArmor in but leaves it
+# OUT of the default CONFIG_LSM list, so `systemctl enable apparmor.service`
+# succeeds, the unit reports active, `aa-status` reports profiles loaded — and
+# the LSM is not in the stack, enforcing nothing. Naming the full list here makes
+# the boot fail loudly (unknown LSM) rather than quietly, and pins the order
+# across both the hardened and the stock fallback entry.
+# lockdown must stay in the list: the hardened entry appends lockdown=confidentiality.
+LSM="landlock,lockdown,yama,integrity,apparmor,bpf"
+CMDLINE="cryptdevice=UUID=${CICADA_LUKS_UUID}:cicada root=UUID=${CICADA_ROOT_UUID} rw quiet loglevel=3 systemd.show_status=false rd.udev.log_level=3 intel_iommu=on,igfx_off iommu.passthrough=0 init_on_alloc=1 init_on_free=1 ibt=on shstk=on lsm=${LSM}"
 if [[ -n "${CICADA_BTRFS_SUBVOL:-}" ]]; then
   CMDLINE="${CMDLINE} rootflags=subvol=${CICADA_BTRFS_SUBVOL}"
 fi
@@ -128,6 +136,9 @@ systemctl enable cicada-locked-reboot.timer || true
 # and the device attestation key. Previously the unit lived only in the live
 # overlay, so on a real install the binary shipped but nothing ever ran it.
 systemctl enable cicada-firstboot.service || true
+# Syscall filter for every cicada-run scope. Generated per boot into /run so the
+# table always matches the running kernel's uapi header.
+systemctl enable cicada-seccomp.service || true
 # Hardware AFU ceiling; exits 2 and stays inactive on boards with no watchdog.
 systemctl enable cicada-watchdog.service || true
 systemctl enable tor.service || true

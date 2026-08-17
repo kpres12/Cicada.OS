@@ -9,5 +9,33 @@ Type=oneshot
 ExecStart=/usr/local/bin/cicada-amnesic
 RemainAfterExit=yes
 
+# --- confinement -------------------------------------------------------------
+# Writes udev rules into /run and asks udevd to reload. Runs as uid 0 with an
+# empty capability set: every file it touches is already root-owned, so it never
+# needs DAC_OVERRIDE, and talking to udevd is a unix socket with a peer-uid
+# check rather than a privileged operation.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=-/run/udev
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+# NOT ProtectKernelTunables: `udevadm trigger` works by writing /sys/.../uevent,
+# and that directive remounts /sys read-only.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target

@@ -92,6 +92,29 @@ grep -q '|/bin/false' /proc/sys/kernel/core_pattern 2>/dev/null \
   && g "core dumps" "refused" \
   || r "core dumps" "enabled — a crash can write memory to disk"
 
+# --- sandbox floor ----------------------------------------------------------
+# Both of these are "the confinement a launched app actually gets". They belong
+# in the posture-in-force view because both can be true in the config and false
+# in the kernel: a seccomp program that was never generated, and an LSM that was
+# enabled as a service but left out of the boot-time stack.
+if [[ -r /run/cicada/seccomp/default.bpf ]]; then
+  g "app syscalls" "filtered ($(( $(stat -c %s /run/cicada/seccomp/default.bpf 2>/dev/null || echo 0) / 8 )) BPF instructions for every cicada-run scope)"
+elif grep -qw cicada.noseccomp /proc/cmdline 2>/dev/null; then
+  y "app syscalls" "filter disabled by cicada.noseccomp — sandboxes are namespaces only"
+else
+  r "app syscalls" "NO filter — sandboxes are namespaces only (systemctl start cicada-seccomp)"
+fi
+
+if grep -qw apparmor /sys/kernel/security/lsm 2>/dev/null; then
+  [[ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" == "Y" ]] \
+    && g "apparmor" "in the LSM stack and enabled" \
+    || y "apparmor" "in the LSM stack but disabled"
+elif [[ -d /run/archiso ]]; then
+  y "apparmor" "off on live by design — installed systems boot with lsm=...,apparmor"
+else
+  r "apparmor" "NOT in the kernel LSM stack — any loaded profile enforces nothing"
+fi
+
 if [[ -d /run/archiso ]]; then
   g "storage" "live: overlay is RAM, nothing persists"
 else

@@ -490,6 +490,91 @@ grep -q 'SuccessExitStatus=2' "${ROOT}/packages/cicada-defaults/files/etc/system
   || die "boards without a watchdog would look like a failed unit"
 say "watchdog arms on lock, withholds pet at deadline, magic-close on shutdown"
 
+echo "==> Cicada's own root daemons are confined"
+# Every unit here runs as root for the whole uptime of the machine. An
+# unconfined root daemon is the thing OpenBSD would not ship, and the reason
+# this block exists is that all ten of these units had zero [Service] hardening
+# until it was added deliberately — the easiest kind of regression to reintroduce
+# by copying an old unit as a template.
+units="${ROOT}/packages/cicada-defaults/files/etc/systemd/system"
+for u in cicada-watchdog cicada-locked-reboot cicada-memwipe cicada-panic \
+         cicada-radios-off cicada-amnesic cicada-yank-watch cicada-tor-netns \
+         cicada-seccomp cicada-firstboot; do
+  f="${units}/${u}.service"
+  test -f "${f}" || { die "${u}.service missing"; continue; }
+  grep -q '^NoNewPrivileges=yes' "${f}" || die "${u}: no NoNewPrivileges"
+  grep -q '^SystemCallArchitectures=native' "${f}" || die "${u}: foreign syscall ABIs still reachable"
+done
+# Capability sets, where the correct answer is specific rather than "some".
+grep -q '^CapabilityBoundingSet=CAP_SYS_BOOT$' "${units}/cicada-watchdog.service" \
+  || die "watchdog should hold CAP_SYS_BOOT and nothing else"
+grep -q '^CapabilityBoundingSet=$' "${units}/cicada-seccomp.service" \
+  || die "the filter generator needs no capabilities at all"
+grep -q '^CapabilityBoundingSet=$' "${units}/cicada-amnesic.service" \
+  || die "amnesic writes only root-owned paths; it needs no capabilities"
+# cicada-yank-watch ends in `exec cicada-panic`, so its [Service] section is what
+# binds the panic path. If these two drift apart the USB-yank reboot dies with
+# EPERM at the moment it is needed.
+for f in cicada-panic cicada-yank-watch; do
+  grep -q '^CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_BOOT$' "${units}/${f}.service" \
+    || die "${f}: panic-path capability set drifted"
+  grep -q '^SystemCallFilter=' "${units}/${f}.service" \
+    && die "${f}: a syscall filter on the panic path can silently EPERM the reboot" || true
+done
+# The sysrq fallback is a write to /proc. ProtectKernelTunables would make the
+# emergency reboot path a no-op on exactly the units that need it.
+for f in cicada-watchdog cicada-locked-reboot cicada-panic; do
+  grep -q '^ProtectKernelTunables=yes' "${units}/${f}.service" \
+    && die "${f}: ProtectKernelTunables breaks the /proc/sysrq-trigger fallback" || true
+done
+# `ip netns add` bind-mounts into /run/netns and that mount has to be visible to
+# the rest of the system, so this unit must never get a private mount namespace.
+grep -q '^PrivateMounts=no' "${units}/cicada-tor-netns.service" \
+  || die "tor-netns needs PrivateMounts=no or the namespace is invisible outside the unit"
+for d in ProtectSystem ProtectHome PrivateTmp ProtectKernelTunables; do
+  grep -q "^${d}=" "${units}/cicada-tor-netns.service" \
+    && die "tor-netns: ${d} puts the netns mount in a private namespace" || true
+done
+say "10 root units: NoNewPrivileges, native ABI only, capability sets asserted"
+
+echo "==> sandboxed apps get a syscall filter, not just namespaces"
+run="${RUN_BIN}/cicada-run"
+grep -q -- '--seccomp 9' "${run}" || die "cicada-run does not hand bwrap a seccomp program"
+grep -q -- '--new-session' "${run}" || die "cicada-run leaves the controlling tty open to TIOCSTI injection"
+grep -q -- '--unshare-ipc' "${run}" || die "sandboxed apps share SysV IPC with the rest of the session"
+gen="${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-seccomp-gen.sh"
+test -x "${gen}" || die "cicada-seccomp-gen.sh missing or not executable"
+grep -q 'SECCOMP_RET_ERRNO' "${gen}" || die "filter must deny with EPERM, not kill the process"
+grep -q '__NR_' "${gen}" || die "filter must resolve syscall numbers from the kernel header, not hardcode them"
+grep -q 'cicada.noseccomp' "${run}" || die "no bootloader escape hatch for the syscall filter"
+# cicada-run and the helper have to name the same path: sudo closes fd 9, so the
+# helper reopens the file itself, and a rename on one side alone means every
+# Tor-scoped launch dies in bwrap with an invalid seccomp fd.
+blobpath='/run/cicada/seccomp/default.bpf'
+grep -q "${blobpath}" "${run}" || die "cicada-run does not use ${blobpath}"
+grep -q "${blobpath}" "${CICADA_BIN}/cicada-netns-helper" \
+  || die "netns-helper does not reopen ${blobpath} (Tor scopes would run unfiltered or fail)"
+grep -q "${blobpath}" "${units}/cicada-seccomp.service" || die "nothing generates ${blobpath}"
+grep -q 'cicada-seccomp.service' "${ROOT}/iso/assemble-profile.sh" || die "seccomp unit not enabled on live"
+grep -q 'systemctl enable cicada-seccomp.service' \
+  "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "seccomp unit not enabled on installed systems"
+say "bwrap gets --seccomp/--new-session/--unshare-ipc; blob path agrees in 4 places"
+
+echo "==> AppArmor is in the kernel's LSM stack, not just enabled as a service"
+# Arch's stock kernel builds AppArmor in but leaves it out of CONFIG_LSM, so
+# `systemctl enable apparmor` succeeds and enforces nothing. The cmdline is the
+# only thing that puts it in the stack.
+ic="${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh"
+grep -q 'lsm=' "${ic}" || die "installed cmdline does not set the LSM list"
+grep -qE 'LSM="[^"]*apparmor' "${ic}" || die "apparmor missing from the LSM list"
+grep -qE 'LSM="[^"]*lockdown' "${ic}" || die "lockdown must stay in the list — the hardened entry appends lockdown=confidentiality"
+grep -q 'sys/kernel/security/lsm' "${CICADA_BIN}/cicada-firstboot" \
+  || die "firstboot claims apparmor is on without asking the kernel"
+grep -q 'sys/kernel/security/lsm' "${CICADA_BIN}/cicada-status" \
+  || die "cicada-status does not report whether apparmor actually enforces"
+say "lsm= on the installed cmdline; firstboot and status verify rather than assume"
+
 echo "==> duress reachable from a session, not just at power-on"
 dc="${CICADA_BIN}/cicada-duress-check"
 test -x "${dc}" || die "cicada-duress-check missing"

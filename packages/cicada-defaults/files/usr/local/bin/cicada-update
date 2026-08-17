@@ -74,4 +74,35 @@ fi
 
 echo "==> upgrading ${#channel_pkgs[@]} channel package(s)"
 pacman -S --needed --noconfirm "${channel_pkgs[@]}"
-info "Channel update finished (${pin})."
+
+# Channel age. Pinning to a curated snapshot means Cicada, not Arch, decides how
+# fast a Chromium or kernel CVE fix reaches this machine — so the machine has to
+# say out loud how far behind it is. A silent stale pin is the failure mode of
+# every "stable" channel with one maintainer, and the user cannot see it without
+# being told. Targets and the manual override: docs/SECURITY_UPDATES.md.
+# `|| true`: this script runs under `set -e -o pipefail`, and a pin with no date
+# in it ("unknown") makes grep exit 1, which would abort cicada-update *after* a
+# successful upgrade — a cosmetic check must never be able to fail the update.
+pin_date="$(grep -oE '[0-9]{4}\.[0-9]{2}\.[0-9]{2}' <<<"${pin}" | head -1 | tr '.' '-' || true)"
+if [[ -n "${pin_date}" ]]; then
+  pin_epoch="$(date -d "${pin_date}" +%s 2>/dev/null || echo 0)"
+  if [[ "${pin_epoch}" != 0 ]]; then
+    age_days=$(( ( $(date +%s) - pin_epoch ) / 86400 ))
+    if (( age_days > 30 )); then
+      info "Channel update finished, but this pin (${pin}) is ${age_days} days old.
+
+A pin this far behind is very likely missing browser and kernel security fixes.
+Check for a newer channel release, or see docs/SECURITY_UPDATES.md for the
+supported way to pull an urgent fix straight from Arch."
+    elif (( age_days > 7 )); then
+      echo "==> channel pin ${pin} is ${age_days} days old"
+      info "Channel update finished (${pin}, ${age_days} days old)."
+    else
+      info "Channel update finished (${pin})."
+    fi
+  else
+    info "Channel update finished (${pin})."
+  fi
+else
+  info "Channel update finished (${pin})."
+fi

@@ -124,6 +124,14 @@ Introduction to Linux*, which is the actual playbook)
 **Sandboxing**
 - `cicada-run` default-denies network, files, camera, mic, USB, sensors
 - bubblewrap + `xdg-dbus-proxy`, per-app scopes
+- **A seccomp filter, not just namespaces.** bubblewrap installs no syscall
+  filter unless handed one, and a namespace hides resources without shrinking
+  the kernel API behind them. `cicada-seccomp-gen.sh` builds the program at boot
+  from the running kernel's own syscall table — keyring, `userfaultfd`,
+  `perf_event_open`, `process_vm_readv`, `open_by_handle_at`, `pidfd_getfd` and
+  the rest denied with EPERM, never a kill
+- `--new-session` (no TIOCSTI back into the launching terminal) and
+  `--unshare-ipc` (no SysV shared memory between scopes)
 - hardened_malloc preloaded, `linux-hardened` available as a boot entry
 - Browser policy is **managed** (non-overridable): JIT off, WebGPU off, site
   isolation, post-quantum key agreement
@@ -134,6 +142,14 @@ Introduction to Linux*, which is the actual playbook)
   mirror fetch, pcscd
 - 8 setuid binaries stripped, re-applied by a pacman hook after every upgrade
 - `vivid` (CVE-2019-18683) and unused filesystem parsers blacklisted
+- **Cicada's own root daemons are confined**: every unit runs with
+  `NoNewPrivileges`, a named capability set (the watchdog holds `CAP_SYS_BOOT`
+  and nothing else; the filter generator holds none), and a syscall filter where
+  one cannot silently break an emergency path. The exceptions are written down
+  in the units themselves with the reason
+- AppArmor is put **in the kernel's LSM stack** (`lsm=` on the command line).
+  Arch's stock kernel compiles it in but leaves it out of the default list, so
+  enabling the service alone yields an LSM that enforces nothing
 
 ---
 
@@ -180,12 +196,16 @@ tests/preflight.sh   # syntax, seal chain, assemble
 tests/here.sh        # ~90 checks: defaults, fail-closed CLIs, boot entries
 tests/seam.sh        # live vs installed parity — where most bugs have lived
 tests/seal.sh        # hash chain + tamper detection
+tests/seccomp.sh     # decodes and simulates the sandbox syscall filter
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
 ```
 
 These are largely structural — they prove a config *says* a thing. They do not
 prove the kernel accepts it. A clean run is necessary, not sufficient; the last
-build shipped a broken pacman hook that all four suites passed.
+build shipped a broken pacman hook that all four suites passed. `seccomp.sh` is
+the exception worth copying: it decodes the emitted BPF program and runs the same
+instruction machine the kernel does, so it fails on a wrong verdict rather than a
+missing string. `boot-verify.sh` then loads the program for real.
 
 ---
 

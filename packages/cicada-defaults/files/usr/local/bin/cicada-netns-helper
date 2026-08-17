@@ -36,6 +36,19 @@ shift
 ip netns list 2>/dev/null | grep -qw "${NS}" \
   || die "onion namespace is down (systemctl start cicada-tor-netns)"
 
+# cicada-run runs bwrap through here with `--seccomp 9`, but sudo closes every
+# descriptor above 2 before this script starts, so the caller cannot hand the
+# program over as an fd. Reopen it here instead.
+#
+# The path is hardcoded for the same reason the namespace name is: nothing the
+# caller passes may select it. It is generated at boot by cicada-seccomp.service,
+# root-owned and unwritable by the user, so this cannot be turned into "load a
+# filter of my choosing" — and in any case the fd is consumed by bwrap running
+# as the caller, which could simply omit the filter instead. Missing file means
+# no fd 9, which matches cicada-run omitting --seccomp for the same reason.
+SECCOMP_BLOB=/run/cicada/seccomp/default.bpf
+[[ -r "${SECCOMP_BLOB}" ]] && exec 9<"${SECCOMP_BLOB}"
+
 # ip netns exec enters the namespace as root; setpriv immediately drops back to
 # the caller and forbids regaining privilege via setuid binaries.
 exec ip netns exec "${NS}" \

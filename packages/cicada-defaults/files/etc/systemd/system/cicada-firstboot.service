@@ -10,5 +10,20 @@ RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
 
+# --- confinement -------------------------------------------------------------
+# This unit is the provisioning path: it writes /etc/ld.so.preload, edits
+# pacman.conf, imports the channel key, generates a USBGuard policy, creates the
+# work account, seeds /home/cicada and enables units. ProtectSystem, ProtectHome
+# or a capability set here would either be bypassed by everything it legitimately
+# does or would break the first boot — confinement that has to be handed back
+# immediately is theatre, and this file should not pretend otherwise.
+#
+# What *is* worth having is the pair that costs nothing: no privilege escalation
+# beyond what it starts with, and no personality games.
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target

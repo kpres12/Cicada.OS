@@ -74,6 +74,57 @@ lsmod | grep -qE '^(vivid|thunderbolt|firewire_ohci) ' \
   || ok "blacklisted modules absent"
 [[ -z "$(swapon --show 2>/dev/null)" ]] && ok "no swap" || no "swap is active — key material can page to disk"
 
+# The LSM stack is a boot-time decision, not a service state. Arch's stock kernel
+# compiles AppArmor in but leaves it out of the default list, so apparmor.service
+# can be active, aa-status can list profiles, and nothing is enforced. Ask the
+# kernel, not systemd.
+if grep -qw apparmor /sys/kernel/security/lsm 2>/dev/null; then
+  ok "apparmor is in the kernel LSM stack ($(cat /sys/kernel/security/lsm))"
+  if command -v aa-status >/dev/null 2>&1; then
+    enforced="$(aa-status --enforced 2>/dev/null || echo 0)"
+    [[ "${enforced}" -gt 0 ]] && ok "${enforced} apparmor profiles in enforce mode" \
+      || na "apparmor active but no profile is enforcing (nothing is confined by it)"
+  fi
+elif [[ -d /run/archiso ]]; then
+  na "apparmor off on live by design (installed systems get lsm=...,apparmor)"
+else
+  no "apparmor NOT in the LSM stack — add lsm=landlock,lockdown,yama,integrity,apparmor,bpf to /etc/kernel/cmdline, then cicada-uki build"
+fi
+
+# Sandbox syscall filter. Checked by actually loading it, because the file
+# existing proves only that a file exists: Seccomp: 2 inside the sandbox is the
+# kernel confirming the program was accepted and is in force.
+blob=/run/cicada/seccomp/default.bpf
+if [[ -r "${blob}" ]]; then
+  ok "seccomp program built ($(( $(stat -c %s "${blob}") / 8 )) instructions)"
+  if command -v bwrap >/dev/null 2>&1; then
+    mode="$(bwrap --ro-bind / / --seccomp 9 -- \
+              grep -m1 '^Seccomp:' /proc/self/status 2>/dev/null 9<"${blob}" | awk '{print $2}')"
+    [[ "${mode}" == 2 ]] \
+      && ok "kernel accepts the program (seccomp filter mode active in a sandbox)" \
+      || no "bwrap did not end up in seccomp filter mode (got '${mode:-nothing}') — scopes run unfiltered"
+  fi
+elif grep -qw cicada.noseccomp /proc/cmdline 2>/dev/null; then
+  na "seccomp filter disabled on the kernel command line"
+else
+  no "no seccomp program at ${blob} — every cicada-run scope is namespaces-only (systemctl start cicada-seccomp)"
+fi
+
+# Unit confinement. CapabilityBoundingSet is the one that is trivially checkable
+# and the one whose absence means "this root daemon can do anything".
+for u in cicada-watchdog cicada-seccomp cicada-locked-reboot cicada-radios-off; do
+  systemctl cat "${u}.service" >/dev/null 2>&1 || continue
+  caps="$(systemctl show -p CapabilityBoundingSet --value "${u}.service" 2>/dev/null)"
+  n_caps="$(wc -w <<<"${caps}")"
+  # An unconfined root unit reports the whole set (40-odd capabilities). Each of
+  # these should be at most a couple.
+  if [[ "${n_caps}" -le 3 ]]; then
+    ok "${u}: capabilities = ${caps:-none}"
+  else
+    no "${u}: ${n_caps} capabilities — the unit's hardening did not apply"
+  fi
+done
+
 hdr "5. services carved out"
 for u in ModemManager vboxservice vmtoolsd vmware-vmblock-fuse qemu-guest-agent \
          hv_kvp_daemon systemd-timesyncd; do

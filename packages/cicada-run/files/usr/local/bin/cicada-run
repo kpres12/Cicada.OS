@@ -124,6 +124,26 @@ if ! command -v bwrap >/dev/null 2>&1; then
   exit 78
 fi
 
+# --- syscall filter ----------------------------------------------------------
+# bubblewrap installs NO seccomp filter unless it is handed one. Namespaces hide
+# resources; they do not shrink the kernel API the app can call. cicada-seccomp
+# .service builds the program at boot (see cicada-seccomp-gen.sh for the list and
+# the reasoning); this passes it on fd 9.
+#
+# Missing filter reduces protection, it does not leak a secret — so this
+# degrades visibly and keeps the sandbox, rather than refusing to launch. The
+# escape hatch matches cicada.nomalloc / cicada.nowatchdog.
+SECCOMP_BLOB="${CICADA_SECCOMP_BLOB:-/run/cicada/seccomp/default.bpf}"
+SECCOMP=1
+if [[ "${CICADA_SECCOMP:-1}" != 1 ]] || grep -qw cicada.noseccomp /proc/cmdline 2>/dev/null; then
+  SECCOMP=0
+elif [[ ! -r "${SECCOMP_BLOB}" ]]; then
+  SECCOMP=0
+  echo "cicada-run: no syscall filter at ${SECCOMP_BLOB} — sandbox is namespaces only." >&2
+  echo "  systemctl start cicada-seccomp   (then relaunch)" >&2
+  logger -t cicada-run "seccomp filter missing; ${APP_ID:-app} started with namespace isolation only" 2>/dev/null || true
+fi
+
 export CICADA_APP_ID="${APP_ID}"
 
 bind_opt() {
@@ -164,6 +184,18 @@ args=(
   --die-with-parent
   --unshare-uts
   --unshare-cgroup
+  # SysV IPC is a namespace the app shares with every other process of this user
+  # unless it is unshared: message queues and shared memory segments are a side
+  # channel between two scopes that are supposed to be separate. Safe here
+  # because Cicada is Wayland-only and /tmp is a tmpfs, so there is no X11 socket
+  # in the sandbox and therefore no MIT-SHM client to break.
+  --unshare-ipc
+  # setsid(). Without it a sandboxed app holds the launching terminal's
+  # controlling tty and can push characters into it with TIOCSTI — i.e. type
+  # commands into the shell that started it, outside the sandbox. Terminal apps
+  # are exempted from cicada-run entirely (see the case above), so nothing that
+  # needs a controlling tty passes through here.
+  --new-session
   --proc /proc
   --tmpfs /tmp
   --dev /dev
@@ -171,6 +203,7 @@ args=(
   --ro-bind /etc /etc
 )
 [[ "${UNSHARE_PID}" -eq 1 ]] && args+=(--unshare-pid)
+[[ "${SECCOMP}" -eq 1 ]] && args+=(--seccomp 9)
 
 [[ -d /opt ]] && args+=(--ro-bind /opt /opt)
 [[ -L /bin ]] && args+=(--symlink usr/bin /bin) || bind_opt /bin
@@ -340,5 +373,16 @@ if [[ "${APP_ID}" == "org.cicada.helium" ]]; then
 fi
 
 rc=0
-"${netns_wrap[@]}" "${args[@]}" "$@" || rc=$?
+if [[ "${#netns_wrap[@]}" -gt 0 ]]; then
+  # The Tor path goes through sudo, and sudo closes every descriptor above 2
+  # before the helper starts — so fd 9 cannot be inherited from here. The helper
+  # reopens the same root-owned path itself; see cicada-netns-helper. Passing
+  # `--seccomp 9` without that would be a hard bwrap failure, which is why the
+  # two files name the same default path.
+  "${netns_wrap[@]}" "${args[@]}" "$@" || rc=$?
+elif [[ "${SECCOMP}" -eq 1 ]]; then
+  "${args[@]}" "$@" 9<"${SECCOMP_BLOB}" || rc=$?
+else
+  "${args[@]}" "$@" || rc=$?
+fi
 exit "${rc}"

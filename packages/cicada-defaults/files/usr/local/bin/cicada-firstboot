@@ -51,7 +51,20 @@ fi
 if [[ ! -d /run/archiso ]]; then
   systemctl enable --now nftables.service 2>/dev/null || true
   systemctl enable --now cicada-locked-reboot.timer 2>/dev/null || true
-  systemctl enable --now apparmor.service 2>/dev/null || true
+
+  # AppArmor only does something if the LSM is in the kernel's stack. Arch's
+  # stock kernel builds it in but leaves it out of the default list, so
+  # enable --now can report success on a kernel where no profile will ever be
+  # consulted. Check the kernel's own answer, and say so when it is no —
+  # this reduces protection, it does not leak a secret, so it degrades visibly
+  # rather than failing closed.
+  if grep -qw apparmor /sys/kernel/security/lsm 2>/dev/null; then
+    systemctl enable --now apparmor.service 2>/dev/null || true
+  else
+    systemctl enable apparmor.service 2>/dev/null || true
+    logger -t cicada "apparmor NOT in the kernel LSM stack — profiles will not be enforced; add lsm=...,apparmor,... to /etc/kernel/cmdline and rebuild the UKI" 2>/dev/null || true
+    echo "cicada-firstboot: apparmor is not in /sys/kernel/security/lsm — enabled but NOT enforcing" >&2
+  fi
 
   if command -v usbguard >/dev/null 2>&1; then
     rules=/etc/usbguard/rules.conf

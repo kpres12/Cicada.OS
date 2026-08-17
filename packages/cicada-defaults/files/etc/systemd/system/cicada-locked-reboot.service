@@ -5,3 +5,34 @@ Description=Cicada reboot-to-rest check (locked session)
 Type=oneshot
 EnvironmentFile=-/etc/cicada/defaults.env
 ExecStart=/usr/local/bin/cicada-locked-reboot
+
+# --- confinement -------------------------------------------------------------
+# Fires every 30s forever, so it is worth keeping small. It reads the lid state
+# and hyprlock's presence, writes one timestamp under /run/cicada, and reboots.
+NoNewPrivileges=yes
+ProtectSystem=strict
+# RuntimeDirectory rather than ReadWritePaths=/run/cicada: under
+# ProtectSystem=strict the script's own `mkdir -p /run/cicada` would fail on the
+# first boot, and ReadWritePaths on a path that does not exist yet is a unit
+# start failure. This creates it and grants write access in one directive.
+RuntimeDirectory=cicada
+RuntimeDirectoryPreserve=yes
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=CAP_SYS_BOOT
+# NOT ProtectProc — pgrep must see hyprlock, which runs as the desktop user.
+# NOT ProtectKernelTunables — the sysrq reboot fallback writes /proc.
+SystemCallFilter=@system-service @reboot
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native

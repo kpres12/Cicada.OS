@@ -180,6 +180,9 @@ ln -sfn /etc/systemd/system/cicada-firstboot.service "${wants}/cicada-firstboot.
 ln -sfn /etc/systemd/system/cicada-amnesic.service "${wants}/cicada-amnesic.service"
 ln -sfn /etc/systemd/system/cicada-watchdog.service "${wants}/cicada-watchdog.service"
 ln -sfn /etc/systemd/system/cicada-tor-netns.service "${wants}/cicada-tor-netns.service"
+# Builds the bwrap syscall filter into /run before anything can be launched.
+# Without it every scope falls back to namespaces-only, which cicada-run reports.
+ln -sfn /etc/systemd/system/cicada-seccomp.service "${wants}/cicada-seccomp.service"
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/poweroff.target.wants" "${PROFILE}/airootfs/etc/systemd/system/reboot.target.wants"
 for t_ in poweroff reboot; do ln -sfn /etc/systemd/system/cicada-memwipe.service "${PROFILE}/airootfs/etc/systemd/system/${t_}.target.wants/cicada-memwipe.service"; done
 ln -sfn /etc/systemd/system/cicada-yank-watch.service "${wants}/cicada-yank-watch.service"
@@ -325,6 +328,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/lib/cicada/cicada-channel-enable.sh"]="0:0:755"
   ["/usr/local/lib/cicada/strip-setuid.sh"]="0:0:755"
   ["/usr/local/lib/cicada/heal-helium.sh"]="0:0:755"
+  ["/usr/local/lib/cicada/cicada-seccomp-gen.sh"]="0:0:755"
   ["/etc/sudoers.d/cicada-profile"]="0:0:440"
   ["/etc/greetd/config.toml"]="0:0:644"
   ["/usr/share/wayland-sessions/cicada.desktop"]="0:0:644"

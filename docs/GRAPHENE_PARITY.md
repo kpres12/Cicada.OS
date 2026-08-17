@@ -97,8 +97,10 @@ Graphene: per-app network permission (network-down, not crash), Sensors, Storage
 - [x] System **Camera & microphone** kill (`cicada-av-kill`): unloads uvcvideo + forces MIC/CAMERA deny for sandboxed apps. Software only — not a hardware kill switch
 - [x] Helium / KeePass / Files ship explicit scopes; D-Bus proxy when `xdg-dbus-proxy` exists
 - [x] `cicada-profile`: Work UID auto-created on install firstboot (`create-locked`); Burner is directory HOME; `--encrypt` LUKS loop
+- [x] **Syscall filter on every scope** (`--seccomp`, built at boot from the running kernel's table), plus `--new-session` and `--unshare-ipc`. Android confines apps by UID *and* by seccomp; namespaces alone were only the first half
 - [ ] Flatpak FileChooser as the *only* file path for every native toolkit
-- [ ] AppArmor profiles per shipped app
+- [ ] AppArmor profiles per shipped app — the LSM is now in the kernel stack on installed systems (`lsm=`), so a profile written here would actually enforce; none are written yet
+- [ ] Landlock as a second filesystem floor under bwrap
 
 See [docs/SANDBOX.md](SANDBOX.md) and [docs/AMNESIC.md](AMNESIC.md) (live USB forgets; installed disk persists).
 

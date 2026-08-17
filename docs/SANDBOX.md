@@ -70,6 +70,16 @@ Every launched app gets a **Cicada app-id** (`org.cicada.helium`, `org.keepassxc
 - **Network:** `bwrap --unshare-net` when deny. `vpn-only` allows host net only while `wg0` exists.
 - **D-Bus:** `xdg-dbus-proxy` (what Flatpak/Bubblejail already use).
 - **USB:** USBGuard + no raw `/dev/bus/usb` unless allow.
+- **Syscalls:** bubblewrap installs no filter unless given one, so every scope
+  gets the program built at boot by `cicada-seccomp-gen.sh` — keyring,
+  `userfaultfd`, `perf_event_open`, `process_vm_readv`/`writev`, `pidfd_getfd`,
+  `open_by_handle_at`, `modify_ldt`, module and kexec calls, NUMA policy. Denied
+  with `EPERM`, never `KILL`: a wrong entry must degrade the app visibly, not
+  crash it. Numbers come from the running kernel's uapi header, never from a
+  table typed into the repo. Escape hatch: `cicada.noseccomp`.
+- **Terminal / IPC:** `--new-session` so a sandboxed app cannot push characters
+  into the launching shell with TIOCSTI, `--unshare-ipc` so two scopes cannot
+  share SysV memory.
 - **Landlock** later, as a second floor under bwrap.
 
 This is weaker than Android UIDs: a compromised app that escapes bwrap is still *your user*. Profiles (separate UIDs/homes) are the blast-radius layer above this. System AV kill is **software** — root can reverse it; firmware implants ignore it; Librem-style hardware kill is the real ceiling.

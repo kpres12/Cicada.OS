@@ -165,6 +165,30 @@ model is coercion rather than hardware failure, the correct choice may be to hav
 no header backup at all. The tool states this every time rather than letting you
 discover it later.
 
+**The update channel is now the rate limiter on every CVE.** `cicada-update`
+upgrades only `[cicada-stable]`, a curated snapshot, rather than Arch rolling.
+That means a fix for Chromium, the kernel, systemd or glibc reaches this machine
+when *Cicada* builds a snapshot, not when Arch builds the package — so a
+one-maintainer channel is slower than the distribution it is based on, and far
+slower than OpenBSD errata. It is the largest security regression Cicada's own
+design introduces, and it is invisible from the machine unless the machine says
+so, which is why `cicada-update` prints the pin's age and refuses to be quiet
+about it past 30 days. Targets, the measurement, and the supported way to pull an
+urgent fix straight from Arch: [SECURITY_UPDATES.md](SECURITY_UPDATES.md).
+
+**Sandboxed apps are filtered, but they are still this user.** `cicada-run` hands
+bubblewrap a seccomp program (`cicada-seccomp-gen.sh`) that denies the syscalls a
+desktop app has no business making — the keyring, `userfaultfd`,
+`perf_event_open`, `process_vm_readv`, `open_by_handle_at`, `pidfd_getfd` and the
+rest. That closes kernel surface, which is what namespaces do not do. It does not
+change the fact that an app which escapes the sandbox is running as the desktop
+user, with that user's files and keys; profiles remain the blast-radius layer
+above it. Compared to OpenBSD, where pledge and unveil confine essentially every
+program in the base system, Cicada confines what it launches and inherits the
+rest of Arch unconfined. AppArmor is in the LSM stack on installed systems
+(`lsm=` on the kernel command line) but Cicada authors no profiles of its own
+yet, so what it enforces is whatever upstream ships.
+
 **`/usr` is not verity-protected, and mostly does not need to be.** Graphene
 relies on dm-verity because Android's system partition is *unencrypted* and
 therefore offline-modifiable. Here `/usr` lives inside the LUKS volume, so an

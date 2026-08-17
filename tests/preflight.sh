@@ -31,6 +31,10 @@ PY
 echo "==> cicada-seal"
 bash "${ROOT}/tests/seal.sh" || die "seal"
 
+echo "==> sandbox syscall filter"
+bash "${ROOT}/tests/seccomp.sh" >/dev/null || die "seccomp filter (run tests/seccomp.sh for detail)"
+say "seccomp program decodes and returns the right verdicts"
+
 echo "==> cicada-profile directory mode"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT

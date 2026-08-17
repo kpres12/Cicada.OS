@@ -6,3 +6,25 @@ Conflicts=shutdown.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/cicada-panic
+
+# --- confinement -------------------------------------------------------------
+# Runs for about a second and then the machine is gone, so confinement here buys
+# almost nothing — but the capability set is still worth stating, because it
+# documents what the emergency path is allowed to do: block radios, drop swap,
+# reboot. Nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_BOOT
+# NO SystemCallFilter, deliberately. A filter that gets one syscall wrong turns
+# the panic path into a no-op at the exact moment it is needed, and a wrong
+# EPERM here is silent. The whole runtime is a few hundred milliseconds of
+# rfkill/swapoff/reboot; there is no window worth filtering.
+# NO ProtectKernelTunables: drop_caches and the sysrq reboot fallback are both
+# writes to /proc that the directive would make read-only.
+SystemCallArchitectures=native
