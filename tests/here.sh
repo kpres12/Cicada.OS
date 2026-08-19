@@ -208,6 +208,51 @@ expect_exit 78 "Helium without bwrap fails closed" \
 expect_exit 0 "Kitty without bwrap still runs" \
   env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.kitty -- true
 
+echo "==> sysusers fragments declare the groups they reference"
+# The bug this catches shipped in the public beta and was invisible for weeks:
+# `u cicada 1000:1000` names GID 1000 on the right of the colon, and
+# systemd-sysusers requires that group to already exist rather than creating it.
+# Without a matching `g` line the whole user entry fails, and the only reason
+# anyone had a login was a hand-written /etc/passwd in the overlay — leaving a
+# primary group that resolves to nothing.
+#
+# Parsing the fragment rather than grepping for a string: the verdict is "every
+# explicit GID has a group that creates it", which stays true as fragments are
+# added.
+if python3 - "${ROOT}" <<'SYSUSERS' 
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+bad = []
+for conf in sorted(root.glob("iso/overlay/airootfs/usr/lib/sysusers.d/*.conf")):
+    groups = set()
+    users = []
+    for raw in conf.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        kind, name, ident = parts[0], parts[1], parts[2]
+        if kind == "g":
+            groups.add(ident)
+        elif kind == "u" and ":" in ident:
+            users.append((name, ident.split(":", 1)[1], conf.name))
+    for name, gid, fname in users:
+        # A GID given as a group *name* is fine; sysusers resolves it. A numeric
+        # GID must be created by a `g` line in the same fragment.
+        if gid.isdigit() and gid not in groups:
+            bad.append("%s: user %s needs GID %s, no `g` line creates it" % (fname, name, gid))
+for b in bad:
+    print("  " + b)
+sys.exit(1 if bad else 0)
+SYSUSERS
+then
+  say "every sysusers user with a numeric GID has a group that creates it"
+else
+  die "sysusers fragment references a GID nothing creates"
+fi
+
 echo "==> fail-closed CLIs"
 bash "${INSTALL_BIN}/cicada-install" -h >/dev/null || die "install -h"
 expect_exit 1 "install refuses non-root" bash "${INSTALL_BIN}/cicada-install" --target /dev/null

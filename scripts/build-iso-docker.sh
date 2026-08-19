@@ -102,6 +102,26 @@ docker run --rm \
   -v "${ROOT}/out:/out" \
   "${IMAGE}"
 
+# Drop the BUILD-ID next to the ISO. The authoritative copy lives at
+# /usr/share/cicada/BUILD-ID *inside* the squashfs, which means nothing on a Mac
+# can read it without mounting the image — so "is this ISO current?" could only
+# ever be answered by comparing file timestamps, which is a guess. This makes it
+# a fact, and it is the check scripts/flash-jacksparrow.sh wants before it
+# erases a disk for an image.
+NEWEST="$(ls -t "${ROOT}/out"/cicada-2*-x86_64.iso 2>/dev/null | head -1 || true)"
+if [[ -n "${NEWEST}" ]]; then
+  if docker run --rm -v "${WORK_VOL}:/work" alpine:3.20 \
+       cat /work/mkarchiso/x86_64/airootfs/usr/share/cicada/BUILD-ID \
+       > "${NEWEST}.build-id" 2>/dev/null && [[ -s "${NEWEST}.build-id" ]]; then
+    echo "==> BUILD-ID sidecar: ${NEWEST}.build-id"
+    sed 's/^/    /' "${NEWEST}.build-id"
+  else
+    # No sidecar is better than an empty one that later reads as "unknown build".
+    rm -f "${NEWEST}.build-id"
+    echo "==> warning: could not read BUILD-ID out of the work volume" >&2
+  fi
+fi
+
 echo "==> newest ISO:"
 ls -lt "${ROOT}/out"/cicada-*.iso | head -5
 if [[ -e "${ROOT}/out/cicada-latest-x86_64.iso" ]]; then
