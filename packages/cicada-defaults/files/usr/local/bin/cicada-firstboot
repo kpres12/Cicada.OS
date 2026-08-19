@@ -10,6 +10,40 @@ if [[ ${EUID} -eq 0 && -x /usr/local/lib/cicada/heal-helium.sh ]]; then
   /usr/local/lib/cicada/heal-helium.sh || true
 fi
 
+# Overridable so tests/afu.sh can drive the escape hatch without a kernel
+# cmdline or a real /etc. Nothing in the product sets them.
+CMDLINE="${CICADA_CMDLINE:-/proc/cmdline}"
+PRELOAD_F="${CICADA_PRELOAD:-/etc/ld.so.preload}"
+
+# --- cicada.nomalloc rescue --------------------------------------------------
+# This has to sit ABOVE the firstboot marker check, for the same reason the
+# Helium mode repair does: the marker makes this script exit immediately on
+# every boot after the first. hardened_malloc is turned on *after* install, by
+# cicada-malloc — so the boot where somebody needs this rescue is always a boot
+# where the marker already exists, and a hatch below the marker could only ever
+# fire on a machine that is not broken yet.
+#
+# It also has to *remove* the preload, not merely decline to add one. The block
+# further down abstains, which does nothing for a machine whose
+# /etc/ld.so.preload was already written and whose browser therefore will not
+# start. README promises this flag "disables hardened_malloc"; abstaining is not
+# disabling.
+if [[ ${EUID} -eq 0 ]] && grep -qw cicada.nomalloc "${CMDLINE}" 2>/dev/null; then
+  if [[ -f "${PRELOAD_F}" ]] && grep -q 'libhardened_malloc' "${PRELOAD_F}"; then
+    # Filter the one line rather than deleting the file: something else may
+    # legitimately be preloaded, and this is a rescue path, not a reset.
+    grep -v 'libhardened_malloc' "${PRELOAD_F}" > "${PRELOAD_F}.tmp" || true
+    if [[ -s "${PRELOAD_F}.tmp" ]]; then
+      mv "${PRELOAD_F}.tmp" "${PRELOAD_F}"
+    else
+      rm -f "${PRELOAD_F}" "${PRELOAD_F}.tmp"
+    fi
+    echo "cicada-firstboot: cicada.nomalloc — hardened_malloc preload removed for this boot."
+    echo "  This lasts one boot. To make it stick: sudo cicada-malloc off"
+    logger -t cicada-firstboot "cicada.nomalloc: removed hardened_malloc preload" 2>/dev/null || true
+  fi
+fi
+
 MARKER=/var/lib/cicada/firstboot-done
 mkdir -p /var/lib/cicada
 if [[ -f "${MARKER}" ]]; then
@@ -39,11 +73,11 @@ fi
 if [[ -f /usr/lib/libhardened_malloc.so ]] \
    && [[ ! -f /etc/cicada/hardened-malloc-disable ]] \
    && [[ -f /etc/cicada/hardened-malloc-enable ]] \
-   && ! grep -qw cicada.nomalloc /proc/cmdline 2>/dev/null; then
-  echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
+   && ! grep -qw cicada.nomalloc "${CMDLINE}" 2>/dev/null; then
+  echo '/usr/lib/libhardened_malloc.so' > "${PRELOAD_F}"
 elif [[ -f /run/archiso ]]; then
   # Live demo: never leave a broken preload from a previous overlay session.
-  rm -f /etc/ld.so.preload 2>/dev/null || true
+  rm -f "${PRELOAD_F}" 2>/dev/null || true
 fi
 
 # Live ISO already has units enabled in the profile. enable --now as the

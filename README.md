@@ -230,6 +230,7 @@ tests/seal.sh        # hash chain + tamper detection
 tests/seccomp.sh     # decodes and simulates the sandbox syscall filter
 tests/beacon.sh      # signs a statement, edits a fake ESP, requires the alarm
 tests/comms.sh       # the at-rest verdict, and everything cicada-comms refuses
+tests/afu.sh         # USB gate, gate restore, watchdog arming, escape hatches
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
 ```
 
@@ -248,10 +249,22 @@ missing string. `boot-verify.sh` then loads the program for real.
 hardening above is verified structurally and by loading rulesets on real
 kernels, but has **not** been exercised on hardware end to end.
 
-Known-unverified: Tor bootstrap, chrony NTS sync, the watchdog, hardened_malloc
-under Helium, the duress PAM hook, USB gate restore on unlock, and the beacon's
-Meshtastic transport — the signing, the wire format and the alarm are covered by
-`tests/beacon.sh`, but no LoRa radio has carried one yet.
+**Known-unverified, and why.** Two lists, because "unverified" was covering two
+different things and that hid real bugs.
+
+*Needs the hardware, cannot be simulated:* Tor bootstrap, chrony NTS sync, the
+duress PAM hook, hardened_malloc actually running under Helium, whether a
+chipset watchdog resets an Intel Air, whether the kernel refuses a USB device at
+`authorized_default=0`, and whether a LoRa radio carries a beacon.
+
+*Was on that list, now covered in simulation* (`tests/afu.sh`, `tests/beacon.sh`)
+— the decision logic wrapped around the hardware runs anywhere, and testing it
+found three defects that had nothing to do with hardware: the USB gate reported
+success when it had written nothing, `cicada-lock` stranded the gate closed if
+it was killed rather than exiting normally, and `cicada.nomalloc` — documented
+here as an escape hatch — could not rescue a machine that was already broken.
+
+A clean run is still necessary, not sufficient.
 
 Do not rely on this for anything that matters yet. See
 [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/test-results.md](docs/test-results.md).

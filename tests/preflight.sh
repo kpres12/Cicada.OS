@@ -39,6 +39,10 @@ echo "==> beacon + witness pairing"
 bash "${ROOT}/tests/beacon.sh" >/dev/null || die "beacon (run tests/beacon.sh for detail)"
 say "beacon signs, verifies, and alarms on a changed boot chain"
 
+echo "==> AFU controls (USB gate, gate restore, watchdog, escape hatches)"
+bash "${ROOT}/tests/afu.sh" >/dev/null || die "afu (run tests/afu.sh for detail)"
+say "USB gate and watchdog behave under simulation; nomalloc rescue fires"
+
 echo "==> messenger hosting"
 bash "${ROOT}/tests/comms.sh" >/dev/null || die "comms (run tests/comms.sh for detail)"
 say "cicada-comms refuses what it cannot protect"

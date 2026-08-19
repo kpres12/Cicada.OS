@@ -34,6 +34,25 @@ if command -v cicada-usb-gate >/dev/null 2>&1; then
   sudo -n /usr/local/bin/cicada-usb-gate 0 2>/dev/null || true
 fi
 
+# Restore the kernel gate on EVERY exit path, not just the one where hyprlock
+# returns normally. Without this, killing cicada-lock — a logout, a session
+# teardown, a SIGTERM from anything — leaves authorized_default at 0 with no
+# process left that will ever set it back, and no USB device can be authorized
+# again until reboot. The gate is fail-closed, so this is a usability trap
+# rather than a security hole, but it is exactly the kind of trap that gets
+# "fixed" by someone disabling the gate.
+#
+# The guard matters: if the script is killed while hyprlock is STILL up, the
+# screen is still locked and the gate must stay closed. Restoring only once
+# nothing is holding the screen keeps the fail-closed behaviour and repairs the
+# case where the lock is already over.
+_restore_usb() {
+  pidof hyprlock >/dev/null 2>&1 && return 0
+  sudo -n /usr/local/bin/cicada-usb-gate 1 2>/dev/null || true
+  usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true
+}
+trap _restore_usb EXIT
+
 # Encrypted profiles hold their volume key in the kernel for as long as they are
 # mapped. Locking the screen while three profiles are unlocked leaves all three
 # keys in RAM for an AFU attacker. Freeze every profile that is not the active
@@ -59,5 +78,6 @@ fi
 
 cicada-seal append session.unlock "{}" >/dev/null 2>&1 || true
 
-sudo -n /usr/local/bin/cicada-usb-gate 1 2>/dev/null || true
-usbguard set-parameter InsertedDevicePolicy apply-policy >/dev/null 2>&1 || true
+# The USB gate and the USBGuard policy are restored by the EXIT trap above, so
+# that a normal unlock and an abnormal death take the same path. One restore
+# path is one path to get wrong.

@@ -16,7 +16,11 @@
 # orderly shutdown so a deliberate poweroff does not look like a hang.
 set -uo pipefail
 
-WD=/dev/watchdog
+# WD and the sysfs class dir are overridable so tests/watchdog.sh can drive the
+# refuse-to-arm paths without a chipset watchdog. Nothing in the product sets
+# them; the defaults are the real device.
+WD="${CICADA_WATCHDOG_DEV:-/dev/watchdog}"
+WD_SYSFS="${CICADA_WATCHDOG_SYSFS:-/sys/class/watchdog}"
 STAMP=/run/cicada/locked-since
 PET_SEC=10
 
@@ -63,7 +67,7 @@ fi
 # pet interval the machine resets at random — which looks like failing hardware,
 # not like a policy. Derive the pet interval from the truth.
 actual=""
-for wdir in /sys/class/watchdog/watchdog*; do
+for wdir in "${WD_SYSFS}"/watchdog*; do
   [[ -r "${wdir}/timeout" ]] || continue
   actual="$(cat "${wdir}/timeout" 2>/dev/null)"
   break
@@ -80,6 +84,12 @@ else
   echo "cicada-watchdog: cannot read the hardware timeout; refusing to arm" >&2
   disarm
   exit 2
+fi
+
+if [[ "${CICADA_WATCHDOG_CHECK:-0}" == 1 ]]; then
+  echo "timeout=${TIMEOUT} pet=${PET_SEC} max=${MAX} lid_max=${LID_MAX}"
+  disarm
+  exit 0
 fi
 
 lid_closed() {

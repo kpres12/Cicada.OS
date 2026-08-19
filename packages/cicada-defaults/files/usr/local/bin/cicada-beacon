@@ -410,12 +410,38 @@ def _conf_value(name: str, default: str) -> str:
     return default
 
 
+# Every transport is bounded. The duress path is the reason: it runs while
+# someone is being made to hand over a laptop, and a meshtastic CLI blocking on
+# a wedged serial port would hang there forever — no beacon, no error, no
+# fallback to the next transport, and a person watching a cursor. A transport
+# that has not delivered within the budget has not delivered, and the honest
+# answer is to move on to the next one.
+MESHTASTIC_TIMEOUT_SEC = 20
+
+
 def send(tok: str, st: dict) -> tuple[bool, str]:
     for t in _conf_transports():
         if t == "meshtastic":
             if shutil.which("meshtastic"):
-                r = subprocess.run(["meshtastic", "--sendtext", tok], capture_output=True)
-                if r.returncode == 0:
+                try:
+                    r = subprocess.run(
+                        ["meshtastic", "--sendtext", tok],
+                        capture_output=True,
+                        timeout=MESHTASTIC_TIMEOUT_SEC,
+                    )
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    print(
+                        f"cicada-beacon: meshtastic did not return in "
+                        f"{MESHTASTIC_TIMEOUT_SEC}s ({type(exc).__name__}) — "
+                        "treating as not sent and trying the next transport.",
+                        file=sys.stderr,
+                    )
+                    r = None
+                if r is not None and r.returncode == 0:
+                    # Worth being precise about what this proves: the CLI
+                    # handed the text to the local node. It is not an
+                    # acknowledgement from the mesh, because there is no
+                    # receive path here to carry one back.
                     return True, "meshtastic"
         elif t == "file":
             dest = _conf_value("BEACON_FILE", "")

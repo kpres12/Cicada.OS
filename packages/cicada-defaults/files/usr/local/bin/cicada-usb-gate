@@ -2,6 +2,15 @@
 # Kernel USB authorize gate for cicada-lock. Root only (NOPASSWD from lock path).
 # 0 = new devices stay unauthorized while locked; 1 = restore after unlock.
 # Does not touch already-authorized devices (MBA keyboard/trackpad stay up).
+#
+# This reports what it actually wrote. The previous version redirected every
+# write to /dev/null and exited 0 unconditionally, so a gate that closed nothing
+# — wrong permissions, a kernel that rejects the write, no hubs at all — was
+# indistinguishable from one that closed every hub. Failing to close the gate
+# reduces protection rather than leaking a secret, so per the design rule it
+# degrades *visibly* instead of failing closed: the lock still proceeds (its
+# caller uses `|| true`), but the failure is on stderr and in the journal
+# instead of nowhere.
 set -euo pipefail
 [[ ${EUID} -eq 0 ]] || { echo "cicada-usb-gate: root only" >&2; exit 1; }
 v="${1:-}"
@@ -9,8 +18,37 @@ v="${1:-}"
   echo "usage: cicada-usb-gate 0|1" >&2
   exit 1
 }
-for h in /sys/bus/usb/devices/usb*/authorized_default; do
+
+# Overridable so tests/usb-gate.sh can build a fake hub tree and check the
+# verdict rather than the wording. Nothing in the product sets it.
+SYSFS="${CICADA_USB_SYSFS:-/sys/bus/usb/devices}"
+
+wrote=0
+failed=0
+for h in "${SYSFS}"/usb*/authorized_default; do
   [[ -e "${h}" ]] || continue
-  echo "${v}" > "${h}" 2>/dev/null || true
+  if echo "${v}" > "${h}" 2>/dev/null; then
+    wrote=$(( wrote + 1 ))
+  else
+    failed=$(( failed + 1 ))
+    echo "cicada-usb-gate: could not write ${v} to ${h}" >&2
+  fi
 done
+
+if [[ "${failed}" -gt 0 ]]; then
+  logger -t cicada-usb-gate "gate ${v}: ${wrote} hub(s) set, ${failed} refused" 2>/dev/null || true
+  # Partial is still worth reporting as failure: a machine with one hub gated
+  # and one open is not gated.
+  exit 1
+fi
+
+if [[ "${wrote}" -eq 0 ]]; then
+  # No hubs is not a failure to act — there was nothing to act on — but it is
+  # also not the protection anyone thinks they have, so say so.
+  echo "cicada-usb-gate: no USB host controllers found under ${SYSFS}" >&2
+  logger -t cicada-usb-gate "gate ${v}: no hubs found" 2>/dev/null || true
+  exit 0
+fi
+
+logger -t cicada-usb-gate "gate ${v}: ${wrote} hub(s) set" 2>/dev/null || true
 exit 0
