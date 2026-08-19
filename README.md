@@ -231,6 +231,7 @@ tests/seccomp.sh     # decodes and simulates the sandbox syscall filter
 tests/beacon.sh      # signs a statement, edits a fake ESP, requires the alarm
 tests/comms.sh       # the at-rest verdict, and everything cicada-comms refuses
 tests/afu.sh         # USB gate, gate restore, watchdog arming, escape hatches
+tests/linux.sh       # needs Docker: real kernel — nftables, NTS, Tor, duress
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
 ```
 
@@ -252,17 +253,31 @@ kernels, but has **not** been exercised on hardware end to end.
 **Known-unverified, and why.** Two lists, because "unverified" was covering two
 different things and that hid real bugs.
 
-*Needs the hardware, cannot be simulated:* Tor bootstrap, chrony NTS sync, the
-duress PAM hook, hardened_malloc actually running under Helium, whether a
-chipset watchdog resets an Intel Air, whether the kernel refuses a USB device at
-`authorized_default=0`, and whether a LoRa radio carries a beacon.
+*Still needs the Air, cannot be reproduced anywhere else:* hardened_malloc
+running under Helium, whether a chipset watchdog resets this board, whether the
+kernel refuses a USB device at `authorized_default=0`, and whether a LoRa radio
+carries a beacon.
 
-*Was on that list, now covered in simulation* (`tests/afu.sh`, `tests/beacon.sh`)
-— the decision logic wrapped around the hardware runs anywhere, and testing it
-found three defects that had nothing to do with hardware: the USB gate reported
-success when it had written nothing, `cicada-lock` stranded the gate closed if
-it was killed rather than exiting normally, and `cicada.nomalloc` — documented
-here as an escape hatch — could not rescue a machine that was already broken.
+*Verified on a real Linux kernel* (`tests/linux.sh`, a privileged `linux/amd64`
+container): the baseline firewall and the VPN kill switch load and the kernel
+reports the policies claimed here; an established TCP flow **stops** the moment
+the switch arms, which is the `ct established` claim above tested with packets
+instead of grep; chrony's shipped config completes NTS-KE with all three
+operators; Tor reaches `Bootstrapped 100%`; the onion namespace has one route
+and no physical interface.
+
+*Verified in simulation* (`tests/afu.sh`, `tests/beacon.sh`): the USB gate, the
+gate's restore path, watchdog arming, the escape hatches, and the beacon's
+signing, wire format and alarm.
+
+Splitting that list is not bookkeeping — it found five defects, none of which
+needed hardware to expose. **The session duress credential had never worked at
+all**: `pam_exec` writes the password without a trailing newline, so `read`
+returned non-zero, and the hook exited before it ever computed a hash. Also: the
+USB gate reported success when it had written nothing; `cicada-lock` stranded
+the gate closed if it was killed rather than exiting normally; `cicada.nomalloc`
+could not rescue a machine that was already broken; and the beacon's Meshtastic
+call could hang forever on the duress path.
 
 A clean run is still necessary, not sufficient.
 

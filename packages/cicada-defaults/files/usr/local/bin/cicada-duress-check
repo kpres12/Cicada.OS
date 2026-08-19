@@ -14,10 +14,29 @@
 # from this module not existing.
 set -uo pipefail
 
-HASHFILE=/etc/cicada/duress-session.sha256
+HASHFILE="${CICADA_DURESS_HASHFILE:-/etc/cicada/duress-session.sha256}"
+INSTALL_ENV="${CICADA_DURESS_INSTALL_ENV:-/etc/cicada/install.env}"
+# The reset path is overridable for exactly one reason: tests/linux/duress.sh
+# has to be able to drive the *matching* branch, and writing 'b' to the real
+# sysrq trigger would reset the machine running the test. Nothing in the product
+# sets it. It is the last line of the script, so a test that redirects it still
+# exercises everything that decides whether to wipe.
+SYSRQ="${CICADA_DURESS_SYSRQ:-/proc/sysrq-trigger}"
 [[ -r "${HASHFILE}" ]] || exit 0
 
-read -r -s token || exit 0
+# `|| true`, not `|| exit 0`, and this is the whole feature.
+#
+# pam_exec with expose_authtok writes the password with
+# write(fds[1], authtok, strlen(authtok)) and then closes the pipe — no
+# newline, no NUL terminator (linux-pam modules/pam_exec/pam_exec.c). `read`
+# therefore fills the variable and *returns non-zero*, because it hit EOF
+# without seeing a delimiter. With `|| exit 0` this script exited before it
+# ever computed a hash, which meant the session duress credential silently
+# never fired: typing it did nothing, and the failure was invisible because
+# exiting 0 is also what a wrong guess does.
+#
+# The emptiness check below is what actually rejects no-input, and it still does.
+read -r -s token || true
 [[ -n "${token}" ]] || exit 0
 
 got="$(printf '%s' "${token}" | sha256sum | awk '{print $1}')"
@@ -33,9 +52,9 @@ want="$(tr -d '[:space:]' < "${HASHFILE}")"
 logger -t cicada "duress credential entered at session prompt — wiping" 2>/dev/null || true
 
 dev=""
-if [[ -f /etc/cicada/install.env ]]; then
+if [[ -f "${INSTALL_ENV}" ]]; then
   # shellcheck disable=SC1091
-  source /etc/cicada/install.env
+  source "${INSTALL_ENV}"
   [[ -n "${CICADA_LUKS_UUID:-}" ]] && dev="/dev/disk/by-uuid/${CICADA_LUKS_UUID}"
 fi
 [[ -n "${dev}" && -e "${dev}" ]] \
@@ -52,5 +71,5 @@ fi
 
 # Hard reset rather than a clean shutdown: a clean shutdown can be inhibited,
 # and every second of delay is a second the key is still in DRAM.
-echo b > /proc/sysrq-trigger 2>/dev/null || systemctl reboot --force || true
+echo b > "${SYSRQ}" 2>/dev/null || systemctl reboot --force || true
 exit 0
