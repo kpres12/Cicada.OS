@@ -79,6 +79,13 @@ for unit in "${ROOT}"/packages/cicada-defaults/files/etc/systemd/system/cicada-*
     cicada-panic.service) say "${u} (udev-triggered, correctly not enabled)"; continue ;;
     # .service behind a .timer; the timer is what gets enabled.
     cicada-locked-reboot.service) say "${u} (driven by its timer)"; continue ;;
+    cicada-beacon.service) say "${u} (driven by its timer)"; continue ;;
+    # Opt-in, and on purpose. A beacon is a statement to a witness; with no
+    # witness pinned it goes nowhere, and one sent from the live ISO describes
+    # an image that is byte-identical on every copy — which would train someone
+    # to ignore the statement that matters. cicada-firstrun offers to enable it
+    # after cicada-link pairing, on an installed machine. See docs/BEACON.md.
+    cicada-beacon.timer) say "${u} (opt-in after cicada-link pairing)"; continue ;;
   esac
   if [[ "${cond}" -eq 1 ]]; then
     [[ "${live}" -eq 1 ]] && say "${u} (live-only by ConditionPathExists)" \

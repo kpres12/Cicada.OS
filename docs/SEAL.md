@@ -28,6 +28,15 @@ Not gated: Wi-Fi, radios, lock, `cicada-beacon` (coercion has to be fast).
 
 `cicada-attest` prints the device pubkey when there is no TPM2 (MBA). Store that on a Graphene Pixel. See [ATTEST.md](ATTEST.md).
 
-## Meshtastic
+## The beacon
 
-`cicada-beacon` sends `CICADA DURESS <tip>`. No radio → exit 2, still logged. Not a fake success.
+`cicada-beacon` is no longer a Meshtastic stub. It signs a compact statement
+about this machine — seal tip, hardware tier, twelve posture bits, and a hash
+over every file on the EFI system partition that decides what the laptop boots —
+and pushes it to one witness paired by hand with `cicada-link`.
+
+The duress contract is unchanged and is the reason the exit code matters: no
+transport delivered → **exit 2**, still logged. Not a fake success. Someone
+under coercion will act on the belief that the signal went out.
+
+Full design, wire format and limits: [BEACON.md](BEACON.md).

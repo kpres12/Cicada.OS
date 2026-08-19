@@ -10,6 +10,7 @@ usage() {
   echo "       cicada-pkg-helper install-any <pkg>      # official repo, password path" >&2
   echo "       cicada-pkg-helper flatpak-remote" >&2
   echo "       cicada-pkg-helper flatpak-install <app-id>" >&2
+  echo "       cicada-pkg-helper flatpak-harden <app-id>  # re-apply the system floors" >&2
   exit 1
 }
 [[ $# -ge 1 ]] || usage
@@ -71,8 +72,21 @@ apply_flatpak_overrides() {
     org.libreoffice.LibreOffice)
       flatpak override --system --filesystem=xdg-documents "${app_id}" || true
       ;;
-    org.signal.Signal|org.telegram.desktop|com.discordapp.Discord)
+    org.signal.Signal|org.telegram.desktop|com.discordapp.Discord|\
+    chat.simplex.simplex|im.riot.Riot)
       # Chat: Downloads only (already set). No Documents/Pictures by default.
+      #
+      # These are --system on purpose. A --user override can grant back what a
+      # user override removed, so a floor written at user level is not a floor —
+      # the same rule cicada-scopes enforces for cicada-run scopes.
+      #
+      # X11 is refused outright rather than left as a fallback: Cicada is
+      # Wayland-only, so nothing here needs it, and an app holding the X socket
+      # reads every keystroke sent to every other X client.
+      flatpak override --system --nosocket=x11 --nosocket=fallback-x11 "${app_id}" || true
+      # Camera and mic through the portal — a prompt at the moment of use —
+      # rather than as a standing grant for the life of the install.
+      flatpak override --system --nodevice=all --device=dri "${app_id}" || true
       ;;
   esac
 }
@@ -108,7 +122,8 @@ case "${cmd}" in
     app_id="$1"
     case "${app_id}" in
       com.spotify.Client|com.discordapp.Discord|org.signal.Signal|\
-      org.telegram.desktop|org.videolan.VLC|org.libreoffice.LibreOffice) ;;
+      org.telegram.desktop|org.videolan.VLC|org.libreoffice.LibreOffice|\
+      chat.simplex.simplex|im.riot.Riot) ;;
       *)
         echo "app not in Cicada allowlist: ${app_id}" >&2
         exit 1
@@ -120,6 +135,21 @@ case "${cmd}" in
         https://dl.flathub.org/repo/flathub.flatpakrepo
     fi
     flatpak install -y --system flathub "${app_id}"
+    apply_flatpak_overrides "${app_id}"
+    ;;
+  flatpak-harden)
+    # Re-apply the floors without reinstalling. A Flatpak update can reset an
+    # app's permissions to whatever the new manifest asks for, so this needs to
+    # be runnable on its own — cicada-comms harden is the front end.
+    [[ $# -ge 1 ]] || usage
+    app_id="$1"
+    case "${app_id}" in
+      org.signal.Signal|chat.simplex.simplex|im.riot.Riot|\
+      org.telegram.desktop|com.discordapp.Discord|com.spotify.Client|\
+      org.videolan.VLC|org.libreoffice.LibreOffice) ;;
+      *) echo "app not in Cicada allowlist: ${app_id}" >&2; exit 1 ;;
+    esac
+    command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
     apply_flatpak_overrides "${app_id}"
     ;;
   *) usage ;;

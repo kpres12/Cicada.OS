@@ -1,25 +1,607 @@
-#!/usr/bin/env bash
-# Meshtastic duress beacon. Sends the seal-log tip. No radio → exit 2 (not a fake success).
-set -euo pipefail
-command -v cicada-seal >/dev/null && cicada-seal init >/dev/null 2>&1 || true
-tip="$(cicada-seal tip 2>/dev/null || echo none)"
-msg="CICADA DURESS ${tip}"
+#!/usr/bin/env python3
+"""cicada-beacon — tell a device you trust what this laptop currently is.
 
-if command -v meshtastic >/dev/null 2>&1; then
-  meshtastic --sendtext "${msg}"
-  cicada-seal append duress.beacon "{\"via\":\"meshtastic\"}" >/dev/null 2>&1 || true
-  echo "beacon sent"
-  exit 0
-fi
+The README admits the hole this fills: on Tier 0 hardware there is no verified
+boot, so an evil maid cannot be *prevented*. She can still be *detected*, but
+only if the detection is reported somewhere she does not control. A laptop that
+notices its own tampering and prints a warning on its own screen has told the
+attacker's machine about the attacker.
 
-for dev in /dev/ttyUSB0 /dev/ttyACM0 /dev/ttyUSB1; do
-  if [[ -c "${dev}" ]] && command -v python3 >/dev/null; then
-    echo "meshtastic CLI missing; device ${dev} present. install meshtastic after AUR audit."
-    cicada-seal append duress.beacon "{\"via\":\"none\",\"dev\":\"${dev}\"}" >/dev/null 2>&1 || true
-    exit 2
-  fi
-done
+So the laptop signs a short statement about itself and pushes it out of band to
+one pinned witness (cicada-link). The witness keeps the previous statement and
+compares. What it is really watching is one number: a hash over the boot chain
+on the EFI system partition — the loader entries, the unified kernel images,
+the fallback loaders. On Tier 0 that partition is plaintext and unmeasured, and
+this hash is the only measurement of it that exists. If it changes on a boot
+where you did not install a kernel, something rewrote your boot chain.
 
-echo "no Meshtastic radio"
-cicada-seal append duress.beacon "{\"via\":\"none\"}" >/dev/null 2>&1 || true
-exit 2
+This is not chat. It carries no user text, has no address book, and cannot
+receive. A witness that could talk back would be a remote-administration
+channel on a machine whose entire design is that it has none.
+
+  cicada-beacon                 duress (unchanged: no args means coercion)
+  cicada-beacon duress          same, explicitly
+  cicada-beacon posture         sign and send the full boot/posture statement
+  cicada-beacon show            print what would be sent; send nothing
+  cicada-beacon verify [TOKEN]  witness side: check a statement against the last
+
+Transports are tried in the order configured and the first success wins. If
+none delivers, this exits 2 and says so. It never reports a beacon it did not
+send — a duress signal you believe went out and did not is worse than no duress
+signal at all.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+DIR = Path(os.environ.get("CICADA_SEAL_DIR", "/var/lib/cicada"))
+if not os.access(DIR, os.W_OK):
+    DIR = Path.home() / ".local/share/cicada"
+KEY = DIR / "device.key"
+PUB = DIR / "device.pub"
+STATE = DIR / "witness-state.json"
+CONF = Path(os.environ.get("CICADA_BEACON_CONF", "/etc/cicada/beacon.conf"))
+
+MAGIC = b"C1"
+WIRE_VERSION = 1
+KIND_POSTURE = 1
+KIND_DURESS = 2
+KINDS = {KIND_POSTURE: "posture", KIND_DURESS: "duress"}
+
+# 12-byte DER prefix every Ed25519 SubjectPublicKeyInfo starts with. Written out
+# rather than pulled from a crypto library so this tool depends on nothing that
+# cicada-seal does not already depend on.
+SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")
+
+# Bit -> what it means when set. Order is frozen: a witness running an older
+# build must not silently reinterpret a bit. Append only.
+FLAGS = [
+    ("swap_off", "no swap — nothing pages key material to disk"),
+    ("coredumps_refused", "core dumps refused"),
+    ("seccomp_filter", "sandbox syscall filter loaded"),
+    ("apparmor_lsm", "AppArmor in the kernel LSM stack"),
+    ("vpn_killswitch", "VPN kill switch armed"),
+    ("tor_netns", "Tor namespace up"),
+    ("uki_present", "signed unified kernel image present"),
+    ("no_type1_entries", "no unsigned type-1 boot entries left"),
+    ("sb_enrolled", "own Secure Boot keys enrolled"),
+    ("tpm_present", "TPM2 present"),
+    ("luks_root", "root is an unlocked LUKS mapping"),
+    ("live_mode", "running from the live ISO"),
+]
+
+
+# --- crypto ------------------------------------------------------------------
+def _run(cmd: list[str], data: bytes | None = None) -> bytes:
+    return subprocess.check_output(cmd, input=data, stderr=subprocess.DEVNULL)
+
+
+def _seal(*args: str) -> str:
+    exe = shutil.which("cicada-seal")
+    cmd = [exe] if exe else [sys.executable, str(Path(__file__).with_name("cicada-seal"))]
+    return subprocess.run(cmd + list(args), capture_output=True, text=True).stdout.strip()
+
+
+def _ensure_key() -> None:
+    if not KEY.exists():
+        _seal("init")
+
+
+def _raw_pub(pem: str) -> bytes:
+    body = "".join(l for l in pem.splitlines() if l and not l.startswith("-----"))
+    der = base64.b64decode(body)
+    if len(der) != 44:
+        raise ValueError(f"not an Ed25519 SPKI ({len(der)} bytes)")
+    return der[12:]
+
+
+def _pem_from_raw(raw: bytes) -> str:
+    if len(raw) != 32:
+        raise ValueError(f"expected 32 key bytes, got {len(raw)}")
+    b = base64.b64encode(SPKI_PREFIX + raw).decode()
+    return "-----BEGIN PUBLIC KEY-----\n" + b + "\n-----END PUBLIC KEY-----\n"
+
+
+def _sign(payload: bytes) -> bytes:
+    _ensure_key()
+    with tempfile.NamedTemporaryFile() as inf:
+        inf.write(payload)
+        inf.flush()
+        try:
+            return _run(["openssl", "pkeyutl", "-sign", "-inkey", str(KEY),
+                         "-rawin", "-in", inf.name])
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            # An unsigned beacon is worse than none: the witness's only job is
+            # to tell this laptop apart from something impersonating it. Fail
+            # loudly rather than emitting a token nobody can check.
+            raise SystemExit(
+                f"cicada-beacon: cannot sign with {KEY} ({exc}).\n"
+                "  the device key needs an openssl that supports ED25519."
+            ) from exc
+
+
+def _verify_sig(payload: bytes, sig: bytes, pub_pem: str) -> bool:
+    with tempfile.NamedTemporaryFile("w", suffix=".pem") as pf, \
+         tempfile.NamedTemporaryFile() as sigf, tempfile.NamedTemporaryFile() as inf:
+        pf.write(pub_pem)
+        pf.flush()
+        sigf.write(sig)
+        sigf.flush()
+        inf.write(payload)
+        inf.flush()
+        try:
+            _run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", pf.name,
+                  "-rawin", "-in", inf.name, "-sigfile", sigf.name])
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+
+# --- collection --------------------------------------------------------------
+def _cmd_ok(*cmd: str) -> bool:
+    if not shutil.which(cmd[0]):
+        return False
+    return subprocess.run(list(cmd), capture_output=True).returncode == 0
+
+
+def _read(path: str) -> str:
+    """Best-effort text read of a sysfs/proc file.
+
+    Catches everything, not just OSError: several of these paths are binary
+    (EFI variables carry a 4-byte attribute prefix) and a UnicodeDecodeError
+    on the duress path would be a traceback instead of a beacon.
+    """
+    try:
+        return Path(path).read_text(errors="replace").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _read_bytes(path: str) -> bytes:
+    try:
+        return Path(path).read_bytes()
+    except Exception:  # noqa: BLE001
+        return b""
+
+
+def _esp() -> Path | None:
+    # CICADA_ESP exists so tests/beacon.sh can build a fake boot partition and
+    # watch the alarm fire. Nothing in the product sets it.
+    override = os.environ.get("CICADA_ESP")
+    if override:
+        d = Path(override)
+        return d if d.is_dir() else None
+    for p in ("/efi", "/boot/efi", "/boot"):
+        d = Path(p)
+        if (d / "EFI").is_dir() or (d / "loader").is_dir():
+            return d
+    return None
+
+
+def esp_digest() -> tuple[str, int]:
+    """One hash over every file that can decide what this machine boots.
+
+    Not a hash of the whole partition: that changes when the firmware writes a
+    boot counter and would cry wolf on every boot. Not a hash of the kernel
+    alone either, which is the mistake Secure Boot makes without UKIs — the
+    initramfs is a cpio and a loader entry is a text file, and both are how an
+    evil maid actually gets in. Path and size go into the hash alongside the
+    contents so that renaming or truncating a file is a change too.
+    """
+    esp = _esp()
+    if esp is None:
+        return ("", 0)
+    h = hashlib.sha256()
+    n = 0
+    roots = [esp / "loader", esp / "EFI"]
+    files: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for f in sorted(root.rglob("*")):
+            if f.is_file() and not f.is_symlink():
+                files.append(f)
+    for f in sorted(files):
+        try:
+            data = f.read_bytes()
+        except OSError:
+            continue
+        rel = str(f.relative_to(esp))
+        h.update(rel.encode())
+        h.update(struct.pack(">Q", len(data)))
+        h.update(hashlib.sha256(data).digest())
+        n += 1
+    return (h.hexdigest(), n)
+
+
+def pcrs() -> dict:
+    """PCR 0, 7 and 11 straight from sysfs when a TPM exists.
+
+    Read for reporting, not for trust: a compromised kernel can lie about them.
+    They matter to the witness as *another number that should not change*, which
+    is the same job the ESP hash does on hardware that has no TPM at all.
+    """
+    base = Path("/sys/class/tpm/tpm0/pcr-sha256")
+    out = {}
+    for i in (0, 7, 11):
+        v = _read(str(base / str(i)))
+        if v:
+            out[str(i)] = v.replace(" ", "").lower()
+    return out
+
+
+def flags() -> tuple[int, dict]:
+    esp = _esp()
+    live = Path("/run/archiso").is_dir()
+    state = {
+        "swap_off": _read("/proc/swaps").count("\n") < 1,
+        "coredumps_refused": "|/bin/false" in _read("/proc/sys/kernel/core_pattern"),
+        "seccomp_filter": os.access("/run/cicada/seccomp/default.bpf", os.R_OK),
+        "apparmor_lsm": "apparmor" in _read("/sys/kernel/security/lsm").split(","),
+        "vpn_killswitch": _cmd_ok("nft", "list", "table", "inet", "cicada_ks"),
+        "tor_netns": _netns_has("onion"),
+        "uki_present": bool(esp and list((esp / "EFI/Linux").glob("*.efi"))) if esp else False,
+        "no_type1_entries": not bool(esp and list((esp / "loader/entries").glob("cicada*.conf"))) if esp else False,
+        "sb_enrolled": _secure_boot(),
+        "tpm_present": Path("/dev/tpmrm0").exists() or Path("/dev/tpm0").exists(),
+        "luks_root": _cmd_ok("cryptsetup", "status", "cicada"),
+        "live_mode": live,
+    }
+    bits = 0
+    for i, (name, _) in enumerate(FLAGS):
+        if state.get(name):
+            bits |= 1 << i
+    return bits, state
+
+
+def _secure_boot() -> bool:
+    """Is Secure Boot on, per the firmware rather than per sbctl?
+
+    The EFI variable is four bytes of attributes followed by one byte of value,
+    so the answer is the last byte and not the first.
+    """
+    raw = _read_bytes(
+        "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+    )
+    return len(raw) >= 1 and raw[-1] == 1
+
+
+def _netns_has(name: str) -> bool:
+    try:
+        return name in os.listdir("/run/netns")
+    except OSError:
+        return False
+
+
+def tier(state: dict) -> int:
+    """The hardware tier, from what is actually true right now.
+
+    Deliberately not a call out to cicada-hw-trust: this runs on the duress path
+    and from a boot-time unit, and neither is a place to shell out to a tool
+    that prints advice.
+    """
+    if state.get("sb_enrolled") and state.get("uki_present") and state.get("tpm_present"):
+        return 2
+    if state.get("tpm_present"):
+        return 1
+    return 0
+
+
+def seal_tip() -> tuple[int, str]:
+    out = _seal("tip")
+    parts = out.split()
+    if len(parts) == 2:
+        try:
+            return int(parts[0]), parts[1]
+        except ValueError:
+            pass
+    return -1, "none"
+
+
+def statement(kind: int) -> dict:
+    seq, tip = seal_tip()
+    bits, state = flags()
+    st = {
+        "v": 1,
+        "kind": KINDS[kind],
+        "host": os.uname().nodename,
+        "ts": int(time.time()),
+        "seq": max(seq, 0),
+        "tip": tip,
+        "tier": tier(state),
+        "flags": state,
+    }
+    if kind == KIND_POSTURE:
+        # Only the posture statement hashes the ESP. Duress is a coercion path:
+        # it has to leave in the time someone has while reaching for a laptop,
+        # and hashing a few hundred megabytes of boot partition is not that.
+        digest, count = esp_digest()
+        st["boot"] = {
+            "esp": digest,
+            "esp_files": count,
+            "pcr": pcrs(),
+            "kernel": os.uname().release,
+            "build": _read("/usr/share/cicada/BUILD-ID").splitlines()[0] if _read("/usr/share/cicada/BUILD-ID") else "",
+        }
+    return st
+
+
+# --- wire format -------------------------------------------------------------
+# 29 bytes of body plus a 64-byte signature, base64url'd, is 124 characters. A
+# Meshtastic text packet carries around 200. The full JSON statement goes over
+# transports where size is free; the compact form carries truncated digests of
+# the same values, so a witness holding only this can still see any change.
+def _pack(st: dict) -> bytes:
+    kind = KIND_DURESS if st["kind"] == "duress" else KIND_POSTURE
+    tip8 = bytes.fromhex(st["tip"])[:8] if st["tip"] not in ("none", "cicada-seal-v1") else b"\0" * 8
+    tip8 = tip8.ljust(8, b"\0")
+    boot = st.get("boot", {}).get("esp", "")
+    boot8 = (bytes.fromhex(boot)[:8] if boot else b"\0" * 8).ljust(8, b"\0")
+    bits = 0
+    for i, (fname, _) in enumerate(FLAGS):
+        if st.get("flags", {}).get(fname):
+            bits |= 1 << i
+    return (
+        MAGIC
+        + bytes([WIRE_VERSION, kind])
+        + struct.pack(">I", st["ts"] & 0xFFFFFFFF)
+        + struct.pack(">H", min(st["seq"], 0xFFFF))
+        + tip8
+        + boot8
+        + struct.pack(">H", bits & 0xFFFF)
+        + bytes([st["tier"] & 0xFF])
+    )
+
+
+def _unpack(body: bytes) -> dict:
+    if len(body) != 29 or body[:2] != MAGIC:
+        raise ValueError("not a Cicada beacon body")
+    ver, kind = body[2], body[3]
+    if ver != WIRE_VERSION:
+        raise ValueError(f"beacon wire version {ver}, this tool speaks {WIRE_VERSION}")
+    ts = struct.unpack(">I", body[4:8])[0]
+    seq = struct.unpack(">H", body[8:10])[0]
+    tip8 = body[10:18].hex()
+    boot8 = body[18:26].hex()
+    bits = struct.unpack(">H", body[26:28])[0]
+    return {
+        "kind": KINDS.get(kind, f"unknown({kind})"),
+        "ts": ts,
+        "seq": seq,
+        "tip8": tip8,
+        "boot8": boot8,
+        "bits": bits,
+        "tier": body[28],
+    }
+
+
+def token(st: dict) -> str:
+    body = _pack(st)
+    return "CIC1:" + base64.urlsafe_b64encode(body + _sign(body)).decode().rstrip("=")
+
+
+# --- transports --------------------------------------------------------------
+def _conf_transports() -> list[str]:
+    if CONF.exists():
+        for line in CONF.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("TRANSPORTS="):
+                v = line.split("=", 1)[1].strip().strip('"').strip("'")
+                return [t.strip() for t in v.split(",") if t.strip()]
+    return ["meshtastic", "file", "qr"]
+
+
+def _conf_value(name: str, default: str) -> str:
+    if CONF.exists():
+        for line in CONF.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(f"{name}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return default
+
+
+def send(tok: str, st: dict) -> tuple[bool, str]:
+    for t in _conf_transports():
+        if t == "meshtastic":
+            if shutil.which("meshtastic"):
+                r = subprocess.run(["meshtastic", "--sendtext", tok], capture_output=True)
+                if r.returncode == 0:
+                    return True, "meshtastic"
+        elif t == "file":
+            dest = _conf_value("BEACON_FILE", "")
+            if dest:
+                try:
+                    p = Path(dest)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    with p.open("a") as f:
+                        f.write(tok + "\n")
+                    return True, f"file:{dest}"
+                except OSError:
+                    pass
+        elif t == "qr":
+            # The transport with no infrastructure at all: the witness reads the
+            # screen. Slow, manual, and the only one that still works when the
+            # radios are off and the network is the adversary.
+            if shutil.which("qrencode") and sys.stdout.isatty():
+                subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", tok], check=False)
+                return True, "qr"
+        elif t == "stdout":
+            print(tok)
+            return True, "stdout"
+    return False, ""
+
+
+# --- witness side ------------------------------------------------------------
+def _load_state() -> dict:
+    if STATE.exists():
+        try:
+            return json.loads(STATE.read_text())
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _save_state(s: dict) -> None:
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(s, indent=2, sort_keys=True) + "\n")
+    tmp.replace(STATE)
+
+
+def verify(arg: str | None, pub_arg: str | None) -> int:
+    raw_tok = arg
+    if raw_tok is None or raw_tok == "-":
+        raw_tok = sys.stdin.read().strip()
+    elif Path(raw_tok).exists():
+        raw_tok = Path(raw_tok).read_text().strip().splitlines()[-1]
+    raw_tok = raw_tok.strip()
+    if not raw_tok.startswith("CIC1:"):
+        print("cicada-beacon: not a Cicada beacon token", file=sys.stderr)
+        return 1
+    blob = raw_tok[5:]
+    blob += "=" * (-len(blob) % 4)
+    try:
+        data = base64.urlsafe_b64decode(blob)
+    except Exception:
+        print("cicada-beacon: token does not decode", file=sys.stderr)
+        return 1
+    if len(data) != 29 + 64:
+        print(f"cicada-beacon: token is {len(data)} bytes, expected 93", file=sys.stderr)
+        return 1
+    body, sig = data[:29], data[29:]
+
+    # Which key should have signed this? Explicit --pub wins; otherwise the
+    # local device key, which is the case when you verify your own beacon.
+    if pub_arg:
+        p = Path(pub_arg)
+        text = p.read_text() if p.exists() else pub_arg
+        pub_pem = text if "BEGIN" in text else _pem_from_raw(base64.b64decode(text.strip()))
+    elif PUB.exists():
+        pub_pem = PUB.read_text()
+    else:
+        print("cicada-beacon: no public key to check against (--pub KEY|FILE)", file=sys.stderr)
+        return 1
+
+    if not _verify_sig(body, sig, pub_pem):
+        print("SIGNATURE BAD — this did not come from that device")
+        return 1
+    st = _unpack(body)
+    fp = hashlib.sha256(_raw_pub(pub_pem)).hexdigest()[:16]
+
+    print(f"signature   ok ({fp})")
+    print(f"kind        {st['kind']}")
+    print(f"when        {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(st['ts']))}")
+    print(f"tier        {st['tier']}")
+    print(f"seal seq    {st['seq']}  tip {st['tip8']}…")
+    print(f"boot hash   {st['boot8']}…")
+
+    alarms: list[str] = []
+    notes: list[str] = []
+    state = _load_state()
+    prev = state.get(fp)
+    if prev is None:
+        notes.append("first statement from this device — nothing to compare against yet")
+    else:
+        if st["seq"] < prev["seq"]:
+            alarms.append(
+                f"SEAL LOG WENT BACKWARDS: seq {prev['seq']} → {st['seq']}. "
+                "An append-only log does not shrink. Someone replaced it."
+            )
+        if st["ts"] < prev["ts"]:
+            alarms.append(f"clock went backwards: {prev['ts']} → {st['ts']} (replayed statement?)")
+        if st["kind"] == "posture" and prev.get("boot8") and st["boot8"] != prev["boot8"]:
+            alarms.append(
+                f"BOOT CHAIN CHANGED: {prev['boot8']}… → {st['boot8']}…\n"
+                "    Expected only if you installed or rebuilt a kernel since the last\n"
+                "    statement. If you did not, something rewrote the EFI system\n"
+                "    partition — which on Tier 0 is exactly the attack that hardware\n"
+                "    cannot prevent. Do not type the passphrase into this machine."
+            )
+        lost = [FLAGS[i][1] for i in range(len(FLAGS))
+                if (prev["bits"] >> i) & 1 and not (st["bits"] >> i) & 1]
+        for d in lost:
+            notes.append(f"protection dropped: {d}")
+        if st["tier"] < prev["tier"]:
+            alarms.append(f"hardware tier dropped {prev['tier']} → {st['tier']}")
+
+    if st["kind"] == "duress":
+        alarms.append("DURESS. This was sent by someone who was being made to use the machine.")
+
+    print()
+    for n in notes:
+        print(f"  note   {n}")
+    for a in alarms:
+        print(f"  ALARM  {a}")
+    if not alarms and not notes:
+        print("  nothing changed since the last statement")
+
+    state[fp] = {"seq": st["seq"], "ts": st["ts"], "bits": st["bits"],
+                 "boot8": st["boot8"], "tip8": st["tip8"], "tier": st["tier"]}
+    _save_state(state)
+    return 3 if alarms else 0
+
+
+# --- commands ----------------------------------------------------------------
+def emit(kind: int) -> int:
+    st = statement(kind)
+    tok = token(st)
+    ok, via = send(tok, st)
+    _seal("append", f"beacon.{KINDS[kind]}",
+          json.dumps({"via": via or "none", "tier": st["tier"], "seq": st["seq"]}))
+    if ok:
+        print(f"beacon sent ({via})")
+        return 0
+    # Deliberately not silent and deliberately not zero. docs/SEAL.md has said
+    # since the stub that a beacon with no radio is exit 2 and not a fake
+    # success; the reason is that someone under coercion will act on this.
+    print("NOT SENT — no transport delivered this beacon.", file=sys.stderr)
+    print(f"  tried: {', '.join(_conf_transports())}", file=sys.stderr)
+    print("  the statement is in the seal log either way. To carry it by hand:", file=sys.stderr)
+    print("    cicada-beacon show", file=sys.stderr)
+    return 2
+
+
+def show() -> int:
+    st = statement(KIND_POSTURE)
+    print(json.dumps(st, indent=2, sort_keys=True))
+    print()
+    tok = token(st)
+    print(tok)
+    print()
+    if shutil.which("qrencode"):
+        subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", tok], check=False)
+    return 0
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    pub = None
+    if "--pub" in argv:
+        i = argv.index("--pub")
+        pub = argv[i + 1] if len(argv) > i + 1 else None
+        del argv[i : i + 2]
+    cmd = argv[0] if argv else "duress"
+    if cmd == "duress":
+        return emit(KIND_DURESS)
+    if cmd == "posture":
+        return emit(KIND_POSTURE)
+    if cmd == "show":
+        return show()
+    if cmd == "verify":
+        return verify(argv[1] if len(argv) > 1 else None, pub)
+    print(__doc__.strip(), file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

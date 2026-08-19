@@ -218,7 +218,15 @@ expect_exit 1 "vpn on without wg0.conf" bash "${CICADA_BIN}/cicada-vpn" on
 expect_exit 1 "auth refuses ungated action" bash "${CICADA_BIN}/cicada-auth" confirm wifi.connect
 expect_exit 1 "auth refuses install with no TTY/UI" bash "${CICADA_BIN}/cicada-auth" confirm install
 expect_exit 1 "backup without repo" env -u CICADA_BACKUP_REPO bash "${CICADA_BIN}/cicada-backup" backup
-expect_exit 2 "beacon with no radio" bash "${CICADA_BIN}/cicada-beacon"
+# cicada-beacon is Python now (it signs a wire format), so this cannot be
+# invoked with bash. The contract it is asserting is unchanged and is the one
+# docs/SEAL.md has promised since the stub: nothing delivered is exit 2.
+CICADA_BEACON_CONF="${tmp}/beacon.conf" \
+  bash -c 'echo TRANSPORTS=file > "$1"' _ "${tmp}/beacon.conf"
+expect_exit 2 "beacon with no transport" \
+  env CICADA_BEACON_CONF="${tmp}/beacon.conf" python3 "${CICADA_BIN}/cicada-beacon"
+expect_exit 1 "auth refuses ungated comms action" bash "${CICADA_BIN}/cicada-auth" confirm comms.wipe
+expect_exit 1 "comms with no verb usage-exits" bash "${CICADA_BIN}/cicada-comms"
 bash "${CICADA_BIN}/cicada-attest" >/dev/null
 test -f "${tmp}/attest/README.txt" || die "attest missing README"
 if openssl genpkey -algorithm ED25519 >/dev/null 2>&1; then

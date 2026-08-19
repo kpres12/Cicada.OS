@@ -190,6 +190,42 @@ Shows the instructions; nothing is written without your confirmation." && {
   }
 fi
 
+# ---- Witness pairing (the beacon) -----------------------------------------
+# Offered here and not on the live ISO: a live image has no machine identity and
+# the same boot hash on every copy, so a beacon from it says nothing.
+#
+# This is the only step in the wizard that is *more* important the worse the
+# hardware is. On Tier 2+ the boot chain prevents the attack this detects. On an
+# Apple EFI Air it is the only thing standing between an edited initramfs and a
+# passphrase typed into it — see docs/BEACON.md.
+if command -v cicada-link >/dev/null 2>&1 \
+   && [[ ! -f /var/lib/cicada/witnesses.json && ! -f "${HOME}/.local/share/cicada/witnesses.json" ]]; then
+  _tier_note="This laptop cannot verify its own boot chain, so this is the only
+tamper detection it has."
+  if [[ -c /dev/tpmrm0 || -c /dev/tpm0 ]]; then
+    _tier_note="This laptop has a TPM, so the boot chain can also be checked
+locally. The beacon still catches what a compromised local check would hide."
+  fi
+  ask "Pair a device to watch this laptop?" \
+"Cicada can sign a short statement about its own boot chain and push it to
+one device you pair by hand — a phone, another laptop. That device notices
+if the EFI partition changes on a boot where you did not update a kernel.
+
+${_tier_note}
+
+It carries no messages, has no account or server, and cannot receive.
+
+Shows this laptop's fingerprint and a code to scan." && {
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
+      kitty --title CICADA-WITNESS -e bash -lc 'cicada-link show; echo; echo "Then, to send a statement at every boot:"; echo "  sudo systemctl enable --now cicada-beacon.timer"; echo; read -r -p "Enter…"'
+    else
+      cicada-link show
+      echo
+      echo "Then: sudo systemctl enable --now cicada-beacon.timer"
+    fi
+  }
+fi
+
 # ---- Channel pin (updates stay Cicada, not raw Arch rolling) --------------
 if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
   sudo /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf >/dev/null 2>&1 || true

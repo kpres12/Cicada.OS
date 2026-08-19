@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""cicada-link — pin the one device that witnesses this laptop.
+
+Track B's pairing half. There is no account, no directory, no discovery and no
+server: you carry the other device's public key over by hand, once, and after
+that the laptop signs statements only that device can meaningfully check.
+
+The witness is expected to be a phone you already trust (a GrapheneOS Pixel is
+the intended one, per docs/ATTEST.md), but nothing here cares what it is. All a
+witness needs is the ability to run `cicada-beacon verify` on some machine.
+
+  cicada-link show                 this laptop's identity, as text and as a QR
+  cicada-link add NAME [FILE|-]    pin a witness public key
+  cicada-link list
+  cicada-link forget NAME
+
+Pairing is deliberately one-way. The laptop reports; the witness listens. A
+witness that could send commands back would be a remote-administration channel
+on a machine whose whole point is that it has none.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+DIR = Path(os.environ.get("CICADA_SEAL_DIR", "/var/lib/cicada"))
+if not os.access(DIR, os.W_OK):
+    DIR = Path.home() / ".local/share/cicada"
+PUB = DIR / "device.pub"
+PEERS = DIR / "witnesses.json"
+
+
+def _seal(*args: str) -> str:
+    exe = shutil.which("cicada-seal")
+    cmd = [exe] if exe else [sys.executable, str(Path(__file__).with_name("cicada-seal"))]
+    return subprocess.run(
+        cmd + list(args), capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _spki(pem: str) -> bytes:
+    """The 32-byte Ed25519 point out of an OpenSSL PEM SubjectPublicKeyInfo.
+
+    Doing this by hand rather than pulling in a crypto library: the DER for an
+    Ed25519 SPKI is a fixed 12-byte prefix followed by the key, and cicada-seal
+    already depends on the openssl binary and nothing else. A dependency added
+    here would be a dependency in the initramfs-adjacent tool set.
+    """
+    body = "".join(
+        l for l in pem.splitlines() if l and not l.startswith("-----")
+    )
+    der = base64.b64decode(body)
+    if len(der) != 44:
+        raise ValueError(f"not an Ed25519 SPKI ({len(der)} bytes)")
+    return der[12:]
+
+
+def fingerprint(raw: bytes) -> str:
+    """Six groups of four hex — short enough to read aloud over a phone call,
+    long enough that producing a collision is not a party trick."""
+    h = hashlib.sha256(raw).hexdigest()[:24]
+    return "-".join(h[i : i + 4] for i in range(0, 24, 4))
+
+
+def _load_peers() -> dict:
+    if PEERS.exists():
+        try:
+            return json.loads(PEERS.read_text())
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _save_peers(peers: dict) -> None:
+    PEERS.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PEERS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(peers, indent=2, sort_keys=True) + "\n")
+    tmp.chmod(0o444)
+    tmp.replace(PEERS)
+
+
+def _qr(text: str) -> None:
+    if shutil.which("qrencode"):
+        subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", text], check=False)
+    else:
+        print("(install qrencode to show this as a scannable code)")
+
+
+def show() -> int:
+    if not PUB.exists():
+        _seal("init")
+    if not PUB.exists():
+        print("no device key — run: cicada-seal init", file=sys.stderr)
+        return 1
+    pem = PUB.read_text()
+    raw = _spki(pem)
+    b64 = base64.b64encode(raw).decode()
+    print("This laptop's witness identity")
+    print("==============================")
+    print(f"  fingerprint  {fingerprint(raw)}")
+    print(f"  key          {b64}")
+    print()
+    _qr(f"cicada-witness:v1:{b64}")
+    print()
+    print("Read the fingerprint aloud to the person holding the witness device,")
+    print("or scan the code with it. Do this once, in the same room. Anything")
+    print("that carries this key over the network is carrying it past the")
+    print("adversary this pairing exists to detect.")
+    return 0
+
+
+def add(name: str, src: str | None) -> int:
+    if not name or "/" in name:
+        print("usage: cicada-link add NAME [FILE|-]", file=sys.stderr)
+        return 1
+    if src in (None, "-"):
+        print(f"paste the witness key for {name} (base64 or PEM), then Ctrl-D:")
+        data = sys.stdin.read()
+    else:
+        data = Path(src).read_text()
+    data = data.strip()
+    try:
+        raw = _spki(data) if "BEGIN" in data else base64.b64decode(data, validate=True)
+    except Exception as exc:  # noqa: BLE001 — any decode failure is the same answer
+        print(f"cicada-link: not a usable key: {exc}", file=sys.stderr)
+        return 1
+    if len(raw) != 32:
+        print(f"cicada-link: expected a 32-byte Ed25519 key, got {len(raw)}", file=sys.stderr)
+        return 1
+    peers = _load_peers()
+    if name in peers and peers[name]["key"] != base64.b64encode(raw).decode():
+        # Silently re-pinning is how a witness gets replaced by the thing it was
+        # supposed to detect. Make the operator delete the old one on purpose.
+        print(
+            f"cicada-link: {name} is already pinned to a different key.\n"
+            f"  existing {peers[name]['fingerprint']}\n"
+            f"  offered  {fingerprint(raw)}\n"
+            f"  if the replacement is intended: cicada-link forget {name}",
+            file=sys.stderr,
+        )
+        return 1
+    peers[name] = {
+        "key": base64.b64encode(raw).decode(),
+        "fingerprint": fingerprint(raw),
+    }
+    _save_peers(peers)
+    _seal("append", "link.add", json.dumps({"name": name, "fp": peers[name]["fingerprint"]}))
+    print(f"pinned {name}  {peers[name]['fingerprint']}")
+    return 0
+
+
+def lst() -> int:
+    peers = _load_peers()
+    if not peers:
+        print("no witnesses pinned (cicada-link add NAME)")
+        return 0
+    for name, p in sorted(peers.items()):
+        print(f"{name}  {p['fingerprint']}")
+    return 0
+
+
+def forget(name: str) -> int:
+    peers = _load_peers()
+    if name not in peers:
+        print(f"cicada-link: no such witness: {name}", file=sys.stderr)
+        return 1
+    fp = peers.pop(name)["fingerprint"]
+    _save_peers(peers)
+    _seal("append", "link.forget", json.dumps({"name": name, "fp": fp}))
+    print(f"forgot {name}")
+    return 0
+
+
+def main() -> int:
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "show":
+        return show()
+    if cmd == "add":
+        return add(sys.argv[2] if len(sys.argv) > 2 else "", sys.argv[3] if len(sys.argv) > 3 else None)
+    if cmd == "list":
+        return lst()
+    if cmd == "forget":
+        return forget(sys.argv[2] if len(sys.argv) > 2 else "")
+    print(__doc__.split("\n\n")[2].strip(), file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

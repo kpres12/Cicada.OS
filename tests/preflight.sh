@@ -35,6 +35,14 @@ echo "==> sandbox syscall filter"
 bash "${ROOT}/tests/seccomp.sh" >/dev/null || die "seccomp filter (run tests/seccomp.sh for detail)"
 say "seccomp program decodes and returns the right verdicts"
 
+echo "==> beacon + witness pairing"
+bash "${ROOT}/tests/beacon.sh" >/dev/null || die "beacon (run tests/beacon.sh for detail)"
+say "beacon signs, verifies, and alarms on a changed boot chain"
+
+echo "==> messenger hosting"
+bash "${ROOT}/tests/comms.sh" >/dev/null || die "comms (run tests/comms.sh for detail)"
+say "cicada-comms refuses what it cannot protect"
+
 echo "==> cicada-profile directory mode"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT

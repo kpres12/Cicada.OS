@@ -37,7 +37,10 @@ Laptop attacks are the same primitives. Cicada answers them in software where th
 - Device Ed25519 key + SHA-256 hash-chained seal log (`cicada-seal`) on boot, lock, RF, Wi-Fi, VPN
 - `cicada-auth confirm` for install / VPN-off / duress-enroll (not Wi-Fi clicks)
 - `cicada-attest`: TPM2 quote if present; otherwise export device pubkey for a Graphene Pixel to pin (`docs/ATTEST.md`)
-- `cicada-beacon`: Meshtastic duress text of the seal tip; exit 2 if no radio
+- `cicada-beacon`: signed posture/duress statement to a hand-paired witness;
+  carries a hash of the EFI system partition, so an evil-maid edit to the
+  cmdline or initramfs shows up on a device the attacker does not hold.
+  Exit 2 if nothing delivered it (docs/BEACON.md)
 - Randomized MAC (NetworkManager + iwd), Chromium 3P cookies / WebRTC / Privacy Sandbox / Google DoH denied by policy; JIT/WebGPU off as recommended (overridable)
 
 Cellebrite-class “no extraction from locked current Graphene” is **not** a Cicada-on-MBA claim. Same methodology, weaker hardware. Tier 3 (Librem / NitroPad + Heads) is where evil maid gets a real answer.

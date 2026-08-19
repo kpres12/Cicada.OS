@@ -1,0 +1,47 @@
+[Unit]
+Description=Cicada boot posture beacon (signed statement to the pinned witness)
+Documentation=https://github.com/kpres12/Cicada.OS/blob/main/docs/BEACON.md
+# After the seal log's filesystem and after the ESP is mounted, because the boot
+# hash is the payload. Before the user can log in: the interesting statement is
+# the one describing the machine as it came up, not as it looks after a session
+# has been running for an hour.
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cicada-beacon posture
+# A beacon that could not be delivered is exit 2 by design (no radio, no witness
+# medium). That is a normal outcome on a machine that is not paired, and it must
+# not paint the boot red — the seal log has the statement either way.
+SuccessExitStatus=0 2
+
+# --- confinement -------------------------------------------------------------
+# Reads the ESP and sysfs, signs with the device key, writes one line to the
+# seal log. It has no business doing anything else. Note what is NOT here:
+# PrivateNetwork, because a future transport is allowed to be a network one, and
+# ProtectSystem=strict, because the seal log lives under /var/lib/cicada.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cicada
+ProtectHome=yes
+PrivateTmp=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# No capability holds this open: it reads files a root process can already read.
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

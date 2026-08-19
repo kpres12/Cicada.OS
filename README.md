@@ -136,6 +136,34 @@ Introduction to Linux*, which is the actual playbook)
 - Browser policy is **managed** (non-overridable): JIT off, WebGPU off, site
   isolation, post-quantum key agreement
 
+**Tamper evidence**
+- Prevention needs a root of trust; **detection** only needs somewhere the
+  attacker does not control. `cicada-beacon` signs a hash over every file on
+  the EFI system partition that decides what the machine boots and pushes it to
+  one device paired by hand (`cicada-link`) — over LoRa, a USB stick, or a QR
+  code on the screen. On Tier 0, where `/boot` is plaintext and unmeasured,
+  **this is the only measurement of the boot chain that exists**
+- The witness compares against the last statement it saw: a boot hash that moved
+  on a boot with no kernel upgrade, a seal log whose sequence went *backwards*,
+  a hardware tier that dropped. It carries no messages, has no account or
+  server, and cannot receive — a witness that could talk back would be a
+  remote-administration channel on a machine designed to have none
+- No transport delivered it → **exit 2**, never a fake success. Someone under
+  coercion acts on the belief that the signal went out
+
+**Messaging**
+- Cicada does not ship a messenger, and will not: the hard parts of Signal are
+  the network and the metadata, not the ratchet, and Matrix's exposure is in the
+  federation design rather than in any client
+- What it does instead is host one honestly. `cicada-comms bind` moves a
+  message store into an encrypted profile, so `cicada-lock` freezing that
+  profile puts the history at rest — the thing Electron's `safeStorage` cannot
+  do for itself on a session with no keyring, where it falls back to a constant
+  key compiled into the binary
+- `cicada-comms doctor` reports which of those is true on *your* machine.
+  `shred` erases LUKS keyslots when it can and says plainly that it was only an
+  unlink when it cannot
+
 **Attack surface**
 - archiso's installer-ISO services carved out: hypervisor guest agents
   (a host→guest control channel by design), cloud-init, ModemManager,
@@ -167,6 +195,9 @@ Introduction to Linux*, which is the actual playbook)
 | `cicada-profile` | Work / Personal / Burner compartments; `end` puts one back at rest |
 | `cicada-firstrun` | One-time wizard: TPM PIN on Tier 1+, USB token on Tier 0 |
 | `cicada-wifi-diag` | Why there is no Wi-Fi |
+| `cicada-link` | Pair the one device that witnesses this laptop |
+| `cicada-beacon` | Signed boot-chain statement out of band; `verify` on the witness |
+| `cicada-comms` | Where a messenger's history lives, and what that is worth |
 
 Escape hatches, typed at the boot menu (`e` on the entry):
 `cicada.nomalloc` disables hardened_malloc; `cicada.nowatchdog` disables the
@@ -197,6 +228,8 @@ tests/here.sh        # ~90 checks: defaults, fail-closed CLIs, boot entries
 tests/seam.sh        # live vs installed parity — where most bugs have lived
 tests/seal.sh        # hash chain + tamper detection
 tests/seccomp.sh     # decodes and simulates the sandbox syscall filter
+tests/beacon.sh      # signs a statement, edits a fake ESP, requires the alarm
+tests/comms.sh       # the at-rest verdict, and everything cicada-comms refuses
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
 ```
 
@@ -216,7 +249,9 @@ hardening above is verified structurally and by loading rulesets on real
 kernels, but has **not** been exercised on hardware end to end.
 
 Known-unverified: Tor bootstrap, chrony NTS sync, the watchdog, hardened_malloc
-under Helium, the duress PAM hook, USB gate restore on unlock.
+under Helium, the duress PAM hook, USB gate restore on unlock, and the beacon's
+Meshtastic transport — the signing, the wire format and the alarm are covered by
+`tests/beacon.sh`, but no LoRa radio has carried one yet.
 
 Do not rely on this for anything that matters yet. See
 [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/test-results.md](docs/test-results.md).
@@ -225,9 +260,11 @@ Do not rely on this for anything that matters yet. See
 
 - **It is not GrapheneOS**, and on Tier 0 hardware it cannot approach it. No
   secure element, no verified boot, no key-guessing rate limit.
-- **Evil maid is unsolved on Tier 0.** `/boot` is plaintext, unsigned and
+- **Evil maid is unprevented on Tier 0.** `/boot` is plaintext, unsigned and
   unmeasured; modifying the initramfs to capture the passphrase needs a
-  screwdriver, not an exploit.
+  screwdriver, not an exploit. `cicada-beacon` makes it *detectable* by a device
+  the attacker does not hold, which is a different and weaker claim: it tells
+  you afterwards, and only if you paired a witness and read what it says.
 - **Intel ME / AMD PSP** are present on every tier and are not neutralized.
 - **Tor does not hide that you use Tor** without a pluggable transport, and
   obfs4/snowflake are AUR-only — on a censored network use Tor Browser, which
@@ -237,4 +274,5 @@ Do not rely on this for anything that matters yet. See
 Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) ·
 [docs/ATTACKS.md](docs/ATTACKS.md) ·
 [docs/GRAPHENE_PARITY.md](docs/GRAPHENE_PARITY.md) ·
-[docs/SANDBOX.md](docs/SANDBOX.md) · [docs/DESIGN.md](docs/DESIGN.md)
+[docs/SANDBOX.md](docs/SANDBOX.md) · [docs/DESIGN.md](docs/DESIGN.md) ·
+[docs/BEACON.md](docs/BEACON.md) · [docs/COMMS.md](docs/COMMS.md)

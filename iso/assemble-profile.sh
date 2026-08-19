@@ -197,6 +197,11 @@ ln -sfn /usr/lib/systemd/system/NetworkManager.service "${wants}/NetworkManager.
 # Live: USBGuard with HID allow (MBA keyboard/trackpad are USB). AppArmor stays install-only.
 ln -sfn /usr/lib/systemd/system/usbguard.service "${wants}/usbguard.service"
 rm -f "${wants}/apparmor.service"
+# cicada-beacon.timer is deliberately NOT linked here. A live ISO has no pinned
+# witness and a boot hash that is the same on every copy of the image, so a
+# beacon from it carries no information and would train someone to ignore the
+# one that matters. cicada-firstrun offers it after an install, once there is a
+# machine identity to make a statement about. See docs/BEACON.md.
 mkdir -p "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants"
 ln -sfn /etc/systemd/system/cicada-locked-reboot.timer \
   "${PROFILE}/airootfs/etc/systemd/system/timers.target.wants/cicada-locked-reboot.timer"
@@ -288,6 +293,8 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-seal"]="0:0:755"
   ["/usr/local/bin/cicada-attest"]="0:0:755"
   ["/usr/local/bin/cicada-beacon"]="0:0:755"
+  ["/usr/local/bin/cicada-link"]="0:0:755"
+  ["/usr/local/bin/cicada-comms"]="0:0:755"
   ["/usr/local/bin/cicada-auth"]="0:0:755"
   ["/usr/local/bin/cicada-tpm-enroll"]="0:0:755"
   ["/usr/local/bin/cicada-sbctl-enroll"]="0:0:755"

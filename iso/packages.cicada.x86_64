@@ -97,6 +97,11 @@ gnupg
 age
 wireguard-tools
 macchanger
+# cicada-link / cicada-beacon draw the pairing key and the signed statement as a
+# scannable code. That is the witness transport that needs no radio, no network
+# and no second machine — the one that still works when everything else is the
+# adversary.
+qrencode
 libnotify
 lynis
 linux-hardened

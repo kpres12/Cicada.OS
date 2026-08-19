@@ -31,6 +31,8 @@ No AUR. Needs Wi-Fi." \
   "Spotify" "Flatpak — music (home denied)" \
   "Discord" "Flatpak — chat (home denied)" \
   "Signal" "Flatpak — messenger (home denied)" \
+  "SimpleX" "Flatpak — messenger, no account or phone number" \
+  "Element" "Flatpak — Matrix client (read docs/COMMS.md first)" \
   "Telegram" "Flatpak — messenger (home denied)" \
   "VLC" "Flatpak — video (home denied)" \
   "LibreOffice" "Flatpak — documents (home denied)" \
@@ -47,9 +49,24 @@ Needs network and your password." \
     --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
   run_helper flatpak-remote \
     && run_helper flatpak-install "${app_id}" \
-    && zenity --info --title="Install software" \
-         --text="Installed: ${name}\n\nOpen from the app menu or:\n  flatpak run ${app_id}" 2>/dev/null \
     || die "Could not install ${name}. Check Wi-Fi / password."
+
+  # Messengers get one extra sentence, because the default install leaves the
+  # message store in the real home where full-disk encryption is the only thing
+  # protecting it — i.e. nothing, on a laptop that is already unlocked.
+  local extra=""
+  case "${app_id}" in
+    org.signal.Signal|chat.simplex.simplex|im.riot.Riot|org.telegram.desktop|com.discordapp.Discord)
+      extra="
+
+Message history is stored in your home directory, so it is at rest only when
+this laptop is off. To put it inside an encrypted profile instead:
+  cicada-comms status
+  cicada-comms bind <app> <profile>"
+      ;;
+  esac
+  zenity --info --title="Install software" \
+    --text="Installed: ${name}\n\nOpen from the app menu or:\n  flatpak run ${app_id}${extra}" 2>/dev/null || true
 }
 
 case "${pick}" in
@@ -106,6 +123,8 @@ Needs your password." \
   Spotify) flatpak_install com.spotify.Client Spotify ;;
   Discord) flatpak_install com.discordapp.Discord Discord ;;
   Signal) flatpak_install org.signal.Signal Signal ;;
+  SimpleX) flatpak_install chat.simplex.simplex SimpleX ;;
+  Element) flatpak_install im.riot.Riot Element ;;
   Telegram) flatpak_install org.telegram.desktop Telegram ;;
   VLC) flatpak_install org.videolan.VLC VLC ;;
   LibreOffice) flatpak_install org.libreoffice.LibreOffice LibreOffice ;;

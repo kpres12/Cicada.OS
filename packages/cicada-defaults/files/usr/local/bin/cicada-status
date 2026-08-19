@@ -123,5 +123,25 @@ else
     || y "storage" "no LUKS mapping named cicada found"
 fi
 
+# --- message stores ---------------------------------------------------------
+# A messenger's at-rest story is a property of where Cicada put its database,
+# not of the app, so it belongs in the posture view rather than in the app's
+# own settings screen. Silent when no messenger is installed.
+if command -v cicada-comms >/dev/null 2>&1 && command -v flatpak >/dev/null 2>&1; then
+  _msg=""
+  for _id in org.signal.Signal chat.simplex.simplex im.riot.Riot; do
+    flatpak info "${_id}" >/dev/null 2>&1 && _msg="${_msg} ${_id##*.}"
+  done
+  if [[ -n "${_msg}" ]]; then
+    if cicada-comms status 2>/dev/null | grep -q 'store is NOT on an encrypted volume'; then
+      r "messages" "a message store is on an unencrypted volume: cicada-comms doctor"
+    elif cicada-comms status 2>/dev/null | grep -q 'store in the real home'; then
+      y "messages" "${_msg# } — in the real home, at rest only when powered off"
+    else
+      g "messages" "${_msg# } — store sealed in an encrypted profile"
+    fi
+  fi
+fi
+
 echo
 echo "Yellow is usually a network restriction, not a bug. Detail: cicada-verify"

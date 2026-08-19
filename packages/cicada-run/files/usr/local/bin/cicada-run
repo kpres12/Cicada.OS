@@ -171,12 +171,27 @@ case "${APP_ID}" in
   org.torproject.torbrowser)
     mkdir -p "${HOME}/.local/share/torbrowser" "${HOME}/.cache/torbrowser"
     ;;
+  org.signal.Signal)
+    mkdir -p "${HOME}/.config/Signal"
+    ;;
+  im.riot.Riot)
+    mkdir -p "${HOME}/.config/Element"
+    ;;
+  chat.simplex.simplex)
+    mkdir -p "${HOME}/.local/share/simplex" "${HOME}/.config/simplex"
+    ;;
 esac
 
 # Chromium / Tor Browser: --unshare-pid kills the zygote. Keep other isolation.
+#
+# Signal Desktop and Element are Electron, which is Chromium, which means the
+# same zygote. They belong on this list for the same reason and not as a
+# favour: with --unshare-pid the renderer fails to fork and the window comes up
+# blank, which is the failure mode most likely to make someone turn the sandbox
+# off entirely. SimpleX is JVM and is not affected.
 UNSHARE_PID=1
 case "${APP_ID}" in
-  org.cicada.helium|org.torproject.torbrowser) UNSHARE_PID=0 ;;
+  org.cicada.helium|org.torproject.torbrowser|org.signal.Signal|im.riot.Riot) UNSHARE_PID=0 ;;
 esac
 
 args=(
@@ -320,6 +335,20 @@ case "${FILES}" in
       org.torproject.torbrowser)
         args+=(--bind "${HOME}/.local/share/torbrowser" "${HOME}/.local/share/torbrowser")
         args+=(--bind "${HOME}/.cache/torbrowser" "${HOME}/.cache/torbrowser")
+        ;;
+      # Messengers get their store directory and nothing else. Note what is
+      # absent: no ~/.cache bind, because an Electron cache that survives the
+      # process is a copy of decrypted message content in a directory nobody
+      # thinks of as the message store. It comes back as a tmpfs each launch.
+      org.signal.Signal)
+        args+=(--bind "${HOME}/.config/Signal" "${HOME}/.config/Signal")
+        ;;
+      im.riot.Riot)
+        args+=(--bind "${HOME}/.config/Element" "${HOME}/.config/Element")
+        ;;
+      chat.simplex.simplex)
+        args+=(--bind "${HOME}/.local/share/simplex" "${HOME}/.local/share/simplex")
+        args+=(--bind "${HOME}/.config/simplex" "${HOME}/.config/simplex")
         ;;
       *)
         mkdir -p "${HOME}/.local/share/${APP_ID}"

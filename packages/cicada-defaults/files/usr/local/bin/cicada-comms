@@ -1,0 +1,431 @@
+#!/usr/bin/env bash
+# cicada-comms — messengers, hosted honestly.
+#
+# Cicada does not ship a messenger. Writing one would mean a new protocol, a new
+# network, and a decade of other people's bug reports that this project has not
+# had. What Cicada can do is be a better host than the messenger can ask for:
+# put the message store inside an encrypted profile so it is at rest when the
+# profile is, tighten the app's own sandbox below its shipped defaults, and say
+# out loud where the key actually lives.
+#
+# The design rule applies here the way it applies everywhere else: nothing in
+# this tool reports a protection it did not verify, and `shred` never claims an
+# erase it cannot perform on flash.
+set -euo pipefail
+
+PROFILE_BASE="${CICADA_PROFILE_ROOT:-$HOME/.local/share/cicada/profiles}"
+CUR="${HOME}/.local/share/cicada/current-profile"
+STATE="${CICADA_COMMS_STATE:-$HOME/.local/share/cicada/comms}"
+FLATPAK_ROOT="${CICADA_FLATPAK_ROOT:-$HOME/.var/app}"
+mkdir -p "${STATE}"
+
+g() { printf '  \033[32m●\033[0m %-22s %s\n' "$1" "$2"; }
+y() { printf '  \033[33m●\033[0m %-22s %s\n' "$1" "$2"; }
+r() { printf '  \033[31m●\033[0m %-22s %s\n' "$1" "$2"; }
+
+die() { echo "cicada-comms: $1" >&2; exit 1; }
+
+usage() {
+  cat >&2 <<'EOF'
+cicada-comms — message stores, sandboxes, and where the key really is
+
+  cicada-comms status                    posture per messenger, as enforced
+  cicada-comms doctor [app]              why a store is rated the way it is
+  cicada-comms harden [app]              re-apply the Flatpak sandbox floors
+  cicada-comms bind <app> <profile>      move the store into an encrypted profile
+  cicada-comms unbind <app>              move it back to the real home
+  cicada-comms shred <app|--all>         destroy the store (see the warning it prints)
+
+apps: signal  simplex  element        (ids: org.signal.Signal, chat.simplex.simplex, im.riot.Riot)
+
+Cicada packages none of these. `cicada-pkg` installs them from Flathub; this
+tool only decides how they are hosted once they exist.
+EOF
+  exit 1
+}
+
+# --- the table ---------------------------------------------------------------
+# rel_store is relative to the Flatpak per-app root, because that is how these
+# actually land on Cicada: none of the three has an official Arch package and
+# the AUR is out of scope (docs/aur-audit.md), so Flathub is the real path.
+app_id() {
+  case "$1" in
+    signal)  echo org.signal.Signal ;;
+    simplex) echo chat.simplex.simplex ;;
+    element) echo im.riot.Riot ;;
+    *) return 1 ;;
+  esac
+}
+
+app_runtime() {
+  # Electron apps hold their database key through Electron safeStorage, which is
+  # the whole reason `doctor` exists. SimpleX is JVM/Compose and does not.
+  case "$1" in
+    signal|element) echo electron ;;
+    simplex) echo jvm ;;
+  esac
+}
+
+app_rel_store() {
+  case "$1" in
+    signal)  echo config/Signal ;;
+    element) echo config/Element ;;
+    simplex) echo data/simplex ;;
+  esac
+}
+
+APPS=(signal simplex element)
+
+# "Installed" means there is something here to protect, which is not quite the
+# same as "flatpak knows about it". An uninstall leaves ~/.var/app behind, and a
+# message store whose application is gone is still a message store — reporting
+# nothing about it would be the one answer that is definitely wrong.
+installed() {
+  local id
+  id="$(app_id "$1")"
+  if command -v flatpak >/dev/null 2>&1 && flatpak info "${id}" >/dev/null 2>&1; then
+    return 0
+  fi
+  [[ -e "${FLATPAK_ROOT}/${id}" ]]
+}
+
+store_path() {
+  echo "${FLATPAK_ROOT}/$(app_id "$1")/$(app_rel_store "$1")"
+}
+
+# --- profile binding ---------------------------------------------------------
+profile_dir() { echo "${PROFILE_BASE}/${1}"; }
+profile_home() { echo "${PROFILE_BASE}/${1}/home"; }
+profile_img() { echo "${PROFILE_BASE}/${1}/vault.img"; }
+
+profile_is_encrypted() { [[ -f "$(profile_img "$1")" ]]; }
+
+# Which profile, if any, does this store resolve into? Reading the link target
+# rather than a state file we wrote: the answer has to survive someone moving
+# things by hand, and a state file that disagrees with the filesystem is the
+# kind of thing that reports a protection that is not there.
+bound_profile() {
+  local app="$1" path target
+  path="$(store_path "${app}")"
+  [[ -L "${path}" ]] || return 1
+  target="$(readlink -f "${path}" 2>/dev/null || true)"
+  [[ -n "${target}" ]] || return 1
+  case "${target}" in
+    "${PROFILE_BASE}"/*)
+      target="${target#"${PROFILE_BASE}/"}"
+      echo "${target%%/*}"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+profile_mounted() {
+  local n="$1"
+  profile_is_encrypted "${n}" || return 1
+  mountpoint -q "$(profile_home "${n}")" 2>/dev/null
+}
+
+# --- Electron safeStorage ----------------------------------------------------
+# Electron encrypts the app's database key with safeStorage. On Linux that means
+# the Secret Service (gnome-keyring / kwallet) when one answers on the session
+# bus — and when none does, Electron falls back to what it calls "basic text":
+# AES with a constant key compiled into the binary. That is not a weaker secret,
+# it is a published one, so the encrypted key file sitting next to the database
+# it protects is decorative. The app cannot fix this; the host can, by making
+# sure the store is at rest when the profile is.
+secret_service_up() {
+  command -v busctl >/dev/null 2>&1 || return 2
+  busctl --user list --no-pager --no-legend 2>/dev/null \
+    | grep -q 'org\.freedesktop\.secrets' || return 1
+}
+
+# Signal keeps its config beside the database. Older builds wrote the SQLCipher
+# key there in the clear as "key"; current ones write "encryptedKey" instead.
+# Report which one is on disk rather than which one the version notes claim.
+signal_key_kind() {
+  local cfg="$1"
+  [[ -f "${cfg}" ]] || { echo absent; return; }
+  python3 - "${cfg}" <<'PY' 2>/dev/null || echo unreadable
+import json, sys
+try:
+    obj = json.loads(open(sys.argv[1]).read())
+except Exception:
+    print("unreadable"); raise SystemExit(0)
+if isinstance(obj, dict) and isinstance(obj.get("key"), str) and obj["key"]:
+    print("plaintext")
+elif isinstance(obj, dict) and obj.get("encryptedKey"):
+    print("safestorage")
+else:
+    print("none")
+PY
+}
+
+# --- at-rest verdict ---------------------------------------------------------
+# Three states, and only one of them is green:
+#   sealed    store lives in an encrypted profile — at rest when that profile is
+#   fde       store lives in the real home — at rest only when the laptop is off
+#   plain     no LUKS mapping found at all
+at_rest() {
+  local app="$1" prof
+  if prof="$(bound_profile "${app}")" && profile_is_encrypted "${prof}"; then
+    echo "sealed:${prof}"
+    return
+  fi
+  if cryptsetup status cicada >/dev/null 2>&1; then
+    echo fde
+    return
+  fi
+  echo plain
+}
+
+# --- flatpak floors ----------------------------------------------------------
+# The overrides themselves live in cicada-pkg-helper, at --system level and
+# behind root, for the reason cicada-scopes gives about its own floors: a
+# --user override can grant back what a --user override took away, so a floor
+# written at user level is not a floor. This is only the front end.
+#
+# Worth re-running rather than trusting the install: a Flatpak update can reset
+# an app's permissions to whatever its new manifest asks for.
+HELPER=/usr/local/bin/cicada-pkg-helper
+
+harden_one() {
+  local app="$1" id
+  id="$(app_id "${app}")"
+  command -v flatpak >/dev/null 2>&1 || die "flatpak is not installed"
+  installed "${app}" || { echo "  skip ${app} (not installed)"; return 0; }
+  [[ -x "${HELPER}" ]] || die "cicada-pkg-helper missing — cannot write system floors"
+
+  local runner=(sudo)
+  command -v pkexec >/dev/null 2>&1 && runner=(pkexec)
+  if "${runner[@]}" "${HELPER}" flatpak-harden "${id}"; then
+    cicada-seal append comms.harden "{\"app\":\"${id}\"}" >/dev/null 2>&1 || true
+    echo "  hardened ${app} (${id})"
+  else
+    # Not a warning that scrolls past: an app someone believes is confined and
+    # is not is worse than one they know is not.
+    echo "  FAILED to harden ${app} — it is running with Flathub's permissions" >&2
+    return 1
+  fi
+}
+
+# --- commands ----------------------------------------------------------------
+cmd_status() {
+  echo "Cicada messengers"
+  echo "================="
+  local any=0 app
+  for app in "${APPS[@]}"; do
+    installed "${app}" || continue
+    any=1
+    case "$(at_rest "${app}")" in
+      sealed:*)
+        local prof
+        prof="$(at_rest "${app}")"; prof="${prof#sealed:}"
+        if profile_mounted "${prof}"; then
+          y "${app}" "store in profile ${prof} — unlocked right now"
+        else
+          g "${app}" "store in profile ${prof} — at rest (frozen)"
+        fi
+        ;;
+      fde)
+        y "${app}" "store in the real home — at rest only when the laptop is off"
+        ;;
+      plain)
+        r "${app}" "store is NOT on an encrypted volume"
+        ;;
+    esac
+  done
+  if [[ "${any}" -eq 0 ]]; then
+    echo "  no messenger installed (cicada-pkg → Signal / SimpleX / Element)"
+    return 0
+  fi
+  echo
+  echo "Sandbox in force is Flatpak's, not cicada-run's — see docs/COMMS.md."
+  echo "Detail: cicada-comms doctor"
+}
+
+cmd_doctor() {
+  local want="${1:-}" app
+  for app in "${APPS[@]}"; do
+    [[ -n "${want}" && "${want}" != "${app}" ]] && continue
+    echo "${app}  ($(app_id "${app}"))"
+    if ! installed "${app}"; then
+      echo "  not installed"
+      echo
+      continue
+    fi
+    local path id
+    id="$(app_id "${app}")"
+    path="$(store_path "${app}")"
+    echo "  store        ${path}"
+    case "$(at_rest "${app}")" in
+      sealed:*)
+        local prof
+        prof="$(at_rest "${app}")"; prof="${prof#sealed:}"
+        echo "  at rest      encrypted profile ${prof}"
+        echo "               freeze it and the key leaves RAM: cicada-profile freeze ${prof}"
+        ;;
+      fde)
+        echo "  at rest      full-disk encryption only"
+        echo "               a seized *unlocked* laptop hands over this store"
+        echo "               fix: cicada-comms bind ${app} <encrypted-profile>"
+        ;;
+      plain)
+        echo "  at rest      NONE — no LUKS mapping found"
+        ;;
+    esac
+    if [[ "$(app_runtime "${app}")" == electron ]]; then
+      local ss=0
+      secret_service_up && ss=0 || ss=$?
+      case "${ss}" in
+        0) echo "  key wrapping Secret Service answered on the session bus" ;;
+        1) echo "  key wrapping NONE — Electron safeStorage falls back to a constant"
+           echo "               compiled-in key, so the wrapped key beside the database"
+           echo "               is not a secret. The store's real protection is the"
+           echo "               profile it sits in." ;;
+        *) echo "  key wrapping unknown (busctl missing)" ;;
+      esac
+    fi
+    if [[ "${app}" == signal ]]; then
+      case "$(signal_key_kind "${path}/config.json")" in
+        plaintext)   echo "  signal key   PLAINTEXT in config.json next to the database" ;;
+        safestorage) echo "  signal key   wrapped by safeStorage (see key wrapping above)" ;;
+        absent)      echo "  signal key   no config.json yet (app has not run)" ;;
+        unreadable)  echo "  signal key   config.json is not readable JSON" ;;
+        *)           echo "  signal key   no key field found" ;;
+      esac
+      echo "  note         a linked desktop holds the full history on hardware"
+      echo "               with no secure element. The phone rate-limits; this"
+      echo "               laptop's tier decides whether anything here does."
+    fi
+    echo
+  done
+}
+
+cmd_bind() {
+  local app="${1:-}" prof="${2:-}"
+  [[ -n "${app}" && -n "${prof}" ]] || usage
+  app_id "${app}" >/dev/null || die "unknown app: ${app}"
+  [[ -d "$(profile_dir "${prof}")" ]] || die "no such profile: ${prof} (cicada-profile list)"
+  profile_is_encrypted "${prof}" \
+    || die "profile ${prof} is a plain directory — binding there moves the store without protecting it.
+       make one with: sudo cicada-profile create ${prof} --encrypt"
+  profile_mounted "${prof}" \
+    || die "profile ${prof} is frozen — unlock it first: sudo cicada-profile unlock ${prof}"
+
+  local src dest
+  src="$(store_path "${app}")"
+  dest="$(profile_home "${prof}")/comms/$(app_id "${app}")"
+  if [[ -L "${src}" ]]; then
+    die "${app} is already bound to $(bound_profile "${app}" || echo 'something outside the profile tree')"
+  fi
+  mkdir -p "$(dirname "${dest}")"
+  if [[ -d "${src}" ]]; then
+    [[ -e "${dest}" ]] && die "destination already exists: ${dest}"
+    mv "${src}" "${dest}"
+  else
+    mkdir -p "${dest}"
+  fi
+  mkdir -p "$(dirname "${src}")"
+  ln -s "${dest}" "${src}"
+  cicada-seal append comms.bind "{\"app\":\"$(app_id "${app}")\",\"profile\":\"${prof}\"}" >/dev/null 2>&1 || true
+  cat <<EOF
+bound ${app} → profile ${prof}
+
+The store is now inside the profile's LUKS image. Two things follow, and the
+second one is not a bug:
+
+  cicada-profile freeze ${prof}   takes the volume key out of RAM. cicada-lock
+                                  already does this for non-active profiles.
+  frozen profile                  ${app} will refuse to start. That is the
+                                  protection working, not the app breaking.
+
+What this does not undo: anything the app already synced to a server, and any
+copy that existed before this move. mv is not shred — see cicada-comms shred.
+EOF
+}
+
+cmd_unbind() {
+  local app="${1:-}"
+  [[ -n "${app}" ]] || usage
+  app_id "${app}" >/dev/null || die "unknown app: ${app}"
+  local src prof target
+  src="$(store_path "${app}")"
+  [[ -L "${src}" ]] || die "${app} is not bound"
+  prof="$(bound_profile "${app}")" || die "${app} points outside the profile tree; move it by hand"
+  profile_mounted "${prof}" || die "profile ${prof} is frozen — unlock it first"
+  target="$(readlink -f "${src}")"
+  rm "${src}"
+  mv "${target}" "${src}"
+  cicada-seal append comms.unbind "{\"app\":\"$(app_id "${app}")\",\"profile\":\"${prof}\"}" >/dev/null 2>&1 || true
+  echo "unbound ${app} — store is back in the real home, protected by FDE only"
+}
+
+cmd_shred() {
+  local target="${1:-}" duress=0
+  [[ "${2:-}" == "--duress" || "${1:-}" == "--duress" ]] && duress=1
+  [[ "${target}" == "--duress" ]] && target="--all"
+  [[ -n "${target}" ]] || usage
+
+  local list=()
+  if [[ "${target}" == "--all" ]]; then
+    list=("${APPS[@]}")
+  else
+    app_id "${target}" >/dev/null || die "unknown app: ${target}"
+    list=("${target}")
+  fi
+
+  # Coercion has to be fast, so the duress path does not prompt — same call the
+  # beacon gets. Everything else goes through the signed gate.
+  if [[ "${duress}" -eq 0 ]]; then
+    command -v cicada-auth >/dev/null 2>&1 && cicada-auth confirm comms.shred
+  fi
+
+  local app
+  for app in "${list[@]}"; do
+    installed "${app}" || continue
+    local src prof
+    src="$(store_path "${app}")"
+    if prof="$(bound_profile "${app}")" && profile_is_encrypted "${prof}"; then
+      # The only erase on flash that is actually an erase: destroy the key
+      # slots. Overwriting files on an SSD leaves whatever the FTL kept.
+      echo "shredding ${app} by erasing profile ${prof} (LUKS keyslots)"
+      if [[ "${duress}" -eq 1 ]]; then
+        CICADA_PROFILE_ROOT="${PROFILE_BASE}" cicada-profile dispose "${prof}" </dev/null || true
+      else
+        CICADA_PROFILE_ROOT="${PROFILE_BASE}" cicada-profile dispose "${prof}"
+      fi
+      rm -f "${src}" 2>/dev/null || true
+      cicada-seal append comms.shred "{\"app\":\"$(app_id "${app}")\",\"how\":\"luks-erase\",\"profile\":\"${prof}\"}" >/dev/null 2>&1 || true
+    else
+      echo "shredding ${app} by deleting ${src}"
+      rm -rf "${src}" 2>/dev/null || true
+      cicada-seal append comms.shred "{\"app\":\"$(app_id "${app}")\",\"how\":\"unlink\"}" >/dev/null 2>&1 || true
+      cat >&2 <<'EOF'
+  WARNING: this store was not in an encrypted profile, so this was an unlink,
+  not an erase. On flash the controller decides what survives, and it usually
+  keeps something. Bind the store to an encrypted profile if you need this
+  operation to mean anything: cicada-comms bind <app> <profile>
+EOF
+    fi
+  done
+}
+
+case "${1:-}" in
+  status)  shift; cmd_status "$@" ;;
+  doctor)  shift; cmd_doctor "$@" ;;
+  harden)
+    shift
+    if [[ -n "${1:-}" ]]; then
+      app_id "$1" >/dev/null || die "unknown app: $1"
+      harden_one "$1"
+    else
+      rc=0
+      for a in "${APPS[@]}"; do harden_one "${a}" || rc=1; done
+      exit "${rc}"
+    fi
+    ;;
+  bind)    shift; cmd_bind "$@" ;;
+  unbind)  shift; cmd_unbind "$@" ;;
+  shred)   shift; cmd_shred "$@" ;;
+  *) usage ;;
+esac

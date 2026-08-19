@@ -37,6 +37,9 @@
 - [x] Freeze / dispose (encrypted unmount; dispose is `cicada-auth` gated)
 - [x] Settings wallpaper picker; install-only first-run wizard (public beta path)
 - [ ] Signed `cicada-stable` pacman repo (lockfile + helium.lock today)
+- [x] Messengers hosted, not written (`cicada-comms`): store bound into an
+      encrypted profile, Flatpak floors below Flathub's, honest at-rest verdict
+      (`docs/COMMS.md`, `tests/comms.sh`)
 
 ## Phase 3b — Public beta release
 
@@ -58,6 +61,11 @@
       and duress wipe make header damage routine, so the escape hatch is not optional
 - [x] age-sealed restic repository key (`cicada-backup seal`)
 - [x] Signed ISO (detached GPG over the sha256, verified in a clean keyring)
+- [x] Witness beacon (`cicada-link`, `cicada-beacon`) — signed boot-chain hash
+      out of band to one paired device. The only *detection* available for evil
+      maid on Tier 0, where prevention is impossible (`tests/beacon.sh`)
+- [ ] Beacon exercised on real hardware: Meshtastic radio, and a boot-hash
+      change that is a genuine kernel upgrade rather than a fixture
 - [ ] Reproducible build CI
 - [ ] Immutable signed rootfs (the only thing dm-verity would add over FDE — a
       redesign, not a patch; see docs/GRAPHENE_PARITY.md)

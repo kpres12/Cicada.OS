@@ -1,0 +1,18 @@
+[Unit]
+Description=Cicada posture beacon — boot, then periodically
+Documentation=https://github.com/kpres12/Cicada.OS/blob/main/docs/BEACON.md
+
+[Timer]
+# The boot statement is the one that catches an evil maid, so it fires shortly
+# after boot rather than on a wall-clock schedule. The periodic one exists for a
+# different failure: a witness that stops hearing from a laptop learns something
+# too, and it can only learn it if silence is abnormal.
+OnBootSec=2min
+OnUnitActiveSec=6h
+# Not persistent: replaying yesterday's posture after a resume would tell the
+# witness the machine is fine at a moment nobody checked.
+Persistent=false
+RandomizedDelaySec=90
+
+[Install]
+WantedBy=timers.target
