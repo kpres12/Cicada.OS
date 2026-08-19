@@ -26,6 +26,19 @@ export CICADA_ESP="${tmp}/esp"
 export PATH="${BIN}:${PATH}"
 mkdir -p "${CICADA_SEAL_DIR}" "${CICADA_ESP}/loader/entries" "${CICADA_ESP}/EFI/Linux"
 echo "TRANSPORTS=stdout" > "${CICADA_BEACON_CONF}"
+
+# Posture statements refuse to send as an ordinary user (nft and the SecureBoot
+# variable are root-only, so the flags would be wrong and the witness would read
+# the wrongness as a protection dropping). Assert that refusal, then opt out of
+# it for the rest of the suite.
+rc=0
+out="$(python3 "${BIN}/cicada-beacon" posture 2>&1)" || rc=$?
+if [[ "${rc}" -eq 4 ]] && grep -q "refusing to send a posture statement" <<<"${out}"; then
+  say "unprivileged posture is refused, not sent with wrong flags"
+else
+  die "unprivileged posture was not refused (rc=${rc})"
+fi
+export CICADA_BEACON_UNPRIV=1
 printf 'options root=/dev/sda2 rw quiet\n' > "${CICADA_ESP}/loader/entries/cicada.conf"
 printf 'MZ-not-really-a-pe' > "${CICADA_ESP}/EFI/Linux/cicada.efi"
 

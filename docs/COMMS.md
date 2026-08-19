@@ -67,12 +67,27 @@ silicon. Whether anything on this laptop does is decided by
 
 ## What sandbox is actually in force
 
+**Messengers run under Flatpak's sandbox, not Cicada's. That is a decision, not
+a gap, and it is not scheduled to change.**
+
 None of Signal, SimpleX or Element has an official Arch package, and the AUR is
 out of scope ([aur-audit.md](aur-audit.md)). So on Cicada they are Flatpaks, and
 a Flatpak app runs under Flatpak's own bwrap — **not** under a `cicada-run`
-scope. Nesting one inside the other is two sandboxes fighting over user
-namespaces to produce a window that does not open, and an isolation feature
-people turn off is an isolation feature that protects nobody.
+scope.
+
+Nesting one inside the other is not work that has been deferred. It is a
+structural conflict: two sandboxes contending for the same user namespaces,
+producing an Electron window that does not open. And the prize for winning that
+fight would be small, because Flatpak's portal and seccomp layer already does
+most of what a `cicada-run` scope does. Re-implementing it would buy a marginal
+difference on the least trustworthy code in the operating system — large
+Electron applications, from ecosystems whose release cadence Cicada does not
+control and whose source Cicada has not read.
+
+So the boundary is drawn here deliberately, and stated rather than gestured at.
+Cicada's contribution to these applications is **where their data lives and what
+it is worth when the laptop is seized**, which is the part the app genuinely
+cannot do for itself. The sandbox is Flatpak's, tightened.
 
 What Cicada does instead is tighten the Flatpak sandbox below what Flathub
 ships. `cicada-pkg` applies these at install time, and `cicada-comms harden`
@@ -94,8 +109,13 @@ Flatpak does install a seccomp filter of its own, so the honest statement is
 says which regime an app is under.
 
 `cicada-run` scopes for all three ship anyway
-(`/usr/share/cicada/scopes/org.signal.Signal.env` and friends) because a native
-install is possible and because the floor should exist before someone needs it.
+(`/usr/share/cicada/scopes/org.signal.Signal.env` and friends), as a floor that
+exists before anyone needs it: they apply only to a **native** launch, which is
+not how any of these arrive today. If one of them ever ships an Arch package,
+whether to move it onto that path is a separate decision to be taken then, on
+its own merits — it is not pending work, and nothing in this document is waiting
+on it.
+
 Those scopes are `FILES=portal`: the home the app sees is a tmpfs with exactly
 one directory bound back, and no `~/.cache` bind — an Electron cache that
 outlives the process is a copy of decrypted message content in a directory
@@ -166,3 +186,6 @@ cicada-comms status
   protocol.
 - **It does not audit the clients.** Signal Desktop and Element are large
   Electron applications and Cicada has read neither.
+- **It does not confine them with Cicada's own sandbox.** Their syscall filter
+  and their namespaces are Flatpak's. See the section above — permanently, not
+  pending.

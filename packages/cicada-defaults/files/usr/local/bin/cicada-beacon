@@ -552,7 +552,37 @@ def verify(arg: str | None, pub_arg: str | None) -> int:
 
 
 # --- commands ----------------------------------------------------------------
+def _posture_is_readable() -> bool:
+    """Can this process see the state a posture statement claims to report?
+
+    `nft list table` needs CAP_NET_ADMIN and the SecureBoot EFI variable is
+    root-only, so an unprivileged run reports those protections as off whether
+    or not they are. The witness cannot tell that apart from them actually
+    being off.
+    """
+    # CICADA_BEACON_UNPRIV exists so tests/beacon.sh can exercise the statement
+    # path without root, the same way CICADA_ESP lets it fake a boot partition.
+    # Nothing in the product sets it, and it is not a supported way to run.
+    return os.geteuid() == 0 or os.environ.get("CICADA_BEACON_UNPRIV") == "1"
+
+
 def emit(kind: int) -> int:
+    if kind == KIND_POSTURE and not _posture_is_readable():
+        # Fail closed. Not because a secret leaks — nothing here does — but
+        # because the one thing this tool sells is a comparison the witness can
+        # trust, and a statement with flags this process could not read poisons
+        # the baseline every subsequent statement is measured against. A false
+        # alarm is how someone learns to ignore the real one.
+        print(
+            "cicada-beacon: refusing to send a posture statement as an ordinary user.\n"
+            "  nft and the SecureBoot EFI variable are root-only, so several\n"
+            "  protections would be reported as off whether they are or not, and\n"
+            "  your witness would read that as a protection dropping.\n"
+            "    sudo systemctl start cicada-beacon.service   (or: sudo cicada-beacon posture)\n"
+            "  `cicada-beacon show` still works here and sends nothing.",
+            file=sys.stderr,
+        )
+        return 4
     st = statement(kind)
     tok = token(st)
     ok, via = send(tok, st)
@@ -572,6 +602,14 @@ def emit(kind: int) -> int:
 
 
 def show() -> int:
+    if not _posture_is_readable():
+        print(
+            "note: running unprivileged — nft and the SecureBoot variable are not\n"
+            "      readable here, so vpn_killswitch and sb_enrolled below may read\n"
+            "      false when they are true. This is why `posture` refuses to send\n"
+            "      as an ordinary user; `show` only prints.\n",
+            file=sys.stderr,
+        )
     st = statement(KIND_POSTURE)
     print(json.dumps(st, indent=2, sort_keys=True))
     print()

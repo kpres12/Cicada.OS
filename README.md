@@ -269,6 +269,12 @@ Do not rely on this for anything that matters yet. See
 - **Tor does not hide that you use Tor** without a pluggable transport, and
   obfs4/snowflake are AUR-only — on a censored network use Tor Browser, which
   bundles its own.
+- **Messengers are confined by Flatpak, not by Cicada.** Signal, SimpleX and
+  Element run under Flatpak's sandbox with floors written below Flathub's
+  defaults — not under a `cicada-run` scope, and not under the syscall filter
+  above. That boundary is deliberate and permanent, not a gap
+  ([docs/COMMS.md](docs/COMMS.md)). What Cicada contributes is where the message
+  store lives and what it is worth at rest.
 - **A seized-unlocked or compromised machine** makes everything above moot.
 
 Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) ·

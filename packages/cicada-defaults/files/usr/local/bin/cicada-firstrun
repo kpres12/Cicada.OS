@@ -206,22 +206,52 @@ tamper detection it has."
     _tier_note="This laptop has a TPM, so the boot chain can also be checked
 locally. The beacon still catches what a compromised local check would hide."
   fi
-  ask "Pair a device to watch this laptop?" \
-"Cicada can sign a short statement about its own boot chain and push it to
-one device you pair by hand — a phone, another laptop. That device notices
-if the EFI partition changes on a boot where you did not update a kernel.
+  # Opt-in, and it stays opt-in: nothing here enables the beacon unless someone
+  # reads this and says yes. An alarm you did not consciously choose to receive
+  # is an alarm you learn to dismiss, which costs you the one that matters.
+  #
+  # So the prompt does the explaining rather than leaving a systemctl line for
+  # later. Saying yes completes the setup; saying no leaves the machine exactly
+  # as it is, and `cicada-link show` is there whenever you change your mind.
+  ask "Turn on tamper detection?" \
+"<b>In one sentence:</b> this laptop will sign a short statement about its own
+boot chain every time it starts, and send it to one device you pair by hand,
+so that device can tell you if your boot partition changed when it should not
+have.
 
 ${_tier_note}
 
-It carries no messages, has no account or server, and cannot receive.
+It carries no messages, has no account and no server, and cannot receive —
+pairing is one-way. If you never finish pairing, it sends nothing and nothing
+breaks.
 
-Shows this laptop's fingerprint and a code to scan." && {
+<b>Saying yes will:</b>
+ • show this laptop's fingerprint and a code to scan with the other device
+ • enable the statement at every boot, and every six hours after
+
+You can turn it off at any time:
+  sudo systemctl disable --now cicada-beacon.timer" && {
+    _enable_beacon() {
+      sudo systemctl enable --now cicada-beacon.timer 2>/dev/null \
+        && echo "Boot statement enabled." \
+        || echo "Could not enable the timer — run: sudo systemctl enable --now cicada-beacon.timer"
+    }
     if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v kitty >/dev/null 2>&1; then
-      kitty --title CICADA-WITNESS -e bash -lc 'cicada-link show; echo; echo "Then, to send a statement at every boot:"; echo "  sudo systemctl enable --now cicada-beacon.timer"; echo; read -r -p "Enter…"'
+      kitty --title CICADA-WITNESS -e bash -lc '
+        cicada-link show
+        echo
+        sudo systemctl enable --now cicada-beacon.timer 2>/dev/null \
+          && echo "Boot statement enabled — every boot, then every six hours." \
+          || echo "Could not enable the timer. Run: sudo systemctl enable --now cicada-beacon.timer"
+        echo
+        echo "Scan the code above with the device that will watch this laptop."
+        echo "Nothing you do on this screen finishes the pairing — that happens there."
+        echo
+        read -r -p "Enter…"'
     else
       cicada-link show
       echo
-      echo "Then: sudo systemctl enable --now cicada-beacon.timer"
+      _enable_beacon
     fi
   }
 fi

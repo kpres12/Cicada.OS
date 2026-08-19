@@ -127,7 +127,28 @@ sudo systemctl enable --now cicada-beacon.timer
 ```
 
 Fires 2 minutes after boot — the interesting statement is the one describing the
-machine as it came up — then every 6 hours.
+machine as it came up — then every 6 hours. `cicada-firstrun` offers to do this
+for you after an install.
+
+**It is opt-in, and stays opt-in.** Not friction for its own sake: the value of
+this signal is entirely in the fact that it is rare and it means something. A
+beacon nobody chose to receive is a beacon they learn to dismiss, and the alarm
+they dismiss is the one that mattered. The same reasoning is why the timer is
+not enabled on the live ISO, where every copy of the image has the same boot
+hash and a statement would carry no information at all.
+
+Duress is the opposite posture and is deliberately not symmetrical: it is
+ungated and always available, because there the cost of a false negative is
+catastrophic and the cost of a stray one is an awkward phone call.
+
+**Posture statements need root.** `nft list table` needs `CAP_NET_ADMIN` and the
+SecureBoot EFI variable is root-only, so an unprivileged process reports those
+protections as off whether they are or not — and the witness cannot tell that
+apart from them actually being off. `cicada-beacon posture` therefore refuses to
+send as an ordinary user (exit 4) rather than poisoning the baseline that every
+later statement is compared against. `cicada-beacon show` still works there,
+warns, and sends nothing. Duress is unaffected: it must work at any privilege
+and at speed.
 
 ---
 
@@ -139,8 +160,9 @@ cicada-beacon verify CIC1:...           # against the local device key
 cicada-beacon verify token.txt --pub pixel.pub
 ```
 
-Exit codes: `0` nothing alarming, `1` bad signature or malformed, `3` at least
-one alarm.
+Exit codes: `0` nothing alarming, `1` bad signature or malformed, `2` nothing
+delivered it, `3` at least one alarm, `4` refused to send an unprivileged
+posture statement.
 
 ---
 
