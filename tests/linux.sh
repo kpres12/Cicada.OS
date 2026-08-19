@@ -34,7 +34,12 @@ fi
 CASES=(
   "nftables:nftables iproute2 iputils python"
   "time-tor:chrony tor iproute2 curl"
-  "duress:coreutils"
+  # python: the unprivileged half of the lock-screen path forwards over a unix
+  # socket, and python is what every Cicada image already has to do that with.
+  "duress:coreutils python util-linux shadow"
+  # The installer writes to block devices; these guards need real loop devices,
+  # a real GPT and real filesystems to prove it leaves the neighbours alone.
+  "install-guards:util-linux"
 )
 
 want="${1:-}"

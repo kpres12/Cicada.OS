@@ -12,9 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # ${{ }} is substituted into the script BEFORE the shell sees it, so an
+      # input containing shell metacharacters executes as part of the command.
+      # Passing it through env makes the shell treat it as data. Only a user with
+      # write access can dispatch this workflow, so this is hardening rather than
+      # an open hole, but the pattern is the one that goes wrong elsewhere.
       - name: Check lockfile exists
-        run: test -f "channel/${{ github.event.inputs.snapshot }}.pkglist.txt"
+        env:
+          SNAPSHOT: ${{ github.event.inputs.snapshot }}
+        run: |
+          case "$SNAPSHOT" in
+            cicada-stable-[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]) ;;
+            *) echo "refusing snapshot name: $SNAPSHOT" >&2; exit 1 ;;
+          esac
+          test -f "channel/${SNAPSHOT}.pkglist.txt"
       - name: Promote CURRENT
-        run: ./scripts/channel-promote.sh "${{ github.event.inputs.snapshot }}"
+        env:
+          SNAPSHOT: ${{ github.event.inputs.snapshot }}
+        run: ./scripts/channel-promote.sh "$SNAPSHOT"
       - name: Note
         run: echo "Blob repo (repo-add) is not wired. This only moves the pin pointer."

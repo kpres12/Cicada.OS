@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Support — Cicada.OS</title>
+  <meta name="description" content="Support Cicada.OS development. BTC, ETH and SOL addresses, with checksums you can verify yourself."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
+  <link rel="icon" type="image/svg+xml" href="../assets/svg/cicada-mark.svg"/>
+  <link rel="stylesheet" href="../assets/css/cicada.css"/>
+  <style>
+    .coin-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; margin-top:1rem; }
+    .coin { border:1px solid var(--border); background:var(--steel); padding:1rem; display:flex; flex-direction:column; gap:.75rem; }
+    .coin h3 { margin:0; font-family:var(--font-mark); letter-spacing:.08em; color:var(--amber); font-size:1rem; }
+    .coin .net { color:var(--muted); font-size:.75rem; margin-top:-.5rem; }
+    .qr { background:#fff; padding:.5rem; align-self:center; line-height:0; border:1px solid var(--border); }
+    .qr img { width:150px; height:150px; display:block; image-rendering:pixelated; }
+    .addr { font-size:.7rem; word-break:break-all; color:var(--ink); background:var(--void);
+            border:1px solid var(--grid); padding:.5rem; user-select:all; }
+    .copy { font-family:var(--font-mono); font-size:.75rem; cursor:pointer; background:transparent;
+            border:1px solid var(--border); color:var(--amber); padding:.4rem .6rem; letter-spacing:.06em; }
+    .copy:hover { background:var(--amber); color:var(--void); }
+    .copy[data-done="1"] { border-color:var(--phosphor); color:var(--phosphor); }
+  </style>
+</head>
+<body class="crt">
+  <header class="sentry-bar">
+    <a class="mark" href="../">CICADA<span>.OS</span></a>
+    <nav>
+      <a href="../features/">Features</a>
+      <a href="../download/">Download</a>
+      <a href="../install/">Install</a>
+      <a href="../faq/">FAQ</a>
+      <a href="./" aria-current="page">Support</a>
+      <a href="https://github.com/kpres12/Cicada.OS">Source</a>
+    </nav>
+    <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
+  </header>
+
+  <main class="wrap">
+    <p class="page-title">Support</p>
+    <p class="page-sub">Cicada.OS is open source and has no company behind it. If it is useful to you,
+      this is where you can help pay for the hardware it has to be proven on.</p>
+
+    <div class="panel">
+      <div class="panel-head"><h2>What this actually funds</h2><span class="tag">HONEST</span></div>
+      <p style="margin:0 0 .75rem;color:var(--muted)">
+        The single biggest limit on this project is written on the front page: most of the
+        hardening is verified structurally, and much of it has never been exercised on real
+        hardware end to end. That is not a coding problem. It is a <em>hardware</em> problem —
+        a chipset watchdog either resets a board or it does not, a kernel either refuses a USB
+        device at <code>authorized_default=0</code> or it does not, and no amount of testing on
+        a MacBook Air answers it for a Framework or a ThinkPad.
+      </p>
+      <ul class="feature-list">
+        <li><span class="k">Test hardware</span><span class="v">TPM2 + Secure Boot laptops to move claims off the &ldquo;needs the machine&rdquo; list</span></li>
+        <li><span class="k">Radios</span><span class="v">LoRa hardware for <code>cicada-beacon</code> — currently unproven</span></li>
+        <li><span class="k">Hosting</span><span class="v">The signed <code>cicada-stable</code> package mirror</span></li>
+      </ul>
+      <p style="margin:.75rem 0 0;color:var(--muted)">
+        There is no perk, no token, no roadmap vote and nothing is owed to you in return.
+        Cicada is pre-alpha — if you would rather wait until it is worth trusting, that is the
+        more sensible choice, and the software stays free either way.
+      </p>
+    </div>
+
+    <div class="coin-grid">
+      <div class="coin">
+        <h3>Bitcoin</h3>
+        <p class="net">BTC · native segwit (bech32, P2WPKH)</p>
+        <div class="qr"><img src="../assets/svg/qr-btc.svg" alt="QR code for the Bitcoin address"/></div>
+        <code class="addr" id="a-btc">bc1qkp3dpjquzasa9yv9lz4rfpqnuwy89qun8gk74c</code>
+        <button class="copy" data-copy="a-btc" type="button">Copy address</button>
+      </div>
+
+      <div class="coin">
+        <h3>Ethereum</h3>
+        <p class="net">ETH · mainnet (ERC-20 tokens on mainnet also fine)</p>
+        <div class="qr"><img src="../assets/svg/qr-eth.svg" alt="QR code for the Ethereum address"/></div>
+        <code class="addr" id="a-eth">0xC40B098D8804A5e8310bC0dE7786672Ae40D5a74</code>
+        <button class="copy" data-copy="a-eth" type="button">Copy address</button>
+      </div>
+
+      <div class="coin">
+        <h3>Solana</h3>
+        <p class="net">SOL · mainnet-beta</p>
+        <div class="qr"><img src="../assets/svg/qr-sol.svg" alt="QR code for the Solana address"/></div>
+        <code class="addr" id="a-sol">9LySYH4F9RGP8xNrKGvXQnfgtk1nZc3td21LeyEQnYTd</code>
+        <button class="copy" data-copy="a-sol" type="button">Copy address</button>
+      </div>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>Check the address before you send</h2><span class="tag">IRREVERSIBLE</span></div>
+      <p style="margin:0 0 .75rem;color:var(--muted)">
+        A donation page is worth compromising, and a single altered character sends your money
+        to someone else with no way back. Do not trust this page because it looks right — every
+        address above carries its own checksum, and your wallet verifies it for free:
+      </p>
+      <ul class="feature-list">
+        <li><span class="k">BTC</span><span class="v">bech32 checksum — a wallet rejects a mistyped <code>bc1…</code> outright rather than sending</span></li>
+        <li><span class="k">ETH</span><span class="v">EIP-55 — the <em>mixed upper/lowercase</em> is the checksum. Do not lowercase it</span></li>
+        <li><span class="k">SOL</span><span class="v">base58, decoding to exactly 32 bytes — a wallet rejects anything else</span></li>
+      </ul>
+      <p style="margin:.75rem 0 0;color:var(--muted)">
+        These same three addresses are in
+        <a href="https://github.com/kpres12/Cicada.OS/blob/main/DONATE.md">DONATE.md</a> in the
+        source tree, where they are covered by git history. If this page and that file ever
+        disagree, <strong>trust neither and open an issue</strong> — that disagreement is what a
+        compromise looks like. Send a small amount first.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CICADA.OS · SUPPORT</span>
+      <a href="../">Home</a>
+    </div>
+  </footer>
+  <script src="../assets/js/cicada.js"></script>
+  <script>
+    document.querySelectorAll(".copy").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var el = document.getElementById(b.dataset.copy);
+        var text = el.textContent.trim();
+        var done = function () {
+          b.textContent = "Copied — check the first and last 4 characters";
+          b.dataset.done = "1";
+          setTimeout(function () { b.textContent = "Copy address"; b.dataset.done = ""; }, 4000);
+        };
+        // navigator.clipboard needs a secure context; fall back to selecting the
+        // text so the address is still one keystroke away over plain http.
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(done, function () { selectOnly(el); });
+        } else { selectOnly(el); }
+        function selectOnly(node) {
+          var r = document.createRange(); r.selectNodeContents(node);
+          var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+          b.textContent = "Selected — press ⌘C / Ctrl+C";
+        }
+      });
+    });
+  </script>
+</body>
+</html>

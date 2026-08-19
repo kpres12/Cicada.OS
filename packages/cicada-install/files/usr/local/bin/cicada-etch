@@ -17,9 +17,23 @@ You are on an installed system — reboot the stick to install onto another disk
 command -v zenity >/dev/null 2>&1 || die "zenity missing"
 command -v cicada-install >/dev/null 2>&1 || die "cicada-install missing"
 
+# The install no longer downloads the system — it copies the one you are running
+# (cicada-install --source auto). So no network is not a hard stop any more; it
+# only means the hardened kernel cannot be topped up afterwards. Say that, and
+# let the user decide, instead of refusing to install at all. A user whose Wi-Fi
+# is the thing Cicada is supposed to fix could never get past this check.
 if ! ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && ! ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then
-  die "No network. Connect Wi-Fi first (dock WIFI), then run Etch again.
-pacstrap needs the internet."
+  zenity --question --title="Cicada — Etch (no network)" --width=520 \
+    --ok-label="Install anyway" --cancel-label="Connect Wi-Fi first" \
+    --text="No network detected.
+
+Cicada installs by copying the system you are running right now, so this works
+offline and gives you exactly the image that was tested.
+
+The only thing missing will be the optional hardened kernel, which needs a
+download. You can add it later:
+
+    sudo pacman -S linux-hardened" 2>/dev/null || exit 0
 fi
 
 zenity --info --title="Cicada.OS — Etch (install)" --width=520 --text="This writes Cicada to a disk as a real install:
@@ -80,6 +94,56 @@ host="$(zenity --entry --title="Hostname" --width=400 \
 host="$(xargs <<<"${host}")"
 [[ -n "${host}" ]] || host=cicada
 
+# ---------------------------------------------------------------------------
+# Region, asked BEFORE the passphrase and applied immediately.
+#
+# The keyboard layout decides which characters the physical keys produce. Choose
+# it after typing the passphrase and the initramfs will prompt on a different
+# layout than the one the secret was composed on, and nobody — including the
+# owner — can open the disk again. So it is asked first, applied with loadkeys
+# on the spot, and handed to cicada-install so the installed system matches.
+# ---------------------------------------------------------------------------
+pick_zen() {
+  # $1 = title, $2 = text, $3 = default, rest = options
+  local title="$1" text="$2" def="$3"; shift 3
+  local out
+  out="$(zenity --list --title="${title}" --width=520 --height=340 \
+    --text="${text}" --column="Choice" --hide-header "$@" "Other…")" || return 1
+  [[ -n "${out}" ]] || { printf '%s' "${def}"; return 0; }
+  if [[ "${out}" == "Other…" ]]; then
+    out="$(zenity --entry --title="${title}" --width=420 \
+      --text="Type it exactly:" --entry-text="${def}")" || return 1
+  fi
+  printf '%s' "${out:-${def}}"
+}
+
+KEYMAP="$(pick_zen "Keyboard layout" \
+  "Which keyboard is in front of you?
+
+This decides which characters your keys produce — including in your disk
+passphrase and at every unlock afterwards. Getting it wrong makes the disk
+impossible to open." \
+  us us uk de fr es it dvorak colemak)" || exit 0
+
+TIMEZONE="$(pick_zen "Timezone" "Where is this machine?" UTC \
+  UTC Europe/London Europe/Berlin Europe/Paris Europe/Madrid \
+  America/New_York America/Chicago America/Denver America/Los_Angeles \
+  Asia/Tokyo Asia/Kolkata Australia/Sydney)" || exit 0
+
+LOCALE="$(pick_zen "Language" "System language." en_US.UTF-8 \
+  en_US.UTF-8 en_GB.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 es_ES.UTF-8 it_IT.UTF-8)" || exit 0
+
+# Apply now, so the passphrase below is typed on the layout that will be asked
+# for at boot. Refuse rather than continue on a mismatch: a passphrase composed
+# under the wrong layout is unrecoverable, and that is worse than not installing.
+if [[ "${KEYMAP}" != "us" ]] && command -v loadkeys >/dev/null 2>&1; then
+  sudo loadkeys "${KEYMAP}" 2>/dev/null \
+    || die "Could not load keyboard layout ${KEYMAP}.
+
+Refusing to continue: you would type the passphrase on one layout and unlock on
+another, and the disk could never be opened again."
+fi
+
 luks_mode="$(zenity --list --title="Disk encryption passphrase" --width=520 --height=280 \
   --text="This passphrase unlocks the disk at every boot. There is no recovery." \
   --column="Choice" --hide-header \
@@ -93,32 +157,44 @@ chmod 600 "${luks_file}" "${user_file}"
 cleanup() { shred -u "${luks_file}" "${user_file}" 2>/dev/null || rm -f "${luks_file}" "${user_file}"; }
 trap cleanup EXIT
 
+# Show the passphrase, then confirm it — with the passphrase still on screen in
+# the confirm dialog, and with retries. The old flow showed it once in a dialog
+# that said "will not be shown again", dismissed it, then asked the user to type
+# it from memory or from paper they may have copied wrong; a single wrong
+# character aborted the entire wizard back to target selection. The point of the
+# confirmation is to catch a bad transcription, and the fix for a bad
+# transcription is to look at it again.
+confirm_generated() {
+  local bits="$1" gen confirm
+  gen="$(sudo cicada-install --print-passphrase "${bits}")"
+  for attempt in 1 2 3; do
+    confirm="$(zenity --entry --width=560 --title="Write this down, then type it back" \
+      --text="<b>Your disk passphrase</b>
+
+<tt><big>${gen}</big></tt>
+
+Write it on paper NOW. It is not stored anywhere and cannot be recovered —
+if you lose it the disk is gone, and nobody can help you.
+
+The alphabet has no i, l, o or u, so there is nothing to confuse with 1 or 0.
+
+Type it back to confirm you copied it correctly (attempt ${attempt} of 3):")" || return 1
+    if [[ "${confirm}" == "${gen}" ]]; then
+      printf '%s' "${gen}" > "${luks_file}"
+      unset gen confirm
+      return 0
+    fi
+  done
+  unset gen confirm
+  die "Passphrase not confirmed after 3 tries. Nothing was written to the disk."
+}
+
 case "${luks_mode}" in
   "Generate a strong passphrase"*)
-    gen="$(sudo cicada-install --print-passphrase 16)"
-    zenity --info --title="WRITE THIS DOWN" --width=480 \
-      --text="Your disk passphrase (will not be shown again):
-
-<tt>${gen}</tt>
-
-Write it on paper. Losing it means the disk is gone." 2>/dev/null || true
-    confirm="$(zenity --entry --title="Confirm you copied it" --width=480 \
-      --text="Type the passphrase back:")" || exit 0
-    [[ "${confirm}" == "${gen}" ]] || die "Passphrase not confirmed."
-    printf '%s' "${gen}" > "${luks_file}"
-    unset gen confirm
+    confirm_generated 16 || exit 0
     ;;
   "Generate a longer"*)
-    gen="$(sudo cicada-install --print-passphrase 20)"
-    zenity --info --title="WRITE THIS DOWN" --width=480 \
-      --text="Your disk passphrase:
-
-<tt>${gen}</tt>" 2>/dev/null || true
-    confirm="$(zenity --entry --title="Confirm you copied it" --width=480 \
-      --text="Type the passphrase back:")" || exit 0
-    [[ "${confirm}" == "${gen}" ]] || die "Passphrase not confirmed."
-    printf '%s' "${gen}" > "${luks_file}"
-    unset gen confirm
+    confirm_generated 20 || exit 0
     ;;
   *)
     p1="$(zenity --password --title="LUKS passphrase" 2>/dev/null)" || exit 0
@@ -149,6 +225,9 @@ if command -v kitty >/dev/null 2>&1; then
   kitty --title CICADA-ETCH -e sudo cicada-install \
     --target "${TARGET}" \
     --hostname "${host}" \
+    --keymap "${KEYMAP}" \
+    --timezone "${TIMEZONE}" \
+    --locale "${LOCALE}" \
     --yes \
     --luks-pass-file "${luks_file}" \
     --user-pass-file "${user_file}"
@@ -156,6 +235,9 @@ else
   sudo cicada-install \
     --target "${TARGET}" \
     --hostname "${host}" \
+    --keymap "${KEYMAP}" \
+    --timezone "${TIMEZONE}" \
+    --locale "${LOCALE}" \
     --yes \
     --luks-pass-file "${luks_file}" \
     --user-pass-file "${user_file}"

@@ -3,7 +3,7 @@
 Arch-based privacy/security laptop OS. GrapheneOS *intent*, Hyprland daily-driver
 feel, Helium as the browser.
 
-**Public beta (2026.08.14):** [Download ISO](https://github.com/kpres12/Cicada.OS/releases/latest) · [Site](https://kpres12.github.io/Cicada.OS/) · [Install](https://kpres12.github.io/Cicada.OS/install/)
+**Pre-alpha (build 2026.08.14):** [Download ISO](https://github.com/kpres12/Cicada.OS/releases/latest) · [Site](https://kpres12.github.io/Cicada.OS/) · [Install](https://kpres12.github.io/Cicada.OS/install/)
 
 **Site:** [`site/`](site/) — download / install / features (GitHub Pages).  
 **North star:** hostile defaults and profile isolation on laptops — honest about
@@ -216,9 +216,49 @@ On Apple Silicon this cross-builds an **Intel/x86_64** image:
 Then flash, boot the Mac with `Option`, and install to an **external SSD** first.
 Details in [docs/BUILD.md](docs/BUILD.md) and [docs/INSTALL.md](docs/INSTALL.md).
 
+The image is **1.94 GiB — one file**, under GitHub's 2 GiB per-asset cap, so it
+downloads as a single ISO you can hand straight to Etcher. It was 2.95 GiB and
+shipped as `.part-00`/`.part-01`, which put a `cat` command between the user and
+a bootable stick as step one of the install. Three measured cuts, not guesses:
+
+| Cut | Saved | Why it was safe |
+|---|---|---|
+| `linux-hardened` off the **live** ISO | 645 MiB | Neither live loader entry can boot it — both name `vmlinuz-linux`. It was a kernel, a 233 MiB initramfs, and a second copy of both inside the embedded `efiboot.img`. Installed systems still get it. |
+| `linux-firmware-nvidia` | 320 MiB | 110 MiB of it sat inside *every* initramfs. Discrete NVIDIA on Wayland is not the daily driver; the laptop still runs on its iGPU. |
+| `linux-firmware-marvell` | 78 MiB | Enterprise NICs and embedded parts. |
+
+Both are one command away (`pacman -S linux-firmware-nvidia`). What stayed is
+every firmware a laptop actually boots on: intel, amdgpu, atheros, realtek,
+mediatek, broadcom, radeon, cirrus.
+
 Every ISO carries `/usr/share/cicada/BUILD-ID` with the commit and whether the
 tree was dirty. Check it against `git rev-parse --short HEAD` before concluding
 anything from a test — a stale ISO is how a fixed bug gets re-reported.
+
+## Installing
+
+`cicada-install` (or the **Etch Cicada** icon) writes LUKS2 + btrfs +
+systemd-boot. Three things it does that it did not before, because "hardened"
+and "installable by a person who is not us" are not in tension:
+
+- **No network required.** It copies the system you are already running rather
+  than `pacstrap`-ing 1.2 GiB from the internet. That is faster, it gives you
+  exactly the image that was tested rather than a fresh resolve of it, and it
+  means a laptop whose Wi-Fi is the thing you need Cicada to fix can still be
+  installed. `--source network` restores the old behaviour.
+- **Keyboard, timezone and language are asked for** — and the keymap is applied
+  *before* the passphrase prompt. These were hardcoded to `us`/UTC/`en_US`,
+  which quietly meant every non-US owner composed their LUKS passphrase on a
+  layout that did not match their keycaps. The keymap is a security setting on
+  this OS: it decides which bytes the physical keys produce, and a mismatch
+  between install time and boot time makes the disk unopenable by anybody.
+- **It can keep the OS already on the disk.** `--partition /dev/sdXN --esp
+  /dev/sdXM` installs into one partition, leaves the partition table alone and
+  reuses the existing ESP without formatting it. It deliberately does **not**
+  resize NTFS or APFS — the vendor tool knows things about a live filesystem
+  that an outside resizer does not, and that is where dual-boot installers
+  destroy data. `tests/linux/install-guards.sh` asserts each refusal fires for
+  its stated reason.
 
 ## Tests
 
@@ -231,7 +271,9 @@ tests/seccomp.sh     # decodes and simulates the sandbox syscall filter
 tests/beacon.sh      # signs a statement, edits a fake ESP, requires the alarm
 tests/comms.sh       # the at-rest verdict, and everything cicada-comms refuses
 tests/afu.sh         # USB gate, gate restore, watchdog arming, escape hatches
-tests/linux.sh       # needs Docker: real kernel — nftables, NTS, Tor, duress
+tests/donate.sh      # re-derives the donation address checksums; catches drift
+tests/linux.sh       # needs Docker: real kernel — nftables, NTS, Tor, duress,
+                     # the unprivileged lock-screen duress path, installer guards
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
 ```
 
@@ -269,6 +311,37 @@ and no physical interface.
 *Verified in simulation* (`tests/afu.sh`, `tests/beacon.sh`): the USB gate, the
 gate's restore path, watchdog arming, the escape hatches, and the beacon's
 signing, wire format and alarm.
+
+**Six more defects, found the same way.** The pattern held: every one was a
+control that reported success while doing nothing, and in four cases a test was
+certifying the broken behaviour.
+
+- **Session duress was inert at the lock screen** — the room it exists for. The
+  PAM hook ran with `seteuid`, which gives the *caller's* effective uid: root
+  under `sudo`, but the desktop user under hyprlock, which is not setuid on
+  Arch. It could not read the 0400 verifier, let alone erase a keyslot, and it
+  exited 0 — the same exit a wrong guess produces. `tests/here.sh` asserted the
+  string `seteuid` was present and concluded the wipe worked. There is now a
+  root handler behind `cicada-duress.socket`, and `tests/linux/duress.sh` drives
+  it as an unprivileged uid on a real kernel.
+- **Granting an app the microphone also gave it the session bus.** `cicada-run`
+  bound the whole of `XDG_RUNTIME_DIR` for `MIC=allow`, which includes `bus`
+  (making the `xdg-dbus-proxy` filter decorative) and `systemd/private` — i.e.
+  start any user unit, outside the sandbox. Shipped scopes were unaffected, but
+  the Signal scope invites the user to flip exactly that toggle.
+- **The D-Bus filter failed open.** A fixed `sleep 0.15` decided the posture by
+  timing; if the proxy was slow the app silently got the real bus.
+- **`cicada-auth` was bypassable.** The confirmation lived in `cicada-profile`
+  while the privilege lived in `cicada-profile-helper`, which is directly
+  reachable via NOPASSWD sudo: `cicada-profile-helper dispose work` destroyed a
+  profile with no prompt. Same shape for `cicada-usb-gate 1`, which could reopen
+  USB enumeration while the screen was still locked.
+- **The published ISO is not signed.** README and the site both claimed GPG
+  signing and told users to verify a `.sha256.asc` the release does not carry.
+- **The update channel 404s for everyone.** `channel-mirror.url` points at a
+  release that is still a draft.
+
+The last two are not code, and no test suite was ever going to catch them.
 
 Splitting that list is not bookkeeping — it found five defects, none of which
 needed hardware to expose. **The session duress credential had never worked at

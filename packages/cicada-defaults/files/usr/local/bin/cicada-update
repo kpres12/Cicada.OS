@@ -52,8 +52,16 @@ if [[ "${remote}" -eq 1 && "${sig}" != "Required" ]]; then
 fi
 
 echo "==> syncing cicada-stable"
-if ! pacman -Sy --noconfirm 2>&1 | tee /tmp/cicada-update-sync.log; then
-  die "pacman -Sy failed. Check network / mirror URL in /etc/cicada/channel-mirror.url"
+# /run/cicada, not /tmp: this script runs as root, and a predictable filename in
+# a world-writable directory is a symlink-swap away from root overwriting an
+# arbitrary file. fs.protected_symlinks=1 (99-cicada.conf) blocks that today, so
+# this is depth rather than a live hole — but the log does not need to be in the
+# one directory where the mitigation is load-bearing.
+mkdir -p /run/cicada && chmod 700 /run/cicada
+SYNC_LOG=/run/cicada/update-sync.log
+if ! pacman -Sy --noconfirm 2>&1 | tee "${SYNC_LOG}"; then
+  die "pacman -Sy failed. Check network / mirror URL in /etc/cicada/channel-mirror.url
+Log: ${SYNC_LOG}"
 fi
 
 mapfile -t channel_pkgs < <(pacman -Slq cicada-stable 2>/dev/null || true)

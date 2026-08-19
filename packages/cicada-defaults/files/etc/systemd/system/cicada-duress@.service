@@ -1,0 +1,31 @@
+[Unit]
+Description=Cicada session duress credential handler (connection %i)
+
+[Service]
+Type=oneshot
+# The connection is stdin. cicada-duress-check reads the candidate secret from
+# there exactly as it reads it from pam_exec, so one code path decides the
+# verdict whether it was reached from sudo directly or from the lock screen.
+ExecStart=/usr/local/bin/cicada-duress-check --from-socket
+StandardInput=socket
+StandardOutput=null
+# A wipe that cannot finish is worse than useless — it leaves the keyslots
+# erased and the machine running. Long enough for luksErase on a slow disk.
+TimeoutStartSec=120
+
+# --- confinement -------------------------------------------------------------
+# Deliberately thin. This unit's whole job is to erase keyslots and reset the
+# machine, so the usual Protect* set would break exactly the paths it exists for.
+# Named rather than omitted, per the rule that every exception is written down:
+#   no ProtectSystem      - must write the LUKS header on the real device
+#   no ProtectKernelTunables - must write /proc/sysrq-trigger
+#   no PrivateDevices     - the block device is the point
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=CAP_SYS_BOOT CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+SystemCallArchitectures=native

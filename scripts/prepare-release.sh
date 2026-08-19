@@ -13,8 +13,15 @@ OUT="${CICADA_OUT:-${ROOT}/out}"
 
 # GitHub rejects release assets over 2 GiB. 1800 MiB keeps a margin and matches
 # the parts already published for the first beta.
+# Two different numbers that used to be one, which is why a 1983 MiB ISO would
+# still have been split into parts nobody needed to reassemble:
+#   SPLIT_ABOVE_MIB  when splitting becomes necessary at all — GitHub's actual
+#                    per-asset ceiling is 2 GiB, so anything under that ships as
+#                    a single file the user can drag straight into Etcher.
+#   PART_MIB         how big each chunk is *if* we have to split.
+SPLIT_ABOVE_MIB="${CICADA_SPLIT_ABOVE_MIB:-2048}"
+SPLIT_ABOVE_BYTES=$((SPLIT_ABOVE_MIB * 1024 * 1024))
 PART_MIB="${CICADA_PART_MIB:-1800}"
-PART_BYTES=$((PART_MIB * 1024 * 1024))
 
 iso="$(ls -1t "${OUT}"/cicada-*.iso 2>/dev/null | grep -v 'cicada-latest' | head -1 || true)"
 if [[ -z "${iso}" ]]; then
@@ -111,8 +118,16 @@ ERR
   fi
 fi
 
-if (( size > PART_BYTES )); then
-  echo "==> ISO is $((size / 1024 / 1024)) MiB — splitting into ${PART_MIB} MiB parts"
+if (( size <= SPLIT_ABOVE_BYTES )); then
+  echo "==> ISO is $((size / 1024 / 1024)) MiB — fits GitHub's ${SPLIT_ABOVE_MIB} MiB asset limit"
+  echo "    Shipping as ONE file: no .part-* and no reassembly step for the user."
+fi
+
+if (( size > SPLIT_ABOVE_BYTES )); then
+  echo "==> ISO is $((size / 1024 / 1024)) MiB — over the ${SPLIT_ABOVE_MIB} MiB asset limit"
+  echo "    Splitting into ${PART_MIB} MiB parts. Every downloader now has to \`cat\` them"
+  echo "    back together before they can flash, which is the first step of the install"
+  echo "    and the one most likely to lose people. Prefer shrinking the image."
   rm -f "${name}".part-* 2>/dev/null || true
   split -d -a 2 -b "${PART_MIB}m" "${name}" "${name}.part-"
   shopt -s nullglob

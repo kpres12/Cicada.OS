@@ -19,19 +19,96 @@ shift || true
 
 # Daily-driver packages — Settings catalog + common tools. No AUR/-git.
 # shellcheck disable=SC2034
+# A hardened OS nobody can read their email on protects nobody. Everything here
+# is from Arch's official repos (no AUR) and everything graphical still launches
+# through a cicada-run scope or, for Flatpaks, under the floors below. Breadth
+# is not the risk; an unsandboxed launcher path would be, and there isn't one.
 CURATED_PACMAN=(
-  htop btop git nano vim code firefox
+  # shell / dev
+  htop btop git nano vim code
   python python-pip base-devel make cmake
   curl wget rsync zip unzip p7zip
   jq tree ripgrep fd bat eza
-  gimp inkscape obs-studio
-  mpv ffmpeg imagemagick
+  nodejs npm rust go
+  docker docker-compose
+  # browsers. NOT Arch chromium — Helium is the product browser and the ISO has
+  # said so since packages.optional.x86_64 was written. firefox stays because it
+  # is a genuinely different engine, which is worth having available.
+  firefox
+  # office / documents
+  libreoffice-fresh onlyoffice-bin
+  okular evince
+  # media
+  mpv vlc ffmpeg imagemagick
+  audacity strawberry
+  # graphics
+  gimp inkscape krita darktable obs-studio
+  # security / network
   keepassxc veracrypt
   wireguard-tools openvpn
-  docker docker-compose
-  nodejs npm rust go
+  syncthing
+  # misc
   cowsay fortune-mod
 )
+
+# --- Flatpak catalog -------------------------------------------------------
+#
+# One table, used by both flatpak-install and flatpak-harden. They used to carry
+# separate copies of the allowlist, which is a drift bug waiting to happen: an
+# app installable but not hardenable would keep Flathub's own permissions after
+# the first update that reset them.
+#
+# Breadth here is deliberate. A privacy OS nobody can read their mail or play
+# music on does not get used, and an OS that does not get used protects nobody.
+# What keeps this safe is not a short list, it is that every entry lands under
+# system-level floors below Flathub's defaults (see apply_flatpak_overrides) —
+# and --system, so a --user override cannot grant back what was taken away.
+#
+# Format: <app-id> <extra-filesystem-floor|-> <note>
+CURATED_FLATPAK=(
+  # mail. Deliberately NOT the [extra] thunderbird package: email is
+  # attacker-controlled content arriving from strangers, which is exactly the
+  # workload that belongs behind a sandbox rather than beside one.
+  "org.mozilla.Thunderbird xdg-documents mail"
+  # chat
+  "org.signal.Signal - chat"
+  "chat.simplex.simplex - chat"
+  "im.riot.Riot - chat"
+  "org.telegram.desktop - chat"
+  "com.discordapp.Discord - chat"
+  "com.slack.Slack - chat"
+  # music / media
+  "org.js.nuclear.Nuclear xdg-music music"
+  "com.spotify.Client xdg-music music"
+  "org.videolan.VLC xdg-videos media"
+  # notes / documents
+  "md.obsidian.Obsidian xdg-documents notes"
+  "io.appflowy.AppFlowy xdg-documents notes"
+  # Notion has no official Linux client. Cohesion is a third-party wrapper by a
+  # Flathub-verified publisher who is not Notion — a browser tab in Helium runs
+  # the same web app with one less maintainer in the trust path. Listed because
+  # it was asked for; the note is printed at install so the choice is informed.
+  "io.github.brunofin.Cohesion xdg-documents notion-unofficial"
+  # office / reading
+  "org.libreoffice.LibreOffice xdg-documents office"
+  "org.onlyoffice.desktopeditors xdg-documents office"
+  "org.kde.okular xdg-documents reader"
+  # graphics
+  "org.gimp.GIMP xdg-pictures graphics"
+  # passwords
+  "com.bitwarden.desktop - vault"
+)
+# Flatseal is deliberately absent: it exists to rewrite Flatpak permissions, and
+# a tool that hands the user a button to undo the floors above is not a floor.
+
+flatpak_row() {
+  local id="$1" row
+  for row in "${CURATED_FLATPAK[@]}"; do
+    [[ "${row%% *}" == "${id}" ]] && { printf '%s' "${row}"; return 0; }
+  done
+  return 1
+}
+is_allowed_flatpak() { flatpak_row "$1" >/dev/null; }
 
 is_curated_pacman() {
   local p="$1" x
@@ -57,38 +134,39 @@ pacman_install() {
 }
 
 apply_flatpak_overrides() {
-  local app_id="$1"
-  # Honest floors: no full $HOME. Downloads (+ media/docs where the app needs them).
+  local app_id="$1" row extra note
+  row="$(flatpak_row "${app_id}")" || return 0
+  extra="$(awk '{print $2}' <<<"${row}")"
+  note="$(awk '{print $3}' <<<"${row}")"
+
+  # The floor every app gets, regardless of what its manifest asked Flathub for.
+  #
+  #   --nofilesystem=home  Flathub grants broad host access so attachments "just
+  #                        work"; it also means one renderer bug reads every
+  #                        document in the profile.
+  #   --nosocket=x11       Cicada is Wayland-only, so nothing needs it, and an
+  #                        app holding the X socket reads every keystroke sent to
+  #                        every other X client.
+  #   --nodevice=all       Camera and mic come through the portal — a prompt at
+  #     --device=dri       the moment of use — not as a standing grant for the
+  #                        life of the install. dri is kept so things render.
+  #
+  # --system throughout: a --user override can grant back what a user override
+  # removed, so a floor written at user level is not a floor.
   flatpak override --system --nofilesystem=home --filesystem=xdg-download "${app_id}" || true
-  case "${app_id}" in
-    com.spotify.Client)
-      flatpak override --system --filesystem=xdg-music "${app_id}" || true
-      ;;
-    org.videolan.VLC)
-      flatpak override --system \
-        --filesystem=xdg-videos --filesystem=xdg-music --filesystem=xdg-pictures \
-        "${app_id}" || true
-      ;;
-    org.libreoffice.LibreOffice)
-      flatpak override --system --filesystem=xdg-documents "${app_id}" || true
-      ;;
-    org.signal.Signal|org.telegram.desktop|com.discordapp.Discord|\
-    chat.simplex.simplex|im.riot.Riot)
-      # Chat: Downloads only (already set). No Documents/Pictures by default.
-      #
-      # These are --system on purpose. A --user override can grant back what a
-      # user override removed, so a floor written at user level is not a floor —
-      # the same rule cicada-scopes enforces for cicada-run scopes.
-      #
-      # X11 is refused outright rather than left as a fallback: Cicada is
-      # Wayland-only, so nothing here needs it, and an app holding the X socket
-      # reads every keystroke sent to every other X client.
-      flatpak override --system --nosocket=x11 --nosocket=fallback-x11 "${app_id}" || true
-      # Camera and mic through the portal — a prompt at the moment of use —
-      # rather than as a standing grant for the life of the install.
-      flatpak override --system --nodevice=all --device=dri "${app_id}" || true
-      ;;
-  esac
+  flatpak override --system --nosocket=x11 --nosocket=fallback-x11 "${app_id}" || true
+  flatpak override --system --nodevice=all --device=dri "${app_id}" || true
+
+  # The one directory this app actually needs, from the table above.
+  if [[ -n "${extra}" && "${extra}" != "-" ]]; then
+    flatpak override --system --filesystem="${extra}" "${app_id}" || true
+  fi
+
+  if [[ "${note}" == "notion-unofficial" ]]; then
+    echo "note: ${app_id} is a third-party wrapper around notion.so, not an" >&2
+    echo "      official Notion client. Helium runs the same web app with one" >&2
+    echo "      less maintainer in the trust path." >&2
+  fi
 }
 
 case "${cmd}" in
@@ -120,15 +198,10 @@ case "${cmd}" in
   flatpak-install)
     [[ $# -ge 1 ]] || usage
     app_id="$1"
-    case "${app_id}" in
-      com.spotify.Client|com.discordapp.Discord|org.signal.Signal|\
-      org.telegram.desktop|org.videolan.VLC|org.libreoffice.LibreOffice|\
-      chat.simplex.simplex|im.riot.Riot) ;;
-      *)
-        echo "app not in Cicada allowlist: ${app_id}" >&2
-        exit 1
-        ;;
-    esac
+    is_allowed_flatpak "${app_id}" || {
+      echo "app not in Cicada allowlist: ${app_id}" >&2
+      exit 1
+    }
     command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
     if ! flatpak remotes --system 2>/dev/null | grep -qw flathub; then
       flatpak remote-add --if-not-exists --system flathub \
@@ -143,12 +216,7 @@ case "${cmd}" in
     # be runnable on its own — cicada-comms harden is the front end.
     [[ $# -ge 1 ]] || usage
     app_id="$1"
-    case "${app_id}" in
-      org.signal.Signal|chat.simplex.simplex|im.riot.Riot|\
-      org.telegram.desktop|com.discordapp.Discord|com.spotify.Client|\
-      org.videolan.VLC|org.libreoffice.LibreOffice) ;;
-      *) echo "app not in Cicada allowlist: ${app_id}" >&2; exit 1 ;;
-    esac
+    is_allowed_flatpak "${app_id}" || { echo "app not in Cicada allowlist: ${app_id}" >&2; exit 1; }
     command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
     apply_flatpak_overrides "${app_id}"
     ;;

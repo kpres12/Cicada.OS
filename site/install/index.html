@@ -19,6 +19,7 @@
       <a href="../download/">Download</a>
       <a href="./" aria-current="page">Install</a>
       <a href="../faq/">FAQ</a>
+      <a href="../donate/">Support</a>
       <a href="https://github.com/kpres12/Cicada.OS">Source</a>
     </nav>
     <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
@@ -52,13 +53,69 @@
 
     <div class="panel" style="margin-top:1rem">
       <div class="panel-head"><h2>2 · Install to disk</h2><span class="tag">DAILY DRIVER</span></div>
-      <p style="color:var(--muted)">Wi‑Fi first (<code>pacstrap</code> needs network). Target another drive — not the live stick.</p>
+      <p style="color:var(--muted)">
+        Easiest path is the <strong>Etch Cicada</strong> icon on the live desktop. It asks for your
+        keyboard layout, timezone and language <em>first</em> — the keyboard matters, see below — then
+        the disk, then the passphrases.
+      </p>
+      <p style="color:var(--muted)">
+        <strong>No network needed.</strong> Cicada installs by copying the system you are already
+        running, so it works offline and gives you exactly the image that was tested. (That also
+        means a laptop whose Wi-Fi does not work yet can still be installed.)
+      </p>
       <pre>sudo cicada-install --list
-sudo cicada-install --target /dev/sdX                 # external
-sudo cicada-install --target /dev/nvme0n1 --internal  # Framework-class only</pre>
+sudo cicada-install --target /dev/sdX                 # external, whole disk
+sudo cicada-install --target /dev/nvme0n1 --internal  # Framework-class only
+
+# non-US keyboard? set it here, not afterwards:
+sudo cicada-install --target /dev/sdX --keymap de --timezone Europe/Berlin --locale de_DE.UTF-8</pre>
       <p style="color:var(--muted);margin-top:0.75rem">
         Apple internal disks are refused. You set a <strong>LUKS passphrase</strong> (disk)
         and a <strong>user password</strong> for <code>cicada</code> (login). Root is locked — use sudo.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-top:1rem">
+      <div class="panel-head"><h2>2b · Keeping Windows or macOS</h2><span class="tag">DUAL BOOT</span></div>
+      <p style="color:var(--muted);margin-top:0">
+        Cicada can install into one partition and leave the rest of the disk — including the other
+        operating system and its EFI partition — untouched.
+      </p>
+      <ol class="steps">
+        <li>
+          <strong>Shrink the existing volume with its own tool</strong>
+          Disk Management on Windows, Disk Utility on macOS. Cicada deliberately does
+          <em>not</em> resize other filesystems — that is where dual-boot installers destroy data,
+          and the vendor tool knows things about the filesystem that an outside resizer does not.
+        </li>
+        <li>
+          <strong>Create a partition in the free space</strong>
+          At least 16 GiB. Note its path and the path of the existing EFI partition.
+        </li>
+        <li>
+          <strong>Install into it</strong>
+          <pre>sudo cicada-install --partition /dev/nvme0n1p5 --esp /dev/nvme0n1p1</pre>
+          Only that partition is written. The partition table is not touched, the ESP is
+          <strong>not</strong> reformatted, and the existing EFI fallback loader is backed up as
+          <code>BOOTX64.EFI.precicada</code> before Cicada's is installed beside it.
+        </li>
+      </ol>
+      <p style="color:var(--muted);margin-top:0.75rem">
+        Cicada refuses the combinations that would destroy the other OS: an <code>--esp</code> that
+        is not actually a FAT EFI partition, a whole disk passed where a partition belongs, or a
+        partition that is currently mounted.
+      </p>
+    </div>
+
+    <div class="panel warn" style="margin-top:1rem">
+      <div class="panel-head"><h2>Set your keyboard layout BEFORE the passphrase</h2><span class="tag">NO RECOVERY</span></div>
+      <p style="margin:0;color:var(--muted)">
+        The layout decides which characters your keys actually produce. If a passphrase is composed
+        under one layout and the boot prompt asks for it under another, the disk cannot be opened —
+        by you or by anyone — and there is no recovery, because the whole design is that no recovery
+        exists. The installer therefore asks for the layout first and applies it immediately, so the
+        passphrase you choose is typed on the same layout that will unlock it. If it cannot load the
+        layout you picked, it stops rather than continue.
       </p>
     </div>
 

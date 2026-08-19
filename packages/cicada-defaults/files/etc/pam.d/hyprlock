@@ -6,7 +6,23 @@
 # carries on to the normal auth below exactly as if this line were absent.
 #
 # Enrol the session duress password with: cicada-duress-enroll --session
-# seteuid: without it pam_exec runs as the locking user and luksErase/sysrq are no-ops.
+#
+# On `seteuid`, and why it is not enough here:
+#
+#   pam_exec runs the hook inside whatever process asked for the password, and
+#   `seteuid` makes it run with that process's EFFECTIVE uid. Under sudo that is
+#   root, because sudo is setuid. hyprlock is NOT setuid — Arch ships it 0755
+#   and it authenticates through unix_chkpwd like any unprivileged program — so
+#   here the hook runs as the desktop user no matter what this line says. It
+#   could not read the 0400 verifier, let alone erase a keyslot, and it exited 0,
+#   which is exactly what a wrong guess does. The credential was inert at the
+#   lock screen, which is the room it was written for.
+#
+#   The flag stays because it is correct and free for any setuid caller. What
+#   actually makes the lock screen work is cicada-duress.socket: the hook, when
+#   it is not root, forwards the candidate to a root handler over that socket.
+#   Verified end to end on a real kernel, as an unprivileged uid, by
+#   tests/linux/duress.sh.
 auth       optional   pam_exec.so seteuid expose_authtok quiet /usr/local/bin/cicada-duress-check
 auth       include    system-auth
 account    include    system-auth

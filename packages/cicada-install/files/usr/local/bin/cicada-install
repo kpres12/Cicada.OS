@@ -70,6 +70,86 @@ confirm_target() {
   (( gib >= MIN_GIB )) || die "${dev} is ${gib}G; need >= ${MIN_GIB}G"
 }
 
+# ---------------------------------------------------------------------------
+# Keeping another operating system on the disk.
+#
+# The whole-disk path below runs `sgdisk --zap-all`, which is correct when the
+# disk is yours to take and catastrophic when it is not. It also meant the only
+# way to try Cicada was to give up the machine you already depend on, which is
+# not a trade most people will make for a pre-alpha OS — so in practice it meant
+# "do not try Cicada".
+#
+# This does NOT ship a partition editor. Resizing a live NTFS or APFS volume is
+# where dual-boot installers actually destroy data, and the vendor tools (Disk
+# Management, Disk Utility) do it correctly with the filesystem's own knowledge.
+# So: you make the free space and the partition, and Cicada installs into the
+# partition you name, reusing the EFI System Partition that is already there.
+# Nothing outside that one partition is written, except the bootloader files
+# added alongside the existing ones in the ESP.
+part_parent() {
+  local p="$1" k
+  k="$(lsblk -no PKNAME "${p}" 2>/dev/null | head -1)"
+  [[ -n "${k}" ]] && printf '/dev/%s' "${k}"
+}
+
+confirm_partition() {
+  local part="$1" esp="$2" parent
+  [[ -b "${part}" ]] || die "not a block device: ${part}"
+  [[ -b "${esp}" ]]  || die "not a block device: ${esp}"
+  [[ "${part}" != "${esp}" ]] || die "--partition and --esp cannot be the same device"
+
+  # `|| true` is load-bearing: this script runs under `set -e`, part_parent
+  # returns non-zero when there is no parent disk, and without it the assignment
+  # aborts the whole script — exit 1 with no output at all, right where the user
+  # most needs to be told what was wrong with the device they named.
+  parent="$(part_parent "${part}" || true)"
+  [[ -n "${parent}" ]] || die "${part} is not a partition (pass the partition, e.g. /dev/sda3, not the whole disk)"
+
+  # Everything the whole-disk path refuses, refused here too.
+  is_apple_internal "${parent}" && die "refusing a partition on Apple internal disk ${parent}"
+  local live live_base
+  live="$(live_src)"
+  if [[ -n "${live}" ]]; then
+    live_base="$(lsblk -no PKNAME "${live}" 2>/dev/null || true)"
+    [[ -n "${live_base}" && "/dev/${live_base}" == "${parent}" ]] && die "refusing a partition on the live USB"
+  fi
+
+  # Mounted means in use — by the running system or by the OS we are preserving.
+  local mp
+  for d in "${part}" "${esp}"; do
+    mp="$(findmnt -n -o TARGET --source "${d}" 2>/dev/null | head -1 || true)"
+    [[ -n "${mp}" ]] && [[ "${d}" == "${part}" ]] && die "${d} is mounted at ${mp} — unmount it first"
+  done
+
+  # Refuse to eat something that already holds data, unless told twice.
+  local fstype
+  fstype="$(lsblk -no FSTYPE "${part}" 2>/dev/null | head -1)"
+  if [[ -n "${fstype}" && "${ASSUME_YES}" != 1 ]]; then
+    echo
+    echo "WARNING: ${part} already contains a ${fstype} filesystem."
+    lsblk -no NAME,SIZE,FSTYPE,LABEL "${part}"
+    read -r -p "Type ERASE to overwrite just this partition: " ans
+    [[ "${ans}" == "ERASE" ]] || die "aborted"
+  fi
+
+  local bytes gib
+  bytes="$(lsblk -nbdo SIZE "${part}")"
+  gib=$((bytes / 1024 / 1024 / 1024))
+  (( gib >= MIN_GIB )) || die "${part} is ${gib}G; need >= ${MIN_GIB}G"
+
+  # The ESP must really be one. Formatting a data partition as vfat because it
+  # was named with --esp would destroy the other OS, so verify rather than trust.
+  local esp_fs esp_mb
+  esp_fs="$(lsblk -no FSTYPE "${esp}" 2>/dev/null | head -1)"
+  [[ "${esp_fs}" == vfat ]] || die "${esp} is '${esp_fs:-unformatted}', not vfat — that is not an EFI System Partition.
+Cicada will NOT format it: if that really is your ESP, something is wrong; if it
+is not, formatting it would destroy whatever is there."
+  esp_mb=$(( $(lsblk -nbdo SIZE "${esp}") / 1024 / 1024 ))
+  (( esp_mb >= 96 )) || die "${esp} is ${esp_mb}MiB; too small to add another kernel"
+  (( esp_mb >= 260 )) || echo "==> NOTE: ESP is only ${esp_mb}MiB; kernels are large and it may fill up"
+  echo "==> reusing existing ESP ${esp} (${esp_mb}MiB, vfat) — it will NOT be formatted"
+}
+
 copy_product() {
   local mnt="$1"
   mkdir -p "${mnt}/usr/local/bin" "${mnt}/usr/local/lib/cicada" "${mnt}/etc/cicada"
@@ -162,6 +242,65 @@ copy_product() {
       -exec cp -a {} "${mnt}/etc/sudoers.d/" \; 2>/dev/null || true
 }
 
+# ---------------------------------------------------------------------------
+# Installing WITHOUT the network.
+#
+# pacstrap downloads every package from the internet, which made a working
+# connection a hard requirement for installing at all. That is backwards for
+# this product in three ways: the live ISO already contains the complete, tested
+# system; a user whose Wi-Fi driver is the thing they need Cicada to fix cannot
+# install it; and a snapshot pin means "the packages the ISO was built from" —
+# so downloading them again can only produce something *different* from what was
+# tested, never something better.
+#
+# Ubuntu, Mint and Fedora all install by unpacking the live filesystem. Cicada
+# does the same: rsync the running root onto the target, then let
+# install-chroot.sh do the same fix-ups it always did.
+#
+# What must NOT come across is anything that is live-session state rather than
+# system state. Getting this list wrong is how an installed machine inherits the
+# live host key, the live machine-id, or an autologin.
+live_rootfs_ok() { [[ -d /run/archiso ]]; }
+
+copy_live_rootfs() {
+  local mnt="$1"
+  echo "==> copying the live system to ${mnt} (no network needed)"
+  local -a ex=(
+    # kernel/user runtime, not files
+    --exclude=/dev/* --exclude=/proc/* --exclude=/sys/* --exclude=/run/*
+    --exclude=/tmp/* --exclude=/mnt/* --exclude=/media/* --exclude=/lost+found
+    # the live medium and its overlay, which obviously must not be copied onto
+    # the thing that replaces them
+    --exclude=/run/archiso --exclude=/etc/fstab
+    # identity that MUST be unique per machine. A machine-id copied off a live
+    # ISO is shared by every install made from that image, which is a stable
+    # cross-machine identifier on an OS whose whole point is not having one.
+    --exclude=/etc/machine-id --exclude=/var/lib/dbus/machine-id
+    --exclude=/etc/ssh/ssh_host_*
+    # live-session leftovers
+    --exclude=/home/* --exclude=/root/.bash_history --exclude=/var/log/*
+    --exclude=/var/cache/pacman/pkg/*
+    # archiso's own boot machinery; the installed system boots from an ESP with
+    # its own initramfs, built by install-chroot.
+    --exclude=/boot/* --exclude=/etc/mkinitcpio.conf.d/archiso.conf
+    --exclude=/etc/mkinitcpio.d/*
+  )
+  rsync -aHAXx --numeric-ids --info=progress2 "${ex[@]}" / "${mnt}/" || {
+    echo "cicada-install: copying the live system failed" >&2
+    return 1
+  }
+  # Directories rsync was told to skip the contents of still need to exist.
+  mkdir -p "${mnt}"/{dev,proc,sys,run,tmp,mnt,media,boot,home,var/log,var/cache/pacman/pkg}
+  chmod 1777 "${mnt}/tmp"
+  # A fresh identity, generated on first boot rather than inherited.
+  : > "${mnt}/etc/machine-id"
+  rm -f "${mnt}/var/lib/dbus/machine-id"
+  # mkinitcpio-archiso's hooks only make sense on a live medium and would make
+  # the installed initramfs try to find a squashfs that is not there.
+  rm -f "${mnt}/etc/mkinitcpio.conf.d/archiso.conf"
+  return 0
+}
+
 pacstrap_filtered() {
   local mnt="$1"
   local -a want=() have=()
@@ -194,9 +333,35 @@ cicada-install — LUKS2 + btrfs + systemd-boot (etch Cicada onto a disk)
 
   cicada-install --list
   cicada-install --target /dev/sdX --hostname cicada
+  cicada-install --target /dev/sdX --keymap de --timezone Europe/Berlin --locale de_DE.UTF-8
   cicada-install --target /dev/nvme0n1 --internal   # non-Apple internal disk
 
+Keep the OS already on the disk (dual boot):
+  # 1. Shrink the existing volume with ITS OWN tool first — Disk Management on
+  #    Windows, Disk Utility on macOS. Cicada does not resize other filesystems;
+  #    that is where dual-boot installers destroy data.
+  # 2. Create a partition in the free space, then:
+  cicada-install --partition /dev/nvme0n1p5 --esp /dev/nvme0n1p1
+
+  Only that one partition is written. The partition table, the other OS and the
+  ESP's existing contents are left alone; Cicada's bootloader is added beside
+  them and systemd-boot lists what it finds.
+
 GUI path (live):  cicada-etch
+
+Package source:
+  --source auto      copy the live system when running from the ISO (default),
+                     otherwise pacstrap. No network needed on the live path.
+  --source local     require the live-copy path; fail rather than download
+  --source network   force pacstrap (the old behaviour; needs the internet)
+
+Region (asked interactively when omitted; defaults us / UTC / en_US.UTF-8):
+  --keymap NAME              console keymap, e.g. de, uk, fr, es
+  --timezone REGION/CITY     e.g. Europe/Berlin
+  --locale LANG.UTF-8        e.g. de_DE.UTF-8
+
+  The keymap decides which physical keys produce your LUKS passphrase. Set it
+  BEFORE choosing the passphrase, not after.
 
 Noninteractive (used by cicada-etch):
   --yes
@@ -211,8 +376,49 @@ After reboot: LUKS unlock → login as cicada → firstrun (duress / Work).
 EOF
 }
 
+# ---------------------------------------------------------------------------
+# Locale, keyboard and timezone.
+#
+# These were hardcoded to UTC / en_US.UTF-8 / us and never asked about. That is
+# self-consistent — the live session is `us` too, so a passphrase typed at
+# install unlocks at boot — but it means every non-US user types their LUKS
+# passphrase on a layout that does not match the keycaps in front of them, at
+# install and at every unlock afterwards, with no way to change it. And it stops
+# being merely consistent the moment anything alters the live keymap between
+# typing the passphrase and rebooting, at which point the disk is unopenable.
+#
+# The keymap is therefore a *security* setting on this OS, not a convenience:
+# it decides which physical keys produce the secret that unlocks the volume.
+# ---------------------------------------------------------------------------
+TIMEZONE=""
+KEYMAP=""
+LOCALE=""
+
+valid_timezone() { [[ -n "$1" && -f "/usr/share/zoneinfo/$1" ]]; }
+
+valid_keymap() {
+  local k="$1"
+  [[ -n "${k}" ]] || return 1
+  if command -v localectl >/dev/null 2>&1 && localectl list-keymaps >/dev/null 2>&1; then
+    localectl list-keymaps 2>/dev/null | grep -qx -- "${k}" && return 0
+  fi
+  # localectl needs a running systemd-localed; the live ISO may not have one.
+  # Fall back to the keymap files themselves, which are what loadkeys reads.
+  find /usr/share/kbd/keymaps -name "${k}.map.gz" -o -name "${k}.map" 2>/dev/null \
+    | grep -q . && return 0
+  return 1
+}
+
+valid_locale() {
+  [[ -n "$1" ]] || return 1
+  grep -qE "^#?[[:space:]]*${1//./\.}([[:space:]]|$)" /etc/locale.gen 2>/dev/null
+}
+
 TARGET=""
 HOST="${HOSTNAME_DEFAULT}"
+SOURCE="${CICADA_INSTALL_SOURCE:-auto}"
+PARTITION=""
+ESP_DEV=""
 DRY=0
 ALLOW_INTERNAL=0
 ASSUME_YES=0
@@ -224,7 +430,13 @@ while [[ $# -gt 0 ]]; do
     --list) list_candidates; exit 0 ;;
     --target) TARGET="${2:?}"; shift 2 ;;
     --hostname) HOST="${2:?}"; shift 2 ;;
+    --timezone) TIMEZONE="${2:?}"; shift 2 ;;
+    --keymap)   KEYMAP="${2:?}";   shift 2 ;;
+    --locale)   LOCALE="${2:?}";   shift 2 ;;
     --internal) ALLOW_INTERNAL=1; shift ;;
+    --source) SOURCE="${2:?}"; shift 2 ;;
+    --partition) PARTITION="${2:?}"; shift 2 ;;
+    --esp) ESP_DEV="${2:?}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     --yes) ASSUME_YES=1; shift ;;
     --luks-pass-file) LUKS_PASS_FILE="${2:?}"; shift 2 ;;
@@ -249,20 +461,98 @@ while [[ $# -gt 0 ]]; do
 done
 
 need_root
-[[ -n "${TARGET}" ]] || { usage; list_candidates; die "pass --target /dev/sdX"; }
-confirm_target "${TARGET}"
 
-echo
-echo "THIS WILL WIPE ${TARGET}"
-lsblk "${TARGET}"
-echo
-if [[ "${ASSUME_YES}" == 1 ]]; then
-  echo "==> --yes: skipping retype confirmation for ${TARGET}"
+KEEP_DISK=0
+if [[ -n "${PARTITION}" || -n "${ESP_DEV}" ]]; then
+  [[ -n "${PARTITION}" && -n "${ESP_DEV}" ]] \
+    || die "--partition and --esp go together: name the partition to install into AND the existing EFI System Partition"
+  [[ -z "${TARGET}" ]] || die "--target wipes a whole disk; --partition keeps it. Pick one."
+  KEEP_DISK=1
+  confirm_partition "${PARTITION}" "${ESP_DEV}"
+  echo
+  echo "THIS WILL ERASE ONLY ${PARTITION}"
+  echo "Everything else on $(part_parent "${PARTITION}") is left alone, including ${ESP_DEV}."
+  lsblk "$(part_parent "${PARTITION}")"
+  echo
+  if [[ "${ASSUME_YES}" == 1 ]]; then
+    echo "==> --yes: skipping retype confirmation for ${PARTITION}"
+  else
+    read -r -p "Type the partition path to continue: " typed
+    [[ "${typed}" == "${PARTITION}" ]] || die "aborted"
+  fi
 else
-  read -r -p "Type the device path to continue: " typed
-  [[ "${typed}" == "${TARGET}" ]] || die "aborted"
+  [[ -n "${TARGET}" ]] || { usage; list_candidates; die "pass --target /dev/sdX (whole disk) or --partition + --esp (keep the other OS)"; }
+  confirm_target "${TARGET}"
+
+  echo
+  echo "THIS WILL WIPE ${TARGET}"
+  lsblk "${TARGET}"
+  echo
+  if [[ "${ASSUME_YES}" == 1 ]]; then
+    echo "==> --yes: skipping retype confirmation for ${TARGET}"
+  else
+    read -r -p "Type the device path to continue: " typed
+    [[ "${typed}" == "${TARGET}" ]] || die "aborted"
+  fi
 fi
 command -v cicada-auth >/dev/null && cicada-auth confirm install
+
+# ---------------------------------------------------------------------------
+# Region: keyboard, timezone, language.
+#
+# This runs BEFORE the passphrase prompt and applies the keymap immediately with
+# loadkeys, which is the whole reason it exists here rather than as a cosmetic
+# post-install detail. The keymap decides which characters the physical keys
+# produce. If the passphrase is typed under one layout and the initramfs later
+# prompts under another, the disk cannot be opened by anyone, including its
+# owner, and there is no recovery path — the KDF does not care that you meant
+# a different byte.
+# ---------------------------------------------------------------------------
+pick_one() {
+  # $1 = prompt, $2 = default, $3 = validator fn, rest = suggestions
+  local prompt="$1" def="$2" check="$3"; shift 3
+  local ans
+  echo >&2
+  echo "${prompt}" >&2
+  printf '  common: %s\n' "$*" >&2
+  while :; do
+    read -r -p "  [${def}]: " ans || { ans=""; }
+    ans="${ans:-${def}}"
+    if "${check}" "${ans}"; then printf '%s' "${ans}"; return 0; fi
+    echo "  not recognised: ${ans}" >&2
+  done
+}
+
+if [[ "${ASSUME_YES}" != 1 && -t 0 ]]; then
+  [[ -n "${KEYMAP}" ]] || KEYMAP="$(pick_one \
+    "Keyboard layout. This decides which keys produce your disk passphrase." \
+    us valid_keymap us uk de fr es it dvorak colemak)"
+  [[ -n "${TIMEZONE}" ]] || TIMEZONE="$(pick_one \
+    "Timezone." UTC valid_timezone UTC Europe/London Europe/Berlin America/New_York America/Los_Angeles Asia/Tokyo)"
+  [[ -n "${LOCALE}" ]] || LOCALE="$(pick_one \
+    "Language / locale." en_US.UTF-8 valid_locale en_US.UTF-8 en_GB.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 es_ES.UTF-8)"
+fi
+
+# Non-interactive, or the user pressed through: the previous hardcoded values.
+KEYMAP="${KEYMAP:-us}"
+TIMEZONE="${TIMEZONE:-UTC}"
+LOCALE="${LOCALE:-en_US.UTF-8}"
+
+valid_keymap  "${KEYMAP}"   || die "unknown keymap: ${KEYMAP}"
+valid_timezone "${TIMEZONE}" || die "unknown timezone: ${TIMEZONE} (see /usr/share/zoneinfo)"
+valid_locale  "${LOCALE}"   || die "locale not in /etc/locale.gen: ${LOCALE}"
+
+# Apply it to this session now, so the passphrase about to be typed is produced
+# by the same layout the installed machine will prompt with.
+if [[ "${KEYMAP}" != "us" ]] && command -v loadkeys >/dev/null 2>&1; then
+  if loadkeys "${KEYMAP}" 2>/dev/null; then
+    echo "==> keymap ${KEYMAP} active for the rest of this install"
+  else
+    die "could not load keymap ${KEYMAP}. Refusing to continue: you would type the
+passphrase on one layout and unlock on another, which makes the disk unopenable."
+  fi
+fi
+echo "==> region: keymap=${KEYMAP} timezone=${TIMEZONE} locale=${LOCALE}"
 
 # ---------------------------------------------------------------------------
 # LUKS passphrase.
@@ -324,8 +614,18 @@ else
       echo
       echo "Write this on paper before continuing. It is not stored anywhere and"
       echo "cannot be recovered. Losing it means the disk is gone."
-      read -r -p "Type it back to confirm you copied it: " p2
-      [[ "${p1}" == "${p2}" ]] || die "passphrase not confirmed — nothing was written"
+      # Retries, because one mistyped character should not throw away the whole
+      # install and send the user back through target selection. The passphrase
+      # is still on screen; this confirms transcription, and getting it wrong is
+      # exactly the moment to look again rather than to start over.
+      ok=0
+      for attempt in 1 2 3; do
+        read -r -p "Type it back to confirm you copied it: " p2
+        if [[ "${p1}" == "${p2}" ]]; then ok=1; break; fi
+        echo "  does not match. It is printed above — check for 0/O and 1/l."
+        echo "  (the alphabet deliberately excludes i, l, o and u; attempt ${attempt} of 3)"
+      done
+      [[ "${ok}" -eq 1 ]] || die "passphrase not confirmed after 3 tries — nothing was written"
       ;;
     3)
       read -r -s -p "LUKS passphrase: " p1; echo
@@ -349,7 +649,11 @@ else
 fi
 
 if [[ "${DRY}" == 1 ]]; then
-  echo "dry-run: would LUKS+btrfs+pacstrap+bootctl ${TARGET} hostname=${HOST} internal=${ALLOW_INTERNAL}"
+  if [[ "${KEEP_DISK}" -eq 1 ]]; then
+    echo "dry-run: would LUKS+btrfs ${PARTITION}, reuse ESP ${ESP_DEV}, NOT repartition $(part_parent "${PARTITION}")"
+  else
+    echo "dry-run: would LUKS+btrfs+bootctl ${TARGET} hostname=${HOST} internal=${ALLOW_INTERNAL} source=${SOURCE}"
+  fi
   exit 0
 fi
 
@@ -359,20 +663,42 @@ command -v pacstrap >/dev/null || die "pacstrap missing (arch-install-scripts)"
 command -v bootctl >/dev/null || die "bootctl missing (systemd)"
 [[ -x "${CHROOT}" ]] || die "missing ${CHROOT}"
 
-sgdisk --zap-all "${TARGET}"
-sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "${TARGET}"
-sgdisk -n 2:0:0 -t 2:8309 -c 2:CICADA "${TARGET}"
-sleep 1
-if [[ "${TARGET}" == /dev/nvme* ]] || [[ "${TARGET}" == /dev/mmcblk* ]]; then
-  ESP="${TARGET}p1"
-  ROOTP="${TARGET}p2"
+if [[ "${KEEP_DISK}" -eq 1 ]]; then
+  # No sgdisk at all. The partition table belongs to the other OS.
+  ESP="${ESP_DEV}"
+  ROOTP="${PARTITION}"
+  # bootctl writes the removable-media fallback at /EFI/BOOT/BOOTX64.EFI. On a
+  # shared ESP something else may be relying on that file — notably a Mac, which
+  # boots the fallback path. Keep a copy so it can be put back by hand.
+  espmnt="$(mktemp -d)"
+  if mount "${ESP}" "${espmnt}" 2>/dev/null; then
+    if [[ -f "${espmnt}/EFI/BOOT/BOOTX64.EFI" && ! -f "${espmnt}/EFI/BOOT/BOOTX64.EFI.precicada" ]]; then
+      cp -a "${espmnt}/EFI/BOOT/BOOTX64.EFI" "${espmnt}/EFI/BOOT/BOOTX64.EFI.precicada" || true
+      echo "==> backed up the existing EFI fallback loader to BOOTX64.EFI.precicada"
+    fi
+    for other in Microsoft ubuntu fedora debian Boot APPLE; do
+      [[ -d "${espmnt}/EFI/${other}" ]] && echo "==> ESP also holds /EFI/${other} — left untouched"
+    done
+    umount "${espmnt}" || true
+  fi
+  rmdir "${espmnt}" 2>/dev/null || true
+  echo "==> not formatting ${ESP}: it belongs to the system already installed"
 else
-  ESP="${TARGET}1"
-  ROOTP="${TARGET}2"
-fi
-[[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
+  sgdisk --zap-all "${TARGET}"
+  sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "${TARGET}"
+  sgdisk -n 2:0:0 -t 2:8309 -c 2:CICADA "${TARGET}"
+  sleep 1
+  if [[ "${TARGET}" == /dev/nvme* ]] || [[ "${TARGET}" == /dev/mmcblk* ]]; then
+    ESP="${TARGET}p1"
+    ROOTP="${TARGET}p2"
+  else
+    ESP="${TARGET}1"
+    ROOTP="${TARGET}2"
+  fi
+  [[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
 
-mkfs.fat -F32 -n CICADAESP "${ESP}"
+  mkfs.fat -F32 -n CICADAESP "${ESP}"
+fi
 # Argon2id memory cost is what actually defeats GPU and ASIC attacks — it is
 # memory-bandwidth bound, so each doubling roughly doubles attacker cost. But
 # the initramfs must have this much RAM free at unlock time or the disk becomes
@@ -408,8 +734,19 @@ mount -o subvol=@home,noatime /dev/mapper/cicada /mnt/home
 # than the vfat default of world-readable.
 mount -o umask=0077 "${ESP}" /mnt/boot
 
-echo "==> pacstrap (needs network)"
-pacstrap_filtered /mnt
+case "${SOURCE}" in
+  local)   live_rootfs_ok || die "--source local needs the live ISO (/run/archiso absent)"
+           copy_live_rootfs /mnt || die "local copy failed" ;;
+  network) echo "==> pacstrap (needs network)"; pacstrap_filtered /mnt ;;
+  auto)
+    if live_rootfs_ok; then
+      copy_live_rootfs /mnt || die "local copy failed"
+    else
+      echo "==> not on a live ISO; falling back to pacstrap (needs network)"
+      pacstrap_filtered /mnt
+    fi ;;
+  *) die "unknown --source: ${SOURCE}" ;;
+esac
 genfstab -U /mnt >> /mnt/etc/fstab
 
 LUKS_UUID="$(cryptsetup luksUUID "${ROOTP}")"
@@ -420,6 +757,9 @@ cat > /mnt/etc/cicada/install.env <<EOF
 CICADA_LUKS_UUID=${LUKS_UUID}
 CICADA_ROOT_UUID=${ROOT_UUID}
 CICADA_BTRFS_SUBVOL=@
+CICADA_KEYMAP=${KEYMAP}
+CICADA_TIMEZONE=${TIMEZONE}
+CICADA_LOCALE=${LOCALE}
 EOF
 chmod 600 /mnt/etc/cicada/install.env
 
@@ -445,7 +785,8 @@ cleanup_user_pass
 
 cat > /mnt/etc/cicada/install-stamp <<EOF
 installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-target=${TARGET}
+target=${TARGET:-${PARTITION}}
+mode=$([[ "${KEEP_DISK}" -eq 1 ]] && echo "partition (other OS preserved, shared ESP ${ESP_DEV})" || echo "whole-disk")
 luks_uuid=${LUKS_UUID}
 note=LUKS2 Argon2id + btrfs @/@home + systemd-boot
 EOF

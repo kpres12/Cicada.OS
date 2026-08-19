@@ -1,7 +1,30 @@
-%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-helper
+# NOPASSWD is granted per verb, not per binary.
+#
+# cicada-profile calls `cicada-auth confirm profile.dispose` before disposing —
+# but that gate lives in the WRAPPER while the privilege lives in the HELPER, and
+# the helper was reachable directly. `sudo -n cicada-profile-helper dispose work`
+# ran `userdel -r cicada-work` with no prompt, no seal entry and no confirmation,
+# so anything executing as the owner could destroy a profile silently. A
+# confirmation you can route around is not a confirmation.
+#
+# The safe verbs stay passwordless because the desktop calls them constantly.
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-helper create *
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-helper create-locked *
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-helper login *
+# Irreversible. Costs a password, like package install and channel update do.
+# Listed last on purpose: sudo applies the LAST matching rule.
+%wheel ALL=(root) PASSWD: /usr/local/bin/cicada-profile-helper dispose *
+
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-av-kill
 %wheel ALL=(root) NOPASSWD: /usr/bin/passwd cicada-work
 %wheel ALL=(root) NOPASSWD: /usr/local/lib/cicada/heal-helium.sh
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-malloc
+# Both directions stay passwordless: cicada-lock closes the gate on the way in
+# and reopens it immediately after a successful unlock, and neither may block on
+# a prompt — a password prompt on the restore path leaves USB dead until reboot.
+# The rule that matters ("do not open the gate while the screen is still locked")
+# is enforced inside cicada-usb-gate itself, where the wrapper cannot be skipped,
+# rather than here. Same reasoning as dispose above: put the check where the
+# privilege is.
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-usb-gate
 # Package install / channel update require an interactive password (not listed above).

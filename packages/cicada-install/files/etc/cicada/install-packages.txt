@@ -4,7 +4,17 @@
 base
 linux
 linux-hardened
-linux-firmware
+# The linux-firmware meta pulls every vendor split including nvidia (99 MiB).
+# Live and installed ship the same set so the seam stays honest; add what your
+# hardware needs with: sudo pacman -S linux-firmware-nvidia
+linux-firmware-intel
+linux-firmware-atheros
+linux-firmware-realtek
+linux-firmware-mediatek
+linux-firmware-amdgpu
+linux-firmware-radeon
+linux-firmware-cirrus
+linux-firmware-other
 intel-ucode
 amd-ucode
 mkinitcpio

@@ -70,7 +70,11 @@ for unit in "${ROOT}"/packages/cicada-defaults/files/etc/systemd/system/cicada-*
   u="$(basename "${unit}")"
   live=0; inst=0; cond=0
   grep -q "${u}" "${ASSEMBLE}" && live=1
-  grep -q "${u%.service}" "${CHROOT}" && inst=1
+  # Strip either suffix: install-chroot enables "cicada-duress.socket" by its
+  # full name, and %.service left the ".socket" on, so the installed side never
+  # matched and a correctly-wired unit looked like a seam break.
+  ubase="${u%.service}"; ubase="${ubase%.socket}"
+  grep -qE "${ubase}(\.socket)?" "${CHROOT}" && inst=1
   grep -q 'ConditionPathExists=/run/archiso' "${unit}" && cond=1
   case "${u}" in
     # Opt-in airplane at boot. Laptops are not phones; Wi-Fi stays available.
@@ -86,6 +90,10 @@ for unit in "${ROOT}"/packages/cicada-defaults/files/etc/systemd/system/cicada-*
     # to ignore the statement that matters. cicada-firstrun offers to enable it
     # after cicada-link pairing, on an installed machine. See docs/BEACON.md.
     cicada-beacon.timer) say "${u} (opt-in after cicada-link pairing)"; continue ;;
+    # Template unit: systemd instantiates one per accepted connection, so it is
+    # never "enabled". cicada-duress.socket is the thing both sides enable, and
+    # it is checked as a normal unit by this same loop.
+    cicada-duress@.service) say "${u} (instantiated by cicada-duress.socket)"; continue ;;
   esac
   if [[ "${cond}" -eq 1 ]]; then
     [[ "${live}" -eq 1 ]] && say "${u} (live-only by ConditionPathExists)" \

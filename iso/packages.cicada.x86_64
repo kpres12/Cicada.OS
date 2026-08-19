@@ -8,6 +8,21 @@ libva-intel-driver
 intel-media-driver
 libva-utils
 linux-firmware-broadcom
+# --- firmware, named explicitly -------------------------------------------
+# The linux-firmware META package is excluded (see packages.exclude) because it
+# hard-depends on every vendor split including nvidia, which was 541 MiB across
+# the squashfs, both initramfs images and the efiboot duplicate. Listing the
+# splits here is what keeps that choice ours instead of the meta's.
+#
+# Kept because real laptops need them; dropped ones are one pacman command away.
+linux-firmware-intel
+linux-firmware-atheros
+linux-firmware-realtek
+linux-firmware-mediatek
+linux-firmware-amdgpu
+linux-firmware-radeon
+linux-firmware-cirrus
+linux-firmware-other
 # pin providers so pacstrap is non-interactive
 iptables
 pipewire-jack
@@ -104,7 +119,8 @@ macchanger
 qrencode
 libnotify
 lynis
-linux-hardened
+# linux-hardened is NOT on the live ISO: neither loader entry can boot it, so it
+# was 667 MiB of dead weight. Installed systems get it from install-packages.txt.
 sbctl
 # Builds the unified kernel images (cicada-uki). Without this, sbctl signs the
 # kernel but not the cmdline or the initramfs, and there is no PCR 11 to seal

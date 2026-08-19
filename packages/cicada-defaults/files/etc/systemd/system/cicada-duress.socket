@@ -1,0 +1,29 @@
+[Unit]
+Description=Cicada session duress credential (privileged wipe path)
+# Why a socket at all: the duress hook runs inside whatever process is asking
+# for a password. At `sudo` that process is setuid root and the hook can do the
+# work itself. At the lock screen it is hyprlock, which is NOT setuid — Arch
+# ships it 0755 and it authenticates through unix_chkpwd like any unprivileged
+# program. So the hook there runs as uid 1000: it cannot read the 0400 verifier,
+# cannot erase a keyslot, and cannot write to sysrq-trigger. It exited 0, which
+# is also what a wrong guess does, so the feature looked identical to working.
+#
+# This socket is the privilege boundary the lock screen was missing. No setuid
+# binary is added to the system to get it.
+
+[Socket]
+ListenStream=/run/cicada/duress.sock
+# 0660 root:wheel, not 0666. The threat this feature answers is a human forcing
+# the owner to unlock, not another local account — and an oracle that any uid
+# could poke would turn "run code as nobody" into "destroy the disk".
+SocketMode=0660
+SocketUser=root
+SocketGroup=wheel
+# One short-lived unit per connection, so a hung or wedged handler cannot make
+# the next lock-screen attempt block.
+Accept=yes
+# Coercion is not a high-rate event. This is a brute-force ceiling, not tuning.
+MaxConnectionsPerSource=4
+
+[Install]
+WantedBy=sockets.target

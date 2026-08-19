@@ -19,6 +19,7 @@
       <a href="../download/">Download</a>
       <a href="../install/">Install</a>
       <a href="../faq/">FAQ</a>
+      <a href="../donate/">Support</a>
       <a href="https://github.com/kpres12/Cicada.OS">Source</a>
     </nav>
     <div class="sentry-meta"><span class="live">● LIVE</span> · <span data-mission-clock>—</span></div>
@@ -35,7 +36,7 @@
       <div class="panel">
         <div class="panel-head"><h2>Exploit mitigations</h2><span class="tag">RUNTIME</span></div>
         <ul class="feature-list">
-          <li><span class="k">malloc</span><span class="v">hardened_malloc (GrapheneOS tag) via ld.so.preload</span></li>
+          <li><span class="k">malloc</span><span class="v">hardened_malloc shipped, <strong>opt-in</strong> (<code>cicada-malloc on</code>) — global preload breaks Helium</span></li>
           <li><span class="k">Kernel</span><span class="v">linux-hardened boot entry + lockdown on that entry</span></li>
           <li><span class="k">Memory</span><span class="v">init_on_alloc / init_on_free on cmdline</span></li>
           <li><span class="k">CET</span><span class="v">ibt + shstk where silicon supports it — not MTE</span></li>
@@ -54,8 +55,8 @@
         <div class="panel-head"><h2>AFU / coercion</h2><span class="tag">LOCK</span></div>
         <ul class="feature-list">
           <li><span class="k">Reboot</span><span class="v">Auto-reboot when locked (default 30 min)</span></li>
-          <li><span class="k">USB</span><span class="v">USBGuard blocks inserts while locked</span></li>
-          <li><span class="k">Duress</span><span class="v">LUKS slot + session PAM path</span></li>
+          <li><span class="k">USB</span><span class="v">Kernel <code>authorized_default=0</code> while locked (USBGuard alongside); already-authorized devices keep working</span></li>
+          <li><span class="k">Duress</span><span class="v">LUKS slot at power-on + session PAM path at <code>sudo</code>; both erase keyslots and hard-reset</span></li>
           <li><span class="k">Watchdog</span><span class="v">Hardware AFU ceiling when present</span></li>
         </ul>
       </div>

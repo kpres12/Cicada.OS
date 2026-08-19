@@ -175,7 +175,20 @@ grep -qx 'openresolv' "${pkgs}" && die "openresolv (conflicts resolvconf)" || tr
 grep -qx 'cloud-init' "${pkgs}" && die "cloud-init in cicada extras" || true
 grep -qx 'bubblewrap' "${pkgs}" || die "bubblewrap missing"
 grep -qx 'xdg-dbus-proxy' "${pkgs}" || die "xdg-dbus-proxy missing"
-grep -qx 'linux-hardened' "${pkgs}" || die "linux-hardened missing"
+# linux-hardened belongs on INSTALLED systems, not on the live ISO: neither live
+# loader entry (01-archiso-linux.conf, 02-cicada-ram.conf) names it, so it was
+# 667 MiB of kernel, initramfs and efiboot duplicate that nothing could boot —
+# and that is most of what pushed the image over GitHub's 2 GiB asset cap.
+# Assert both halves, so it cannot drift back onto the ISO or fall off installs.
+grep -qx 'linux-hardened' "${pkgs}" \
+  && die "linux-hardened is back on the live ISO, which cannot boot it (see iso/packages.exclude)" || true
+grep -qx 'linux-hardened' "${ROOT}/packages/cicada-install/files/etc/cicada/install-packages.txt" \
+  || die "installed systems must still get linux-hardened"
+# The live image must not carry firmware for hardware it will not drive, either:
+# linux-firmware-nvidia alone was 110 MiB inside EVERY initramfs.
+grep -qx 'linux-firmware-nvidia' "${pkgs}" && die "linux-firmware-nvidia back on the ISO (110 MiB per initramfs)" || true
+grep -qx 'linux-firmware' "${pkgs}" \
+  && die "the linux-firmware META pulls every vendor split incl. nvidia — name the splits instead" || true
 grep -qx 'network-manager-applet' "${pkgs}" && die "nm-applet opens the connection editor" || true
 grep -qx 'thunar' "${pkgs}" && die "Thunar still in ISO extras (pcmanfm-qt is Files)" || true
 grep -qx 'pavucontrol' "${pkgs}" && die "pavucontrol still in ISO extras" || true
@@ -634,7 +647,20 @@ test -x "${dc}" || die "cicada-duress-check missing"
 pam="${ROOT}/packages/cicada-defaults/files/etc/pam.d/hyprlock"
 grep -q 'expose_authtok' "${pam}" || die "pam hook cannot see the typed secret"
 grep -q '^auth *optional *pam_exec' "${pam}" || die "duress hook must be optional or it can lock you out"
-grep -q 'pam_exec.so seteuid' "${pam}" || die "session duress pam_exec must seteuid (else wipe is no-op)"
+grep -q 'pam_exec.so seteuid' "${pam}" || die "session duress pam_exec must seteuid (needed for the sudo path)"
+# seteuid alone was NOT enough, and asserting it was is how this shipped broken:
+# it gives the hook the caller's effective uid, which is root under sudo but the
+# desktop user under hyprlock (not setuid on Arch). The lock screen therefore
+# needs a privileged handler, so assert the whole path, not one flag.
+grep -q 'from-socket' "${dc}" || die "duress check has no privileged path for unprivileged callers"
+test -f "${ROOT}/packages/cicada-defaults/files/etc/systemd/system/cicada-duress.socket" \
+  || die "cicada-duress.socket missing — lock-screen duress cannot reach root"
+grep -q 'cicada-duress.socket' "${ROOT}/iso/assemble-profile.sh" \
+  || die "cicada-duress.socket not enabled on the live image"
+grep -q 'cicada-duress.socket' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "cicada-duress.socket not enabled on installed systems"
+grep -q 'SocketMode=0660' "${ROOT}/packages/cicada-defaults/files/etc/systemd/system/cicada-duress.socket" \
+  || die "duress socket must not be world-writable: any uid could trigger the wipe"
 python3 - <<PY || die "duress pam_exec must precede system-auth or pam_unix consumes the token"
 import pathlib, sys
 t = pathlib.Path("${pam}").read_text()

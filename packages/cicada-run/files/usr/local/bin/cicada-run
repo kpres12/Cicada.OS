@@ -249,23 +249,41 @@ bind_rw /dev/dri
 bind_rw /dev/shm
 bind_opt /run/systemd/resolve
 
-# MIC=deny: selective XDG_RUNTIME_DIR (Wayland + portal sock only).
-# Omit pipewire / pulse / pipewire-0 sockets so deny feels like mic unplugged.
+# XDG_RUNTIME_DIR is always a tmpfs with named sockets bound back in, for both
+# MIC settings. It used to be `--bind $XDG_RUNTIME_DIR` wholesale when MIC=allow,
+# and that was a sandbox escape wearing a permission's clothes: the directory
+# also holds `bus` (the real session bus, which makes the xdg-dbus-proxy below
+# decorative), `systemd/private` (start any user unit — i.e. run a command
+# outside this sandbox), and the gpg-agent and keyring sockets. Granting a
+# microphone must grant a microphone. Nothing else in this file couples two
+# permissions together, and this one did it silently, in the branch a user
+# reaches by flipping the one toggle the Signal scope tells them to flip.
+#
+# So: name every socket that goes in. MIC=deny omits the audio ones, which is
+# what makes deny feel like the mic is unplugged rather than muted.
 if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" ]]; then
+  args+=(--tmpfs "${XDG_RUNTIME_DIR}")
+  if [[ -n "${WAYLAND_DISPLAY:-}" && -e "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]]; then
+    bind_rw "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
+  fi
+  for wsock in "${XDG_RUNTIME_DIR}"/wayland-*; do
+    [[ -e "${wsock}" ]] || continue
+    bind_rw "${wsock}"
+  done
+  # Never bound, at any MIC setting — xdg-dbus-proxy below is the only D-Bus,
+  # and `systemd/` is a control channel out of the sandbox:
+  #   ${XDG_RUNTIME_DIR}/bus  ${XDG_RUNTIME_DIR}/systemd/  ${XDG_RUNTIME_DIR}/gnupg/
+  #   ${XDG_RUNTIME_DIR}/keyring/  ${XDG_RUNTIME_DIR}/pk-debconf-socket
+  [[ -d "${XDG_RUNTIME_DIR}/dconf" ]] && bind_rw "${XDG_RUNTIME_DIR}/dconf"
+  [[ -d "${XDG_RUNTIME_DIR}/at-spi" ]] && bind_rw "${XDG_RUNTIME_DIR}/at-spi"
   if [[ "${MIC}" == "allow" ]]; then
-    args+=(--bind "${XDG_RUNTIME_DIR}" "${XDG_RUNTIME_DIR}")
-  else
-    args+=(--tmpfs "${XDG_RUNTIME_DIR}")
-    if [[ -n "${WAYLAND_DISPLAY:-}" && -e "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]]; then
-      bind_rw "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
-    fi
-    for wsock in "${XDG_RUNTIME_DIR}"/wayland-*; do
-      [[ -e "${wsock}" ]] || continue
-      bind_rw "${wsock}"
+    # PipeWire is the whole grant. pipewire-0 carries capture; the pulse shim is
+    # what most apps actually open. Both are per-user sockets under a 0700 dir.
+    for asock in "${XDG_RUNTIME_DIR}"/pipewire-*; do
+      [[ -e "${asock}" ]] || continue
+      bind_rw "${asock}"
     done
-    # Do not bind the real session bus — xdg-dbus-proxy below is the only D-Bus.
-    [[ -d "${XDG_RUNTIME_DIR}/dconf" ]] && bind_rw "${XDG_RUNTIME_DIR}/dconf"
-    [[ -d "${XDG_RUNTIME_DIR}/at-spi" ]] && bind_rw "${XDG_RUNTIME_DIR}/at-spi"
+    [[ -e "${XDG_RUNTIME_DIR}/pulse" ]] && bind_rw "${XDG_RUNTIME_DIR}/pulse"
   fi
 fi
 
@@ -384,16 +402,45 @@ if command -v xdg-dbus-proxy >/dev/null 2>&1 && [[ -n "${XDG_RUNTIME_DIR:-}" && 
       --talk=org.freedesktop.ScreenSaver \
       >/dev/null 2>&1 &
   proxy_pid=$!
-  sleep 0.15
+
+  # Wait for the socket instead of sleeping at it. A fixed 0.15s sleep decided
+  # the security posture by timing: on a loaded machine the socket was not up
+  # yet, so the branch below fell through to the *unfiltered* session bus with
+  # no message anywhere. That is a fail-open, and the one thing this file is not
+  # allowed to do. Poll briefly, then fail closed.
+  for _ in $(seq 1 100); do
+    [[ -S "${sock}" ]] && break
+    # If the proxy died there is nothing to wait for.
+    kill -0 "${proxy_pid}" 2>/dev/null || break
+    sleep 0.02
+  done
+
   if [[ -S "${sock}" ]]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=${sock}"
-    if [[ "${MIC}" != "allow" ]]; then
-      bind_rw "${sock}"
-    fi
+    # Always bound. The runtime dir is a tmpfs in the sandbox now (see above),
+    # so if this socket is not bound in there is no D-Bus at all — including for
+    # MIC=allow scopes, which previously reached the real bus through the
+    # wholesale runtime-dir bind that is gone.
+    bind_rw "${sock}"
   else
+    # No filter available. Do not hand the app the real bus as a consolation:
+    # the session bus reaches the portal, the notification daemon, the user
+    # systemd manager and every other app on it. Run with no D-Bus and say so.
     kill "${proxy_pid}" 2>/dev/null || true
     proxy_pid=""
+    unset DBUS_SESSION_BUS_ADDRESS
+    echo "cicada-run: xdg-dbus-proxy did not come up — running ${APP_ID} with NO D-Bus." >&2
+    echo "  Portals, notifications and file pickers will not work in this launch." >&2
+    logger -t cicada-run "dbus proxy failed for ${APP_ID}; started with no bus rather than the real one" 2>/dev/null || true
   fi
+else
+  # xdg-dbus-proxy missing, or no bus to proxy. Same rule: an app that cannot be
+  # filtered does not get the unfiltered thing.
+  if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && ! command -v xdg-dbus-proxy >/dev/null 2>&1; then
+    echo "cicada-run: xdg-dbus-proxy is not installed — running ${APP_ID} with NO D-Bus." >&2
+    logger -t cicada-run "xdg-dbus-proxy absent; ${APP_ID} started with no bus" 2>/dev/null || true
+  fi
+  unset DBUS_SESSION_BUS_ADDRESS
 fi
 
 # Chromium inner namespace sandbox fights nested bwrap; outer box is the sandbox.

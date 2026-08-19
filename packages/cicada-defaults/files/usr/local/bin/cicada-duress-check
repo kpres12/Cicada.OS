@@ -22,6 +22,64 @@ INSTALL_ENV="${CICADA_DURESS_INSTALL_ENV:-/etc/cicada/install.env}"
 # sets it. It is the last line of the script, so a test that redirects it still
 # exercises everything that decides whether to wipe.
 SYSRQ="${CICADA_DURESS_SYSRQ:-/proc/sysrq-trigger}"
+SOCK="${CICADA_DURESS_SOCK:-/run/cicada/duress.sock}"
+
+# --- the privilege split ----------------------------------------------------
+#
+# pam_exec runs this inside whatever process asked for the password.
+#
+#   sudo      is setuid root, so `seteuid` gives euid 0 and everything below
+#             works in-process. This is the path tests/linux/duress.sh drives.
+#   hyprlock  is NOT setuid (Arch ships it 0755; it authenticates through
+#             unix_chkpwd like any unprivileged program), so euid is the desktop
+#             user. It cannot read the 0400 verifier, cannot erase a keyslot and
+#             cannot write sysrq-trigger. It used to exit 0 here — the same exit
+#             a wrong guess produces — so the credential silently never fired at
+#             the lock screen, which is the room this feature exists for.
+#
+# So when we are not root, hand the candidate to the root handler over
+# cicada-duress.socket and let the identical logic run there. --from-socket is
+# how that handler re-enters this script; it must not recurse.
+if [[ "${1:-}" != "--from-socket" && "${EUID}" -ne 0 ]]; then
+  read -r -s token || true
+  [[ -n "${token}" ]] || exit 0
+  if [[ ! -S "${SOCK}" ]]; then
+    # Degrade visibly. Failing to wipe reduces protection, it does not leak the
+    # secret, so per the design rule this says so out loud instead of dying —
+    # and above all it must not look like success.
+    logger -t cicada "duress: no privileged handler at ${SOCK}; session duress is INERT" 2>/dev/null || true
+    token=""
+    exit 0
+  fi
+  # python3 rather than socat/nc: python ships on every Cicada image, the other
+  # two do not. The timeout matters more than the tool — this runs inside a PAM
+  # conversation, and a blocked write here is a lock screen that stops taking
+  # input. Nothing is echoed, logged or written to disk on the way through.
+  CICADA_DURESS_TOKEN="${token}" CICADA_DURESS_SOCKPATH="${SOCK}" python3 - <<'PY' 2>/dev/null || true
+import os, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(5)
+try:
+    s.connect(os.environ["CICADA_DURESS_SOCKPATH"])
+    s.sendall(os.environ["CICADA_DURESS_TOKEN"].encode())
+    s.shutdown(socket.SHUT_WR)
+    # Give the handler its window. On a match it never answers — the machine
+    # resets underneath us — so a timeout here is the expected success path.
+    try:
+        s.recv(1)
+    except Exception:
+        pass
+except Exception:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+  token=""
+  # Always 0: a wrong guess and a working forward must be indistinguishable.
+  exit 0
+fi
+
+[[ "${1:-}" == "--from-socket" ]] && shift
 [[ -r "${HASHFILE}" ]] || exit 0
 
 # `|| true`, not `|| exit 0`, and this is the whole feature.
@@ -36,6 +94,8 @@ SYSRQ="${CICADA_DURESS_SYSRQ:-/proc/sysrq-trigger}"
 # exiting 0 is also what a wrong guess does.
 #
 # The emptiness check below is what actually rejects no-input, and it still does.
+# Reached as root: either directly from pam_exec under sudo, or as the socket
+# handler, where stdin is the connection carrying the same bytes.
 read -r -s token || true
 [[ -n "${token}" ]] || exit 0
 

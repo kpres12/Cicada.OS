@@ -6,20 +6,70 @@ HOST="$(cat /etc/hostname)"
 # shellcheck disable=SC1091
 source /etc/cicada/install.env
 
-ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+# Region comes from install.env, which cicada-install wrote after asking. These
+# three were hardcoded to UTC / en_US.UTF-8 / us and never asked about, which
+# meant every non-US owner typed their LUKS passphrase on a layout that did not
+# match their keycaps, at install and at every unlock after it. The fallbacks
+# below keep older install.env files working.
+TZ_="${CICADA_TIMEZONE:-UTC}"
+KEYMAP_="${CICADA_KEYMAP:-us}"
+LOCALE_="${CICADA_LOCALE:-en_US.UTF-8}"
+
+if [[ -f "/usr/share/zoneinfo/${TZ_}" ]]; then
+  ln -sf "/usr/share/zoneinfo/${TZ_}" /etc/localtime
+else
+  echo "==> WARNING: unknown timezone ${TZ_}; falling back to UTC" >&2
+  ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+  TZ_=UTC
+fi
 hwclock --systohc || true
 
+# Generate the chosen locale plus en_US.UTF-8. Keeping the C-adjacent fallback
+# means a bad locale choice degrades to readable English rather than to a system
+# whose every program warns about an unusable LC_ALL.
+sed -i "s/^#\(${LOCALE_//./\.}\)/\1/" /etc/locale.gen
 sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
 locale-gen
-echo 'LANG=en_US.UTF-8' > /etc/locale.conf
-echo 'KEYMAP=us' > /etc/vconsole.conf
+echo "LANG=${LOCALE_}" > /etc/locale.conf
+
+# vconsole.conf is what the initramfs keymap hook reads, so this line is what
+# makes the LUKS prompt agree with the keyboard the passphrase was chosen on.
+echo "KEYMAP=${KEYMAP_}" > /etc/vconsole.conf
 
 # systemd-boot: kernels live on the ESP mounted at /boot
 if [[ -f /etc/mkinitcpio.conf ]]; then
   sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block cicada-crypt filesystems fsck)/' \
     /etc/mkinitcpio.conf
 fi
+# The live image's mkinitcpio presets are archiso's: they point at a squashfs
+# that does not exist on this disk. cicada-install excludes them from the copy,
+# which leaves `mkinitcpio -P` with no preset to act on and therefore NO
+# INITRAMFS AT ALL — an unbootable machine. Write the stock preset ourselves
+# rather than depend on a package having replaced it.
+mkdir -p /etc/mkinitcpio.d
+for kver in linux linux-hardened; do
+  [[ -f "/boot/vmlinuz-${kver}" ]] || [[ "${kver}" == linux ]] || continue
+  preset="/etc/mkinitcpio.d/${kver}.preset"
+  if [[ ! -f "${preset}" ]] || grep -q archiso "${preset}" 2>/dev/null; then
+    cat > "${preset}" <<PRESET
+# Written by cicada-install. The live image ships archiso presets, which build
+# an initramfs for booting a squashfs off USB — not for this disk.
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-${kver}"
+PRESETS=('default' 'fallback')
+default_image="/boot/initramfs-${kver}.img"
+fallback_image="/boot/initramfs-${kver}-fallback.img"
+fallback_options="-S autodetect"
+PRESET
+  fi
+done
+rm -f /etc/mkinitcpio.conf.d/archiso.conf
+
 mkinitcpio -P
+# An install that produced no initramfs boots to a kernel panic, and the failure
+# is silent until the machine is rebooted with the USB already pulled. Refuse.
+[[ -f /boot/initramfs-linux.img || -f /boot/initramfs-linux-hardened.img ]] \
+  || { echo "FATAL: mkinitcpio produced no initramfs — this disk would not boot" >&2; exit 1; }
 
 bootctl install --esp-path=/boot
 
@@ -114,6 +164,29 @@ if [[ -f /root/.cicada-user-pass ]]; then
 fi
 passwd -l root || true
 
+# linux-hardened is not on the live ISO any more: nothing on it could boot that
+# kernel, and it was most of what pushed the image over GitHub's 2 GiB cap. On a
+# network install pacstrap already pulled it. On an offline install it is simply
+# absent, so fetch it if there is a network and say so clearly if there is not —
+# a missing hardened boot entry reduces protection, it does not leak anything,
+# so per the design rule it degrades visibly rather than failing the install.
+if [[ ! -f /boot/vmlinuz-linux-hardened ]]; then
+  if pacman -Sy --noconfirm --needed linux-hardened >/dev/null 2>&1; then
+    echo "==> linux-hardened installed; rebuilding boot entries"
+    mkinitcpio -P || true
+  else
+    cat <<'HARDENEOF'
+==> NOTE: this machine has the stock kernel only.
+
+    linux-hardened is not on the live ISO (nothing there can boot it), and there
+    was no network to fetch it during install. Everything else is in force; what
+    is missing is the hardened boot entry and lockdown=confidentiality.
+
+    Add it later with:  sudo pacman -S linux-hardened && sudo cicada-uki build
+HARDENEOF
+  fi
+fi
+
 # Opt-in only — global preload crashes Helium (Tirimid browse). Enable later:
 #   touch /etc/cicada/hardened-malloc-enable && echo '/usr/lib/libhardened_malloc.so' > /etc/ld.so.preload
 if [[ -f /usr/lib/libhardened_malloc.so ]] \
@@ -139,6 +212,10 @@ systemctl enable cicada-firstboot.service || true
 # Syscall filter for every cicada-run scope. Generated per boot into /run so the
 # table always matches the running kernel's uapi header.
 systemctl enable cicada-seccomp.service || true
+# Privileged handler for the session duress credential. hyprlock is not setuid,
+# so the PAM hook at the lock screen runs unprivileged and forwards to this
+# socket; without it, typing the duress password at the lock screen does nothing.
+systemctl enable cicada-duress.socket || true
 # Hardware AFU ceiling; exits 2 and stays inactive on boards with no watchdog.
 systemctl enable cicada-watchdog.service || true
 systemctl enable tor.service || true

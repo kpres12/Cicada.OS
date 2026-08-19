@@ -2,3 +2,42 @@
 cloud-init
 # conflicts with systemd-resolvconf from releng
 openresolv
+
+# --- ISO size: everything below is measured, not guessed ---------------------
+#
+# The 2026.08.19 image was 2.95 GiB, over GitHub's 2 GiB per-asset cap, so it
+# shipped as .part-00/.part-01 that every user has to `cat` back together before
+# Etcher will touch it. That is step one of the install and it loses people.
+# These exclusions are what put the image back under a single file. Numbers come
+# from bsdtar on the shipped ISO, not from estimates.
+
+# linux-hardened: NOTHING ON THE LIVE ISO CAN BOOT IT. Both loader entries
+# (01-archiso-linux.conf, 02-cicada-ram.conf) name vmlinuz-linux. The package
+# was costing 667 MiB for a kernel with no boot entry:
+#     145 MiB  package in the squashfs
+#     233 MiB  initramfs-linux-hardened.img
+#      17 MiB  vmlinuz-linux-hardened
+#     250 MiB  a second copy of both inside the embedded efiboot.img, because
+#              archiso's _make_boot_on_fat copies every vmlinuz-* and
+#              initramfs-*.img into the EFI system partition image
+# Installed systems still get it: it stays in install-packages.txt, and
+# install-chroot.sh writes the hardened boot entry when the kernel is present.
+linux-hardened
+
+# linux-firmware is a zero-byte meta package that hard-depends on every vendor
+# split, nvidia included. Excluding the meta and naming the splits we want in
+# packages.cicada.x86_64 is the only way to not ship the ones we do not.
+# `linux` merely optdepends on firmware, so dropping the meta breaks nothing.
+linux-firmware
+
+# linux-firmware-nvidia is 110 MiB of the 152 MiB of firmware inside EACH
+# initramfs, plus 99 MiB in the squashfs, plus the efiboot duplicate: 541 MiB
+# in total, for discrete NVIDIA GPUs. Cicada is Wayland/Hyprland, where the
+# proprietary stack is poor and nouveau is not a daily driver either. A laptop
+# with an NVIDIA dGPU still boots and runs on its integrated GPU.
+# Anyone who wants it back: sudo pacman -S linux-firmware-nvidia
+linux-firmware-nvidia
+
+# Marvell is enterprise NICs and embedded parts: 78 MiB with essentially no
+# laptop relevance. Same one-line recovery as above.
+linux-firmware-marvell

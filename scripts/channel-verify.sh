@@ -30,7 +30,28 @@ say "doom.lock pinned (Chocolate Doom + Freedoom)"
 
 grep -q 'install-helium.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Helium"
 grep -q 'install-doom.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Doom"
-grep -q 'Public beta' "${ROOT}/site/index.html" || die "site home missing public beta banner"
+# The site must not claim a maturity the README does not. Two earlier versions of
+# this check were wrong in instructive ways. Asserting the literal string
+# "Public beta" pinned the marketing copy while the README's ## Status section
+# said pre-alpha, so the two drifted and the check still passed. Grepping the
+# whole page for the README's word then matched the status *panel* further down
+# rather than the banner, so a banner that said "Public beta" also passed.
+#
+# So: extract the banner's own text and compare that. And read the README word
+# from ## Status, not from the first bolded line — that one is the download
+# blurb at the top, which is how the two came to disagree in the first place.
+banner="$(sed -n 's/.*class="beta-pill"[^>]*>\([^<]*\).*/\1/p' "${ROOT}/site/index.html" | head -1)"
+readme_status="$(sed -n '/^## Status/,/^## /p' "${ROOT}/README.md" \
+  | grep -oiE '\*\*(Pre-alpha|Alpha|Beta|Public beta|Stable)' | head -1 | tr -d '*')"
+if [[ -z "${banner}" ]]; then
+  die "site home has no status banner (.beta-pill) to check"
+elif [[ -z "${readme_status}" ]]; then
+  die "README ## Status has no bolded maturity word to compare the site against"
+elif ! grep -qiF "${readme_status}" <<<"${banner}"; then
+  die "site banner says '${banner}' but README ## Status says '${readme_status}'"
+else
+  say "site banner agrees with README ## Status (${readme_status})"
+fi
 grep -q 'prepare-release\|RELEASE.md' "${ROOT}/docs/RELEASE.md" || die "RELEASE.md incomplete"
 grep -q 'NETWORK=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run default-deny missing"
 test -f "${ROOT}/scripts/channel-build-repo.sh" || die "channel-build-repo.sh missing"

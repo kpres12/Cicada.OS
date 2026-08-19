@@ -23,6 +23,23 @@ v="${1:-}"
 # verdict rather than the wording. Nothing in the product sets it.
 SYSFS="${CICADA_USB_SYSFS:-/sys/bus/usb/devices}"
 
+# Opening the gate while the screen is STILL locked is exactly what an attacker
+# with code execution in the session wants: it re-authorises USB enumeration on a
+# machine in the AFU state the gate exists to protect. cicada-lock has always
+# declined to do that in its trap, but the check lived in the caller while the
+# privilege lived here, and this binary is reachable directly through sudo
+# NOPASSWD. So refuse it here, where it cannot be routed around.
+#
+# Closing (0) is never refused: it only ever adds protection, and it runs on the
+# path into the lock where nothing may block.
+if [[ "${v}" == "1" ]] && [[ "${CICADA_USB_GATE_ALLOW_LOCKED:-0}" != "1" ]]; then
+  if command -v pgrep >/dev/null 2>&1 && pgrep -x hyprlock >/dev/null 2>&1; then
+    echo "cicada-usb-gate: refusing to open the USB gate while the screen is locked" >&2
+    logger -t cicada-usb-gate "refused gate open: hyprlock still running" 2>/dev/null || true
+    exit 1
+  fi
+fi
+
 wrote=0
 failed=0
 for h in "${SYSFS}"/usb*/authorized_default; do
