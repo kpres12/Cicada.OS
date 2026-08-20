@@ -200,6 +200,12 @@ if [[ -d /etc/skel ]]; then
   chown -R cicada:cicada /home/cicada
 fi
 
+# Must run AFTER the chown above, which would otherwise hand the directory back
+# to the user. A user override beats a system one, so without this every Flatpak
+# permission floor is one command away from being removed.
+[[ -x /usr/local/lib/cicada/lock-flatpak-overrides.sh ]] \
+  && /usr/local/lib/cicada/lock-flatpak-overrides.sh /home/cicada || true
+
 systemctl enable NetworkManager.service
 systemctl enable nftables.service
 systemctl enable usbguard.service || true

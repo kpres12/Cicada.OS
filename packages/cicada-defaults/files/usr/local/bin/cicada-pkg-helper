@@ -187,8 +187,13 @@ apply_flatpak_overrides() {
   #     --device=dri       the moment of use — not as a standing grant for the
   #                        life of the install. dri is kept so things render.
   #
-  # --system throughout: a --user override can grant back what a user override
-  # removed, so a floor written at user level is not a floor.
+  # --system throughout. Note what this does NOT buy: user overrides are merged
+  # after system ones and WIN. Measured, not assumed — with a real app installed,
+  # `flatpak info --show-permissions` goes from "filesystems=" back to
+  # "filesystems=home;" after one `flatpak override --user --filesystem=home`.
+  # So these floors bound the app's own manifest, not the user or anything
+  # running as them. /usr/local/lib/cicada/lock-flatpak-overrides.sh is what
+  # closes that, by root-owning the per-user Flatpak directory.
   flatpak override --system --nofilesystem=home --filesystem=xdg-download "${app_id}" || true
   flatpak override --system --nosocket=x11 --nosocket=fallback-x11 "${app_id}" || true
   flatpak override --system --nodevice=all --device=dri "${app_id}" || true

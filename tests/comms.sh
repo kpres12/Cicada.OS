@@ -125,6 +125,30 @@ grep -q 'flatpak-install-any' "${helper}" || die "no escape hatch: GUI apps capp
 grep -q 'is_permission_tool' "${helper}" || die "nothing stops a permission-rewriting app undoing the floors"
 say "escape hatch exists, and permission-rewriting apps are still refused"
 
+echo "==> the Flatpak floors cannot be lifted by the user"
+# Measured, not assumed: user overrides are merged after system ones and win.
+# With a real app installed, `flatpak info --show-permissions` goes from
+# "filesystems=" back to "filesystems=home;" after a single
+# `flatpak override --user --filesystem=home`. Without the lock below, every
+# floor on every graphical app is one command away from gone — including for
+# anything running as the user, not just the user.
+lock="${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/lock-flatpak-overrides.sh"
+test -x "${lock}" || die "nothing stops a user override lifting the Flatpak floors"
+grep -q 'repo\|app' "${lock}" || die "lock must refuse to clobber an existing per-user installation"
+# An empty root-owned directory sits in a user-writable parent and can simply be
+# removed and replaced; it needs root-owned content to survive. Tested both ways.
+grep -q 'cicada-managed' "${lock}" || die "lock leaves an empty dir the user can delete and replace"
+grep -q 'lock-flatpak-overrides' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-firstboot" \
+  || die "lock never runs at boot, so profiles created later are unprotected"
+grep -q 'lock-flatpak-overrides' "${ROOT}/packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh" \
+  || die "lock never runs at install, so the first user is unprotected until a reboot"
+grep -q 'lock-flatpak-overrides' "${ROOT}/iso/assemble-profile.sh" || die "lock not registered for the ISO"
+# And the comment that used to claim system overrides win must not come back.
+grep -q 'user override can grant back what a user override removed' \
+  "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+  && die "the false claim that system floors survive a user override is back" || true
+say "floors are locked at install and every boot; the false 'system wins' claim is gone"
+
 echo "==> shred is a gated action"
 grep -q 'comms.shred' "${BIN}/cicada-auth" \
   && say "cicada-auth gates comms.shred" \

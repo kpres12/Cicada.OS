@@ -140,6 +140,10 @@ fi
 # which is why it lives here and not in the lock helper.
 # Setuid carve-out. The pacman hook keeps it applied afterwards.
 [[ -x /usr/local/lib/cicada/strip-setuid.sh ]] && /usr/local/lib/cicada/strip-setuid.sh || true
+# Flatpak floors are only floors if the user cannot lift them, and a user
+# override beats a system one. Re-asserted every boot so profiles created
+# after install are covered too.
+[[ -x /usr/local/lib/cicada/lock-flatpak-overrides.sh ]] && /usr/local/lib/cicada/lock-flatpak-overrides.sh || true
 
 mkdir -p /run/cicada
 rm -f /run/cicada/live-nopasswd
