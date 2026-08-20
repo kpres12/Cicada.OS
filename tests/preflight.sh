@@ -109,6 +109,29 @@ if bad:
 if not any(x.startswith("NoExtract") for x in seen):
     print("  no NoExtract set at all — usr/share/doc will ship")
     sys.exit(1)
+
+# Licence compliance. 9 of the first 400 packages on this image (acl, attr,
+# bison, dosfstools, firejail, libdvdnav, libdvdread, libexif, appstream) ship
+# their COPYING/LICENSE ONLY under usr/share/doc, never usr/share/licenses.
+# Excluding that directory wholesale strips the licence text from GPL and LGPL
+# binaries we redistribute.
+#
+# And the ORDER decides whether the exceptions do anything at all: alpm's
+# _alpm_fnmatch_patterns() walks the list from the END and returns on the first
+# match, so the LAST matching line wins. Exceptions must come AFTER the broad
+# rule. Asserting only that the "!" lines exist would pass a config where they
+# are ignored.
+pats = [x.split("=", 1)[1].strip() for x in seen if x.startswith("NoExtract")]
+if "usr/share/doc/*" in pats:
+    broad = pats.index("usr/share/doc/*")
+    keep = [i for i, p in enumerate(pats)
+            if p.startswith("!") and any(w in p.upper() for w in ("COPYING", "LICENSE", "LICENCE", "COPYRIGHT"))]
+    if not keep:
+        print("  usr/share/doc is excluded with no licence exceptions — strips GPL/LGPL licence text")
+        sys.exit(1)
+    if min(keep) < broad:
+        print("  licence exceptions appear BEFORE the broad rule; the last match wins, so they do nothing")
+        sys.exit(1)
 sys.exit(0)
 PYCONF
 say "pacman.conf: NoExtract/DisableSandbox land in [options], where pacman reads them"

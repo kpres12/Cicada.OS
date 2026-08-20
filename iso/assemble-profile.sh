@@ -109,8 +109,40 @@ lines = set_option(lines, "DisableSandbox")
 #   usr/share/locale  the installer asks for a language and cicada-install copies
 #                     this rootfs to disk, so stripping translations here strips
 #                     them from every installed system too
-for pattern in ("usr/share/doc/*", "usr/share/gir-1.0/*"):
-    lines = set_option(lines, "NoExtract", pattern)
+# Order matters: pacman applies these in sequence and a leading "!" whitelists,
+# so the exceptions must come after the broad rule.
+#
+# The exceptions are not tidiness. 9 of the first 400 packages on this image —
+# acl, attr, bison, dosfstools, firejail, libdvdnav, libdvdread, libexif and
+# appstream — ship their COPYING/LICENSE *only* under usr/share/doc and never
+# under usr/share/licenses. Dropping the directory wholesale would strip the
+# licence text from GPL and LGPL binaries we redistribute, which is a compliance
+# problem, not a housekeeping one.
+#
+# pacman matches these with fnmatch() and no FNM_PATHNAME, so "*" also matches
+# "/" — the patterns therefore reach any depth under the directory.
+# ORDER IS LOAD-BEARING. alpm's _alpm_fnmatch_patterns() walks the pattern list
+# from the END backwards and returns on the first match, so the LAST matching
+# line wins. The broad rule must therefore come first and the "!" exceptions
+# after it. Inserting each line individually at the top of [options] reverses
+# them and silently re-blacklists the licences, so emit one ordered block.
+NOEXTRACT = [
+    "usr/share/doc/*",
+    "!usr/share/doc/*COPYING*",
+    "!usr/share/doc/*COPYRIGHT*",
+    "!usr/share/doc/*LICENSE*",
+    "!usr/share/doc/*LICENCE*",
+    "usr/share/gir-1.0/*",
+]
+if not any(l.strip().startswith("NoExtract") and not l.strip().startswith("#") for l in lines):
+    block = [f"NoExtract = {p}\n" for p in NOEXTRACT]
+    out, done = [], False
+    for ln in lines:
+        out.append(ln)
+        if not done and ln.strip() == "[options]":
+            out.extend(block)
+            done = True
+    lines = out if done else block + lines
 
 path.write_text("".join(lines))
 

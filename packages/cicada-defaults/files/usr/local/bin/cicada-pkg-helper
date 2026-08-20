@@ -24,29 +24,34 @@ shift || true
 # through a cicada-run scope or, for Flatpaks, under the floors below. Breadth
 # is not the risk; an unsandboxed launcher path would be, and there isn't one.
 CURATED_PACMAN=(
+  # CLI and system tools ONLY. Graphical applications belong in CURATED_FLATPAK,
+  # where they land under the system-level floors in apply_flatpak_overrides.
+  #
+  # This list previously carried gimp, vlc, libreoffice, firefox, krita and the
+  # rest. That was a mistake: a pacman-installed GUI app gets no cicada-run scope
+  # and no Flatpak floor, so it reads the whole home directory — and five of them
+  # were ALSO on the Flatpak list, meaning a user could install the unsandboxed
+  # copy of an application Cicada already offered sandboxed. docs/PRODUCT.md
+  # already said these are "not on the Cicada scopes sheet"; now they are not on
+  # the pacman path either.
+  #
+  # pacman stays for command-line tools because Flatpak is built for GUI apps and
+  # is a poor fit for something that has to see your files and your shell — and
+  # because Kitty is the owner's escape hatch, which is meaningless if the owner
+  # cannot install git.
   # shell / dev
-  htop btop git nano vim code
+  htop btop git nano vim
   python python-pip base-devel make cmake
   curl wget rsync zip unzip p7zip
   jq tree ripgrep fd bat eza
   nodejs npm rust go
   docker docker-compose
-  # browsers. NOT Arch chromium — Helium is the product browser and the ISO has
-  # said so since packages.optional.x86_64 was written. firefox stays because it
-  # is a genuinely different engine, which is worth having available.
-  firefox
-  # office / documents
-  libreoffice-fresh onlyoffice-bin
-  okular evince
-  # media
-  mpv vlc ffmpeg imagemagick
-  audacity strawberry
-  # graphics
-  gimp inkscape krita darktable obs-studio
-  # security / network
+  # security / network — need system integration, cannot be Flatpaks
   keepassxc veracrypt
   wireguard-tools openvpn
   syncthing
+  # media/codec libraries and CLI encoders (not the GUI players)
+  ffmpeg imagemagick
   # misc
   cowsay fortune-mod
 )
@@ -95,6 +100,20 @@ CURATED_FLATPAK=(
   "org.kde.okular xdg-documents reader"
   # graphics
   "org.gimp.GIMP xdg-pictures graphics"
+  "org.inkscape.Inkscape xdg-pictures graphics"
+  "org.kde.krita xdg-pictures graphics"
+  "org.darktable.Darktable xdg-pictures photos"
+  # audio / video. These are the ones that used to be installed via pacman with
+  # no sandbox at all, which is the worst place for software that parses hostile
+  # media files from the internet.
+  "io.mpv.Mpv xdg-videos media"
+  "org.audacityteam.Audacity xdg-music audio"
+  "org.strawberrymusicplayer.strawberry xdg-music music"
+  "com.obsproject.Studio xdg-videos capture"
+  # reading
+  "org.gnome.Evince xdg-documents reader"
+  # a second browser engine, sandboxed rather than loose on the system
+  "org.mozilla.firefox - browser"
   # passwords
   "com.bitwarden.desktop - vault"
 )
