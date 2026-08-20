@@ -101,6 +101,30 @@ grep -q 'org.signal.Signal|im.riot.Riot) UNSHARE_PID=0' \
   && say "Electron messengers are exempt from --unshare-pid" \
   || die "Signal/Element will come up as a blank window (--unshare-pid)"
 
+echo "==> permission floors apply to apps that are NOT on the curated list"
+# The curated list is curation; the floors are containment. Once there is an
+# escape hatch, an unlisted app must still land under the floors — and
+# apply_flatpak_overrides used to `return 0` for anything it did not recognise,
+# which would have given every escape-hatch install zero confinement.
+helper="${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper"
+python3 - "${helper}" <<'PY' || die "unlisted Flatpaks would be installed with no floors"
+import re, sys, pathlib
+t = pathlib.Path(sys.argv[1]).read_text()
+body = t[t.index("apply_flatpak_overrides() {"):t.index("is_permission_tool()")]
+if re.search(r'flatpak_row "\$\{app_id\}"\)"\s*\|\|\s*return', body):
+    print("  apply_flatpak_overrides still bails out for unlisted apps"); sys.exit(1)
+for need in ("--nofilesystem=home", "--nosocket=x11", "--nodevice=all"):
+    seg = body[:body.index("if [[ -n \"${extra}")] if 'if [[ -n "${extra}' in body else body
+    if need not in seg:
+        print(f"  {need} is not applied unconditionally"); sys.exit(1)
+sys.exit(0)
+PY
+say "unlisted apps still get home denied / no X11 / no standing device access"
+
+grep -q 'flatpak-install-any' "${helper}" || die "no escape hatch: GUI apps capped at the curated list"
+grep -q 'is_permission_tool' "${helper}" || die "nothing stops a permission-rewriting app undoing the floors"
+say "escape hatch exists, and permission-rewriting apps are still refused"
+
 echo "==> shred is a gated action"
 grep -q 'comms.shred' "${BIN}/cicada-auth" \
   && say "cicada-auth gates comms.shred" \

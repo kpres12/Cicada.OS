@@ -9,7 +9,8 @@ usage() {
   echo "usage: cicada-pkg-helper install <pkg>          # curated allowlist" >&2
   echo "       cicada-pkg-helper install-any <pkg>      # official repo, password path" >&2
   echo "       cicada-pkg-helper flatpak-remote" >&2
-  echo "       cicada-pkg-helper flatpak-install <app-id>" >&2
+  echo "       cicada-pkg-helper flatpak-install <app-id>      # curated" >&2
+  echo "       cicada-pkg-helper flatpak-install-any <app-id>  # any Flathub app, floors still applied" >&2
   echo "       cicada-pkg-helper flatpak-harden <app-id>  # re-apply the system floors" >&2
   exit 1
 }
@@ -160,13 +161,22 @@ pacman_install() {
 }
 
 apply_flatpak_overrides() {
-  local app_id="$1" row extra note
-  row="$(flatpak_row "${app_id}")" || return 0
-  extra="$(awk '{print $2}' <<<"${row}")"
-  note="$(awk '{print $3}' <<<"${row}")"
-
-  # The floor every app gets, regardless of what its manifest asked Flathub for.
+  local app_id="$1" row="" extra="" note=""
+  # NOTE the missing `|| return 0`. This used to bail out for any app that was
+  # not in the table, which meant an unlisted app received NO floors whatever —
+  # fine while the allowlist was the only way in, and exactly wrong the moment
+  # there is an escape hatch. The floor is now unconditional and the table only
+  # adds the one extra directory an app needs.
   #
+  # This is the split that matters: the FLOORS are the containment, and they
+  # apply to everything. The allowlist is curation — it protects a user from
+  # choosing badly, which is a different job and not one worth capping the
+  # system at 27 applications for.
+  if row="$(flatpak_row "${app_id}")"; then
+    extra="$(awk '{print $2}' <<<"${row}")"
+    note="$(awk '{print $3}' <<<"${row}")"
+  fi
+
   #   --nofilesystem=home  Flathub grants broad host access so attachments "just
   #                        work"; it also means one renderer bug reads every
   #                        document in the profile.
@@ -183,7 +193,6 @@ apply_flatpak_overrides() {
   flatpak override --system --nosocket=x11 --nosocket=fallback-x11 "${app_id}" || true
   flatpak override --system --nodevice=all --device=dri "${app_id}" || true
 
-  # The one directory this app actually needs, from the table above.
   if [[ -n "${extra}" && "${extra}" != "-" ]]; then
     flatpak override --system --filesystem="${extra}" "${app_id}" || true
   fi
@@ -193,6 +202,23 @@ apply_flatpak_overrides() {
     echo "      official Notion client. Helium runs the same web app with one" >&2
     echo "      less maintainer in the trust path." >&2
   fi
+}
+
+# Applications whose entire purpose is to rewrite Flatpak permissions. Installing
+# one hands the user a button to undo every floor above, so it is refused on both
+# the curated and the open path — this is the one thing an escape hatch may not
+# escape. Not a moral judgement on the software; Flatseal is good at its job.
+is_permission_tool() {
+  case "$1" in
+    com.github.tchx84.Flatseal|io.github.flattool.Warehouse) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Reverse-DNS, which is what Flathub enforces. Rejects paths, URLs, shell
+# metacharacters and anything that could be read as a flatpak flag.
+valid_app_id() {
+  [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$ ]]
 }
 
 case "${cmd}" in
@@ -236,13 +262,42 @@ case "${cmd}" in
     flatpak install -y --system flathub "${app_id}"
     apply_flatpak_overrides "${app_id}"
     ;;
+  flatpak-install-any)
+    # The counterpart to install-any for pacman. Without it the policy was
+    # incoherent: any of ~14000 Arch packages with a password, but graphical
+    # software capped at 27. The floors are what protect the user, and they now
+    # apply to every app regardless of whether it is on the list.
+    [[ $# -ge 1 ]] || usage
+    app_id="$1"
+    valid_app_id "${app_id}" || { echo "not a Flatpak application id: ${app_id}" >&2; exit 1; }
+    is_permission_tool "${app_id}" && {
+      echo "refusing ${app_id}: it exists to rewrite Flatpak permissions, which" >&2
+      echo "would undo the floors Cicada applies to every app on this system." >&2
+      exit 1
+    }
+    command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
+    if ! flatpak remotes --system 2>/dev/null | grep -qw flathub; then
+      flatpak remote-add --if-not-exists --system flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo
+    fi
+    is_allowed_flatpak "${app_id}" \
+      || echo "note: ${app_id} is not on the Cicada curated list. Installing anyway;" >&2
+    is_allowed_flatpak "${app_id}" \
+      || echo "      the standard floors still apply (home denied, Downloads only, no X11, no devices)." >&2
+    flatpak install -y --system flathub "${app_id}"
+    apply_flatpak_overrides "${app_id}"
+    ;;
+
   flatpak-harden)
     # Re-apply the floors without reinstalling. A Flatpak update can reset an
     # app's permissions to whatever the new manifest asks for, so this needs to
     # be runnable on its own — cicada-comms harden is the front end.
     [[ $# -ge 1 ]] || usage
     app_id="$1"
-    is_allowed_flatpak "${app_id}" || { echo "app not in Cicada allowlist: ${app_id}" >&2; exit 1; }
+    # Any installed app, not just curated ones: a Flatpak update can reset
+    # permissions to whatever the new manifest asks for, and an app installed
+    # through flatpak-install-any needs re-hardening just as much.
+    valid_app_id "${app_id}" || { echo "not a Flatpak application id: ${app_id}" >&2; exit 1; }
     command -v flatpak >/dev/null 2>&1 || { echo "flatpak missing" >&2; exit 1; }
     apply_flatpak_overrides "${app_id}"
     ;;

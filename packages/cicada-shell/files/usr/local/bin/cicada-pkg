@@ -28,6 +28,7 @@ No AUR. Needs Wi-Fi." \
   --width=560 --height=420 \
   "Curated Arch…" "htop, git, code, python, …" \
   "Any Arch package…" "official repo name (extra confirm)" \
+  "Any Flathub app…" "any app id — same permission floors apply" \
   "Spotify" "Flatpak — music (home denied)" \
   "Discord" "Flatpak — chat (home denied)" \
   "Signal" "Flatpak — messenger (home denied)" \
@@ -74,6 +75,34 @@ this laptop is off. To put it inside an encrypted profile instead:
 }
 
 case "${pick}" in
+  "Any Flathub app…")
+    # The curated list is a recommendation, not a cage. The floors below are what
+    # actually contain an app, and they apply to anything installed this way.
+    app_id="$(zenity --entry --title="Install any Flathub app" --width=560 \
+      --text="Flathub application id, e.g. org.blender.Blender
+
+Find it on flathub.org — it is in the page URL.
+
+Cicada applies the same limits it applies to every app: no access to your home
+directory (Downloads only), no X11, and camera/microphone only through a prompt
+at the moment of use. An app you have not heard of is still confined; it is just
+not one we have looked at." --entry-text="org.")" || exit 0
+    [[ -n "${app_id}" && "${app_id}" != "org." ]] || exit 0
+    zenity --question --title="Install ${app_id}?" --width=520 \
+      --text="Install «${app_id}» from Flathub?
+
+This app is not on the Cicada curated list. It will run under the standard
+permission floors, but nobody here has reviewed it.
+
+Needs network and your password." \
+      --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
+    run_helper flatpak-remote \
+      && run_helper flatpak-install-any "${app_id}" \
+      && zenity --info --title="Install software" \
+           --text="Installed: ${app_id}\n\nRun it from the app menu, or:\n  flatpak run ${app_id}" 2>/dev/null \
+      || die "Could not install ${app_id}. Check the app id, Wi-Fi and your password."
+    ;;
+
   "Curated Arch…")
     # Derived from the helper, never duplicated. This list used to be typed out
     # here as well, and the moment CURATED_PACMAN changed the two disagreed:
