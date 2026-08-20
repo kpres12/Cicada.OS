@@ -183,7 +183,7 @@ cat <<EOF
 Publish with (from ${OUT}):
 
   gh release create "${tag}" \\
-    --title "Cicada.OS ${ver} (public beta)" \\
+    --title "Cicada.OS ${ver} (pre-alpha)" \\
     --notes-file "${ROOT}/docs/release-notes-beta.md" \\${asset_lines}
 
 Re-publishing an existing tag (same-day rebuild) instead:

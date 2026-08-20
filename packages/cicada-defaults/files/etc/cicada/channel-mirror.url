@@ -7,4 +7,11 @@
 #
 # Nothing is fetched until the user runs cicada-update (Settings → Security →
 # Check updates). There is no background poll and no automatic upgrade.
+#
+# TWO roots, and both are required. A full snapshot is ~907 packages and, because
+# SigLevel is Required, each ships with its .sig — about 1814 files, while a
+# GitHub release accepts at most 1000 assets. pacman tries each Server in order
+# and falls through on a miss, so the snapshot is split rather than the
+# signatures dropped. Order matters only in that the database lives on the first.
 https://github.com/kpres12/Cicada.OS/releases/download/channel-latest
+https://github.com/kpres12/Cicada.OS/releases/download/channel-latest-2

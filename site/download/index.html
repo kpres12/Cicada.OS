@@ -33,45 +33,31 @@
     <div class="panel">
       <div class="panel-head"><h2>Latest release</h2><span class="tag">X86_64</span></div>
       <p style="margin:0 0 1rem;color:var(--muted)">
-        The ISO is <strong>1.94 GiB — one file</strong>. Download it, check the sha256,
-        drag it into Etcher (or <code>dd</code>). Nothing to reassemble: earlier builds were
-        2.9 GiB and had to ship as <code>.part-00</code>/<code>.part-01</code> because GitHub
-        caps release assets at 2 GiB, and that <code>cat</code> step was the first thing
-        standing between a person and a bootable stick.
+        Current build: <strong>2026.08.19</strong> — <strong>1.94 GiB, one file, signed</strong>.
+        Download it, verify the signature, drag it into Etcher (or <code>dd</code>). Nothing to
+        reassemble: earlier builds were 2.9 GiB and had to ship as <code>.part-00</code>/
+        <code>.part-01</code> because GitHub caps release assets at 2 GiB, and that
+        <code>cat</code> step was the first thing standing between a person and a bootable stick.
 
-        Channel pin: <code>cicada-stable</code> · Helium hash-locked in-tree. The hosted
-        update mirror this pin names is <strong>not published yet</strong>, so
-        <code>cicada-update</code> on an installed machine cannot sync until it is —
-        reflash for a newer build in the meantime.
+        Channel pin: <code>cicada-stable</code> · Helium hash-locked in-tree. The hosted update
+        mirror is <strong>not live yet</strong>, so <code>cicada-update</code> on an installed
+        machine cannot sync — reflash for a newer build in the meantime.
       </p>
       <div class="cta-row">
         <a class="btn" href="https://github.com/kpres12/Cicada.OS/releases/latest">Get latest ISO</a>
         <a class="btn btn-amber" href="../install/">Install instructions</a>
         <a class="btn btn-ghost" href="https://github.com/kpres12/Cicada.OS">Source tree</a>
       </div>
-      <pre style="margin-top:1rem"># when the release carries .sha256.asc + cicada-stable.pub, verify FIRST:
+      <pre style="margin-top:1rem"># verify the signature FIRST — it is the step that matters
 gpg --import cicada-stable.pub
-gpg --verify cicada-&lt;ver&gt;-x86_64.iso.sha256.asc cicada-&lt;ver&gt;-x86_64.iso.sha256
+gpg --verify cicada-2026.08.19-x86_64.iso.sha256.asc cicada-2026.08.19-x86_64.iso.sha256
 
-# then confirm the bytes match the hash you just proved was signed:
-shasum -a 256 -c cicada-&lt;ver&gt;-x86_64.iso.sha256</pre>
-    </div>
-
-    <div class="panel warn" style="margin-top:1rem">
-      <div class="panel-head"><h2>The 2026.08.14 build is not signed</h2><span class="tag">UNSIGNED</span></div>
-      <p style="margin:0;color:var(--muted)">
-        The published 2026.08.14 release carries ISO parts and a bare <code>.sha256</code> — no
-        <code>.sha256.asc</code>, no <code>cicada-stable.pub</code>. By our own rule below,
-        a published checksum authenticates <em>nothing</em>: whoever could replace the image
-        could replace the hash sitting beside it. The checksum is still worth running because
-        it catches a corrupt download, but it is not evidence the image came from us.
-        Treat this build as something to test on a spare stick or in a VM — not as a trusted
-        image. The procedure below is what releases from here on go through.
-      </p>
+# then confirm the bytes match the hash you just proved was signed
+shasum -a 256 -c cicada-2026.08.19-x86_64.iso.sha256</pre>
     </div>
 
     <div class="panel" style="margin-top:1rem">
-      <div class="panel-head"><h2>Verify a signed release</h2><span class="tag">FAIL CLOSED</span></div>
+      <div class="panel-head"><h2>Verify before you boot</h2><span class="tag">FAIL CLOSED</span></div>
       <ol class="steps">
         <li>
           <strong>Download the ISO + checksum from the same release</strong>
