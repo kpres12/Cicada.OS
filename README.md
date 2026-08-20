@@ -272,6 +272,7 @@ tests/beacon.sh      # signs a statement, edits a fake ESP, requires the alarm
 tests/comms.sh       # the at-rest verdict, and everything cicada-comms refuses
 tests/afu.sh         # USB gate, gate restore, watchdog arming, escape hatches
 tests/donate.sh      # re-derives the donation address checksums; catches drift
+tests/iso-size.sh    # does the built ISO still fit one GitHub asset (2 GiB)
 tests/linux.sh       # needs Docker: real kernel — nftables, NTS, Tor, duress,
                      # the unprivileged lock-screen duress path, installer guards
 tests/boot-verify.sh # run ON the machine after booting (ships as cicada-verify)
@@ -307,6 +308,14 @@ the switch arms, which is the `ct established` claim above tested with packets
 instead of grep; chrony's shipped config completes NTS-KE with all three
 operators; Tor reaches `Bootstrapped 100%`; the onion namespace has one route
 and no physical interface.
+
+*Verified on the hardware itself:* Doom — Chocolate Doom 3.1.1 on the Freedoom
+IWAD — has been played on a real machine. That matters far more than a game
+running: `cicada-doom` execs `cicada-run org.cicada.doom`, so it is the only
+end-to-end evidence that a demanding GPU, audio and input application works
+**inside a bubblewrap scope with the seccomp filter loaded**. Nothing in
+`tests/` can produce that result; `tests/tirimid.sh` only checks that Doom is
+wired up, never that it runs.
 
 *Verified in simulation* (`tests/afu.sh`, `tests/beacon.sh`): the USB gate, the
 gate's restore path, watchdog arming, the escape hatches, and the beacon's

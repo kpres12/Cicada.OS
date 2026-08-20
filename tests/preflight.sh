@@ -83,6 +83,36 @@ test -x "${tmp}/profile/airootfs/usr/local/bin/cicada-install" || die "cicada-in
 test -x "${tmp}/profile/airootfs/usr/local/bin/cicada-panic" || die "cicada-panic missing in profile"
 grep -q copytoram "${tmp}/profile/efiboot/loader/entries/"*.conf 2>/dev/null \
   || grep -Rql copytoram "${tmp}/profile/efiboot" || die "copytoram not in boot entries"
+# pacman.conf is sectioned and NoExtract/DisableSandbox are valid ONLY under
+# [options]. Appending them to the end of the file lands them inside whatever
+# repository section is last; pacman logs "directive not recognized" and ignores
+# them. That is not hypothetical — it shipped: the build printed that it had set
+# NoExtract, and all 6349 files under usr/share/doc were on the image anyway.
+# Assert the section, not the presence of the string.
+python3 - "${tmp}/profile/pacman.conf" <<'PYCONF' || die "pacman.conf directives are not in [options] (they would be silently ignored)"
+import sys, pathlib
+sec = None
+bad, seen = [], []
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    s = line.strip()
+    if s.startswith("[") and s.endswith("]"):
+        sec = s
+    elif s and not s.startswith("#"):
+        key = s.split("=")[0].strip()
+        if key in ("NoExtract", "DisableSandbox"):
+            seen.append(s)
+            if sec != "[options]":
+                bad.append(f"{s}  is in {sec}, must be [options]")
+if bad:
+    print("  " + "\n  ".join(bad))
+    sys.exit(1)
+if not any(x.startswith("NoExtract") for x in seen):
+    print("  no NoExtract set at all — usr/share/doc will ship")
+    sys.exit(1)
+sys.exit(0)
+PYCONF
+say "pacman.conf: NoExtract/DisableSandbox land in [options], where pacman reads them"
+
 say "assemble ok (see /tmp/cicada-assemble.log)"
 
 echo "==> helium wrapper prefers official tarball"

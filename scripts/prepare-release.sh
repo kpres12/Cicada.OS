@@ -166,6 +166,10 @@ bash "${ROOT}/tests/here.sh" >/tmp/cicada-release-here.log 2>&1 && echo "    her
   echo "    here.sh FAILED — see /tmp/cicada-release-here.log" >&2
   exit 1
 }
+# Size is a release property: over 2 GiB the image ships as .part-* files and
+# reassembly becomes step one of every install. Report it here, where it can
+# still be acted on, rather than discovering it at upload time.
+bash "${ROOT}/tests/iso-size.sh" "${iso}" | sed "s/^/    /"
 echo
 
 # macOS ships bash 3.2, so no ${arr[@]@Q}. Asset names are our own and contain

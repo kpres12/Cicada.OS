@@ -57,42 +57,73 @@ releng.write_text("\n".join(merged) + "\n")
 print(f"==> packages: {len(merged)} (full={__import__('os').environ.get('CICADA_FULL', '0')})")
 PY
 
-# QEMU/Rosetta: pacstrap inside the builder also needs the sandbox off
+# QEMU/Rosetta: pacstrap inside the builder also needs the sandbox off, and the
+# live image must not carry files that only exist to build against it.
 python3 - "${PROFILE}/pacman.conf" <<'PY'
 from pathlib import Path
-import sys
+import re, sys
+
 path = Path(sys.argv[1])
-text = path.read_text()
-lines = []
-for line in text.splitlines(True):
-    if line.startswith("DownloadUser"):
-        lines.append("#" + line)
-    else:
-        lines.append(line)
-text = "".join(lines)
-if "DisableSandbox" not in text:
-    text += "\nDisableSandbox\n"
+lines = path.read_text().splitlines(True)
+
+# pacman.conf is sectioned, and NoExtract/DisableSandbox are ONLY valid under
+# [options]. Appending them to the end of the file puts them inside whatever
+# repository section happens to be last — pacman then logs
+#   "directive 'NoExtract' in section 'extra' not recognized"
+# and ignores them. That is exactly what happened: the directives were present,
+# the build printed that it had set them, and 6349 files under usr/share/doc
+# shipped anyway. So insert into [options] rather than append.
+def set_option(lines, directive, value=None):
+    wanted = f"{directive} = {value}" if value is not None else directive
+    # Already set for real? A commented default does not count — the previous
+    # guard tested `"DisableSandbox" not in text`, which matched the shipped
+    # "#DisableSandbox" line and therefore never added anything.
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("#"):
+            continue
+        if s == wanted or (value is None and s == directive):
+            return lines
+    out, inserted = [], False
+    for ln in lines:
+        out.append(ln)
+        if not inserted and ln.strip() == "[options]":
+            out.append(wanted + "\n")
+            inserted = True
+    if not inserted:                       # no [options] section at all
+        out.insert(0, "[options]\n" + wanted + "\n")
+    return out
+
+# DownloadUser is the directive that actually breaks under qemu-user emulation
+# (pacman confines the download user with landlock+seccomp, which fails to
+# initialise); commenting it out is the real fix. DisableSandbox is belt.
+lines = [("#" + ln) if ln.startswith("DownloadUser") else ln for ln in lines]
+lines = set_option(lines, "DisableSandbox")
 
 # Never write files onto the image that only exist to build against it.
-# NoExtract is the right mechanism because it acts during pacstrap: the files are
-# never unpacked at all, so nothing has to find and delete them afterwards, and
-# a package upgrade cannot quietly bring them back.
+# NoExtract acts during pacstrap, so the files are never unpacked at all and no
+# later pass has to find and delete them — and an upgrade cannot bring them back.
 #
 # Deliberately NOT listed:
-#   usr/share/man    an offline machine is exactly where man pages earn their
-#                    keep, and they compress to very little
-#   usr/share/locale the installer now asks for a language, and cicada-install
-#                    copies this rootfs onto the disk — stripping translations
-#                    here would strip them from every installed system too
-NOEXTRACT = [
-    "usr/share/doc/*",        # documentation; licences live in usr/share/licenses
-    "usr/share/gir-1.0/*",    # GObject introspection XML, build-time only.
-                              # Runtime uses the .typelib files in usr/lib, kept.
-]
-if "usr/share/gir-1.0" not in text:
-    text += "\n" + "".join(f"NoExtract = {p}\n" for p in NOEXTRACT)
-path.write_text(text)
-print("==> pacman sandbox disabled for emulated builds; doc/gir NoExtract set")
+#   usr/share/man     an offline machine is where man pages earn their keep
+#   usr/share/locale  the installer asks for a language and cicada-install copies
+#                     this rootfs to disk, so stripping translations here strips
+#                     them from every installed system too
+for pattern in ("usr/share/doc/*", "usr/share/gir-1.0/*"):
+    lines = set_option(lines, "NoExtract", pattern)
+
+path.write_text("".join(lines))
+
+# Report what is actually in force, per section, instead of claiming success.
+text = "".join(lines)
+sec, got = None, []
+for ln in text.splitlines():
+    s = ln.strip()
+    if s.startswith("[") and s.endswith("]"):
+        sec = s
+    elif s and not s.startswith("#") and s.split(" =")[0] in ("NoExtract", "DisableSandbox"):
+        got.append(f"{s}  [{sec}]")
+print("==> pacman.conf: " + ("; ".join(got) if got else "NOTHING SET — check [options]"))
 PY
 # --- optional: drop early KMS from the live initramfs ----------------------
 #
