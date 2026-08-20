@@ -8,7 +8,7 @@ Hardware under test: Intel MacBook Air 2015–2017 live USB unless noted.
 | Wi-Fi: click dock / Super+N, associate, browse | pending | | radios start blocked on purpose |
 | Wallpaper visible; Kitty translucent | pending | | |
 | `ldd`/`LD_PRELOAD` on Chromium shows hardened_malloc | pending | | GrapheneOS tag 14 built in ISO Docker; live wrapper preloads; global preload on installed |
-| Doom under `cicada-run` (Chocolate Doom 3.1.1 + Freedoom 0.13.0) | pass | _confirm_ | Played on hardware. `cicada-doom` execs `cicada-run org.cicada.doom`, so this is the only end-to-end evidence that a demanding GPU + audio + input application actually works inside a bwrap scope with the seccomp filter loaded. Worth more than the game. **Fill in the date/machine.** |
+| Doom under `cicada-run` (Chocolate Doom 3.1.1 + Freedoom 0.13.0) | pass | ~2026-08-17 | Played on hardware. `cicada-doom` execs `cicada-run org.cicada.doom`, so this is the only end-to-end evidence that a demanding GPU + audio + input application actually works inside a bwrap scope with the seccomp filter loaded. Worth more than the game. Played on the Intel MacBook Air (the prototype in this file's header); date is approximate, reported by the developer rather than logged. |
 | Mac preflight (`tests/preflight.sh`) | pass | 2026-08-12 | assemble, seal chain+tamper, profile dir mode, JSON policy, cicada-crypt/copytoram strings |
 | Start here / FIRST-BOOT.txt in live profile | pass | 2026-08-12 | assemble copies `docs/USER.md` |
 | Duress LUKS slot timing | pending | | enroll after `cicada-install`; live USB has no LUKS |
