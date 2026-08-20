@@ -36,6 +36,10 @@ No AUR. Needs Wi-Fi." \
   "Telegram" "Flatpak — messenger (home denied)" \
   "VLC" "Flatpak — video (home denied)" \
   "LibreOffice" "Flatpak — documents (home denied)" \
+  "Firefox" "Flatpak — second browser; the one that can play Netflix" \
+  "Thunderbird" "Flatpak — email (attachments in Downloads)" \
+  "GIMP" "Flatpak — image editor (Pictures only)" \
+  "Nuclear" "Flatpak — music player (Music only)" \
   2>/dev/null)" || exit 0
 
 flatpak_install() {
@@ -71,22 +75,38 @@ this laptop is off. To put it inside an encrypted profile instead:
 
 case "${pick}" in
   "Curated Arch…")
+    # Derived from the helper, never duplicated. This list used to be typed out
+    # here as well, and the moment CURATED_PACMAN changed the two disagreed:
+    # the menu still offered gimp and mpv after they moved to Flatpak, so the
+    # GUI advertised installs the helper would refuse. Same drift bug the two
+    # Flatpak allowlists had.
+    # while-read rather than mapfile: mapfile needs bash 4, and the test suite
+    # runs on macOS where bash is still 3.2. The ISO has bash 5, so mapfile would
+    # work in production — but a construct that cannot be exercised by the tests
+    # is a construct whose bugs ship.
+    curated=()
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && curated+=("${line}")
+    # Tokenise: the array puts several packages on one line, so matching the
+    # start of a line only ever finds the first of each. Strip comments, drop the
+    # array delimiters, split on whitespace, keep valid package names. No eval —
+    # this reads a root-owned file, but parsing beats executing it.
+    done < <(sed -n '/^CURATED_PACMAN=(/,/^)$/p' "${HELPER}" \
+      | sed 's/#.*//' \
+      | grep -vE '^(CURATED_PACMAN=\(|\))' \
+      | tr -s '[:space:]' '\n' \
+      | grep -E '^[a-z0-9][a-z0-9@._+-]*$' | sort -u)
+    [[ ${#curated[@]} -gt 0 ]] || die "cicada-pkg: could not read the curated list from ${HELPER}"
+    args=()
+    for c in "${curated[@]}"; do args+=("${c}" ""); done
     pkg="$(zenity --list --title="Curated Arch packages" \
-      --text="One-click curated list (still needs your password)." \
+      --text="Command-line and system tools (still needs your password).
+
+Graphical applications are installed as Flatpaks instead, so they run under
+Cicada's permission floors rather than loose on the system." \
       --column=Package --column=Why --print-column=1 --hide-header \
       --width=520 --height=400 \
-      htop "process viewer" \
-      git "version control" \
-      code "VS Code (official Arch)" \
-      python "Python runtime" \
-      python-pip "pip" \
-      base-devel "gcc/make toolchain" \
-      curl "HTTP CLI" \
-      jq "JSON CLI" \
-      gimp "image editor" \
-      mpv "video player" \
-      keepassxc "password manager (also on ISO)" \
-      cowsay "hello Tirimid" \
+      "${args[@]}" \
       2>/dev/null)" || exit 0
     [[ -n "${pkg}" ]] || exit 0
     zenity --question --title="Install ${pkg}?" \
@@ -128,5 +148,9 @@ Needs your password." \
   Telegram) flatpak_install org.telegram.desktop Telegram ;;
   VLC) flatpak_install org.videolan.VLC VLC ;;
   LibreOffice) flatpak_install org.libreoffice.LibreOffice LibreOffice ;;
+  Firefox) flatpak_install org.mozilla.firefox Firefox ;;
+  Thunderbird) flatpak_install org.mozilla.Thunderbird Thunderbird ;;
+  GIMP) flatpak_install org.gimp.GIMP GIMP ;;
+  Nuclear) flatpak_install org.js.nuclear.Nuclear Nuclear ;;
   *) exit 0 ;;
 esac
