@@ -670,6 +670,50 @@ grep -q 'duress-session.sha256' "${dc}" || die "session duress has no verifier"
 grep -q -- '--session' "${CICADA_BIN}/cicada-duress-enroll" || die "no way to enrol a session duress password"
 say "session duress: pam_exec first, optional, wipes + hard resets"
 
+echo "==> every essential capability is still installable by some path"
+# Moving GUI apps from pacman to Flatpak orphaned VS Code: it was dropped from
+# CURATED_PACMAN and never added to CURATED_FLATPAK, so it went from installable
+# to impossible on a developer OS, silently. Nothing caught it because both
+# lists were individually valid.
+#
+# Assert capabilities, not list membership: each of these must be reachable
+# through pacman OR Flatpak OR already be on the image.
+python3 - "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-pkg-helper" \
+         "${ROOT}/iso/packages.cicada.x86_64" <<'PY' || die "an essential capability became uninstallable"
+import re, sys, pathlib
+helper = pathlib.Path(sys.argv[1]).read_text()
+iso = pathlib.Path(sys.argv[2]).read_text().split()
+
+def arr(name):
+    m = re.search(rf"^{name}=\((.*?)^\)", helper, re.S | re.M)
+    body = re.sub(r"#.*", "", m.group(1)) if m else ""
+    return body.split()
+
+pac, flat = arr("CURATED_PACMAN"), [l for l in arr("CURATED_FLATPAK")]
+def has(*names):
+    return any(n in pac or n in iso or any(n == f.strip('"') for f in flat) for n in names)
+
+ESSENTIAL = {
+    # NOT satisfied by vim/nano. Those are always present, so listing them as
+    # alternatives made this check pass while the graphical editor was orphaned —
+    # the exact regression it was written to catch. A capability test whose
+    # fallback can never fail tests nothing.
+    "a graphical code editor": ("code", "com.visualstudio.code"),
+    "a terminal editor":       ("vim", "nano"),
+    "an image editor":      ("gimp", "org.gimp.GIMP", "krita", "org.kde.krita"),
+    "a video player":       ("mpv", "io.mpv.Mpv", "vlc", "org.videolan.VLC"),
+    "an office suite":      ("org.libreoffice.LibreOffice", "org.onlyoffice.desktopeditors"),
+    "an email client":      ("org.mozilla.Thunderbird",),
+    "a second browser":     ("firefox", "org.mozilla.firefox"),
+    "a password manager":   ("keepassxc", "org.keepassxc.KeePassXC"),
+}
+bad = [k for k, v in ESSENTIAL.items() if not has(*v)]
+for k in bad:
+    print(f"  no way to install {k}")
+sys.exit(1 if bad else 0)
+PY
+say "code editor / image / video / office / email / browser / passwords all reachable"
+
 echo "==> browser policy is managed, not merely recommended"
 mgd="${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/managed/cicada.json"
 test ! -d "${ROOT}/packages/cicada-defaults/files/etc/chromium/policies/recommended" \

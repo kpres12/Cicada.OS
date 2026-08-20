@@ -41,6 +41,13 @@ CURATED_PACMAN=(
   # cannot install git.
   # shell / dev
   htop btop git nano vim
+  # code is the one graphical exception, and it is deliberate. An IDE exists to
+  # drive compilers, language servers and your working tree; a sandbox that
+  # denies it the filesystem denies it its job, which is why the VS Code Flatpak
+  # is a known source of pain. It sits with git and docker as a developer tool,
+  # not with the media apps. Everything that merely *renders* untrusted content
+  # is a Flatpak.
+  code
   python python-pip base-devel make cmake
   curl wget rsync zip unzip p7zip
   jq tree ripgrep fd bat eza
