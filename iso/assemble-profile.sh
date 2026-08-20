@@ -72,9 +72,65 @@ for line in text.splitlines(True):
 text = "".join(lines)
 if "DisableSandbox" not in text:
     text += "\nDisableSandbox\n"
+
+# Never write files onto the image that only exist to build against it.
+# NoExtract is the right mechanism because it acts during pacstrap: the files are
+# never unpacked at all, so nothing has to find and delete them afterwards, and
+# a package upgrade cannot quietly bring them back.
+#
+# Deliberately NOT listed:
+#   usr/share/man    an offline machine is exactly where man pages earn their
+#                    keep, and they compress to very little
+#   usr/share/locale the installer now asks for a language, and cicada-install
+#                    copies this rootfs onto the disk — stripping translations
+#                    here would strip them from every installed system too
+NOEXTRACT = [
+    "usr/share/doc/*",        # documentation; licences live in usr/share/licenses
+    "usr/share/gir-1.0/*",    # GObject introspection XML, build-time only.
+                              # Runtime uses the .typelib files in usr/lib, kept.
+]
+if "usr/share/gir-1.0" not in text:
+    text += "\n" + "".join(f"NoExtract = {p}\n" for p in NOEXTRACT)
 path.write_text(text)
-print("==> pacman sandbox disabled for emulated builds")
+print("==> pacman sandbox disabled for emulated builds; doc/gir NoExtract set")
 PY
+# --- optional: drop early KMS from the live initramfs ----------------------
+#
+# Measured on the 2026.08.19 image, the `kms` hook is worth 47.9 MiB of the
+# 128 MiB initramfs — 36.0 MiB of GPU firmware (amdgpu alone is 28) and 11.9 MiB
+# of DRM modules. That is paid TWICE on the ISO, because archiso writes the
+# kernel and initramfs both to ISO 9660 and into the embedded efiboot.img
+# (systemd-boot can only read the ESP it was launched from). So removing it is
+# worth about 96 MiB.
+#
+# What it costs: no native modesetting until the real root is mounted. On UEFI
+# there is always an EFI framebuffer console, so the screen still works — it is
+# the driver that arrives a second later. Nothing storage-related is affected:
+# the 271 block/USB module files come from the `block` and `filesystems` hooks.
+#
+# It is OFF by default and deliberately not on the "verified" list. A wrong
+# guess here is not "reduced protection", which the design rule says may degrade
+# visibly — it is a machine that may not show a picture, and that has to be
+# tried on real hardware before it becomes the default. Build one and boot it:
+#
+#   CICADA_SLIM_INITRAMFS=1 ./scripts/build-iso-docker.sh
+#
+if [[ "${CICADA_SLIM_INITRAMFS:-0}" == "1" ]]; then
+  mk="${PROFILE}/airootfs/etc/mkinitcpio.conf.d/archiso.conf"
+  if [[ -f "${mk}" ]]; then
+    python3 - "${mk}" <<'PY'
+import re, sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+new = re.sub(r'(^HOOKS=\([^)]*?)\bkms\s+', r'\1', t, flags=re.M)
+if new == t:
+    print("==> initramfs: no kms hook found to remove")
+else:
+    p.write_text(new)
+    print("==> initramfs: early KMS dropped (~96 MiB of ISO; needs a boot test)")
+PY
+  fi
+fi
+
 rsync -a "${ROOT}/iso/overlay/airootfs/" "${PROFILE}/airootfs/"
 rsync -a "${ROOT}/packages/cicada-defaults/files/" "${PROFILE}/airootfs/"
 rsync -a "${ROOT}/packages/cicada-shell/files/" "${PROFILE}/airootfs/"
