@@ -27,9 +27,26 @@ fi
 # each package still has to carry its own Arch developer signature. Shipping the
 # packages without their sigs produces a repo that fails every install with
 # "invalid or corrupted package", which reads as a broken mirror.
+#
+# GitHub rewrites ':' to '.' in release asset filenames, silently, with no error
+# and no warning: alsa-card-profiles-1:1.6.8-1-x86_64.pkg.tar.zst uploads fine
+# and is then served as alsa-card-profiles-1.1.6.8-1-x86_64.pkg.tar.zst. pacman
+# asks for the name the signed database records, so every epoch'd package 404s —
+# 60 of 860 in the 2026.08.20 snapshot, ffmpeg, flatpak, fontconfig and avahi
+# among them. That is exactly the partway-through-an-upgrade failure that
+# channel-verify-release.sh exists to prevent, and it is invisible from the
+# release page, which shows 1822 assets either way.
+#
+# So the colon is dropped here, before repo-add, and the database records the
+# name the mirror will actually serve. Only the filename changes: the epoch
+# still reaches pacman through %VERSION%, which repo-add reads from .PKGINFO
+# inside the package rather than from the filename, so version comparison and
+# upgrade ordering are untouched. The .sig is renamed with it — a detached
+# signature covers the bytes, not the name they are stored under.
 missing_sig=0
 for p in "${pkgs[@]}"; do
   base="$(basename "${p}")"
+  base="${base//:/.}"
   if [[ ! -e "${OUT}/${base}" ]]; then
     cp -an "${p}" "${OUT}/${base}" 2>/dev/null || cp -a "${p}" "${OUT}/${base}"
   fi

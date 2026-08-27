@@ -91,6 +91,18 @@ Cut them in this order, and do not skip it:
 
 **Channel before ISO.** An image whose mirror URL resolves to a release that does not exist yet fails `pacman -Sy`, and `cicada-update` dies with a network error instead of saying anything useful.
 
+**Colons never reach the mirror.** GitHub rewrites `:` to `.` in release asset
+filenames and still reports the upload as successful, so a package with a pacman
+epoch — `ffmpeg-2:9.0.1-1-x86_64.pkg.tar.zst` — is served as
+`ffmpeg-2.9.0.1-1-x86_64.pkg.tar.zst` while the signed database still names the
+colon form. pacman asks for what the database names, gets a 404, and stops
+partway through an upgrade. Sixty of 860 packages were in that state before
+2026.08.20. `channel-build-repo.sh` strips the colon before `repo-add` so the
+database records the served name, `channel-publish.sh` refuses to upload a name
+containing one, and `channel-verify-release.sh` distinguishes this case from a
+genuinely failed upload — the bytes are already on the mirror, so the fix is to
+rebuild and re-upload the database, not the 2 GiB of packages.
+
 What the channel is: the tested Arch snapshot the ISO was built from (~1.8 GiB, ~870 packages). Database signed with the Cicada key; packages keep their Arch developer signatures — that combination is what satisfies `SigLevel = Required` on the user's machine. It is **not** embedded in the ISO (that would add ~2 GiB to a 3 GiB image for no gain, since updating needs the network anyway); pass `CICADA_EMBED_CHANNEL=1` to `assemble-profile.sh` for a genuinely offline build.
 
 Product-layer changes — the shell, dock, settings, pattern bay — ship as a **new ISO**, not through the channel, because the ISO lays those files down as a tree rather than as pacman-owned packages. The channel carries the Arch layer: kernel, openssl, browser runtime.

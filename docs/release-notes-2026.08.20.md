@@ -14,6 +14,11 @@ rely on this for anything that matters yet.
 - **Hosted update channel** at `channel-latest` + `channel-latest-2` (GitHub’s
   1000-asset cap forces a split; both roots are in `/etc/cicada/channel-mirror.url`).
   Database signed with the Cicada key; packages keep Arch `.sig` files.
+  Sixty epoch’d packages (`ffmpeg`, `flatpak`, `fontconfig`, …) would have 404’d
+  mid-upgrade: GitHub rewrites `:` to `.` in asset filenames without failing the
+  upload, so the signed database named files the mirror did not serve. The
+  database now records the served name; the epoch still reaches pacman through
+  `%VERSION%`. `channel-verify-release.sh` gates publication on this.
 - Product-layer Flatpak floors and honesty copy (Arch base, threats vs evidence).
 
 Build id (tree when the ISO was assembled): commit `751b24b` (2026-08-20).

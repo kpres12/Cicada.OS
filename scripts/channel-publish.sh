@@ -62,6 +62,26 @@ db_assets=("${REPO}"/cicada-stable.db* "${REPO}"/cicada-stable.files*)
 pkgs=("${REPO}"/*.pkg.tar.zst)
 [[ ${#pkgs[@]} -gt 0 ]] || { echo "channel-publish: repo empty" >&2; exit 1; }
 
+# Refuse to upload a name GitHub will not serve back verbatim. It rewrites ':'
+# to '.' and still returns 201, so the release looks complete while every
+# epoch'd package is served under a name the signed database does not name, and
+# `pacman -Sy` dies partway through an upgrade. channel-build-repo.sh strips the
+# colon before repo-add; this catches a repo dir built by an older revision of
+# it, which is the only way the two can disagree.
+mangled=()
+for f in "${db_assets[@]}" "${pkgs[@]}"; do
+  b="$(basename "${f}")"
+  [[ "${b}" == *:* ]] && mangled+=("${b}")
+done
+if (( ${#mangled[@]} > 0 )); then
+  echo "channel-publish: ${#mangled[@]} asset name(s) contain ':' — GitHub would serve" >&2
+  echo "                 them under a different name than the signed database records:" >&2
+  printf '                   %s\n' "${mangled[@]:0:5}" >&2
+  echo "                 Rebuild the repo dir with channel-build-repo.sh, re-sign," >&2
+  echo "                 and re-run this script." >&2
+  exit 1
+fi
+
 MAX_ASSETS=1000
 # Room for the database set on the first release, and pairs are kept together so
 # a package and its signature never land on different servers.

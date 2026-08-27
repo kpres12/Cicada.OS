@@ -45,6 +45,21 @@ n_missing=$(wc -l < "${tmp}/missing" | tr -d ' ')
 echo "named by the database, NOT uploaded   : ${n_missing}"
 if [[ "${n_missing}" -gt 0 ]]; then
   echo "--- first 10 ---"; head -10 "${tmp}/missing"; rc=1
+  # A failed upload and a mangled name look identical above and have different
+  # fixes. GitHub rewrites ':' to '.' in asset filenames, so an epoch'd package
+  # can be sitting on the mirror, complete, under a name the database does not
+  # name. Say which one this is rather than sending the operator to re-upload
+  # 2 GiB that is already there.
+  sed 's/:/./g' "${tmp}/missing" | sort -u > "${tmp}/missing_demangled"
+  n_mangled=$(comm -12 "${tmp}/missing_demangled" "${tmp}/have" | wc -l | tr -d ' ')
+  if [[ "${n_mangled}" -gt 0 ]]; then
+    echo
+    echo "  ${n_mangled} of those ARE uploaded, under a ':'-rewritten name."
+    echo "  GitHub mangles ':' in release asset filenames. The bytes are on the"
+    echo "  mirror; the signed database names them wrongly. Rebuild the repo dir"
+    echo "  with channel-build-repo.sh so the database records the served name,"
+    echo "  re-run channel-sign.sh, and re-upload the database assets only."
+  fi
 fi
 
 # SigLevel=Required checks each package signature, so a missing .sig fails the

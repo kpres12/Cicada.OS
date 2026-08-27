@@ -214,7 +214,7 @@ On Apple Silicon this cross-builds an **Intel/x86_64** image:
 Then flash, boot the Mac with `Option`, and install to an **external SSD** first.
 Details in [docs/BUILD.md](docs/BUILD.md) and [docs/INSTALL.md](docs/INSTALL.md).
 
-The image is **1.94 GiB — one file**, under GitHub's 2 GiB per-asset cap, so it
+The image is **1.90 GiB — one file**, under GitHub's 2 GiB per-asset cap, so it
 downloads as a single ISO you can hand straight to Etcher. It was 2.95 GiB and
 shipped as `.part-00`/`.part-01`, which put a `cat` command between the user and
 a bootable stick as step one of the install. Three measured cuts, not guesses:
@@ -348,8 +348,16 @@ certifying the broken behaviour.
 - **The update channel 404’d** because `channel-latest` stayed a draft under
   GitHub’s 1000-asset cap (fixed by splitting across `channel-latest` +
   `channel-latest-2` and publishing both after `channel-verify-release.sh`).
+- **60 packages would have 404’d mid-upgrade.** GitHub rewrites `:` to `.` in
+  release asset filenames — silently, still returning success — so every
+  package carrying a pacman epoch (`ffmpeg-2:9.0.1`, `flatpak-1:1.18.1`,
+  `fontconfig-2:2.18.3`, 57 more) was served under a name the signed database
+  did not name. The release page showed all 1822 assets present either way.
+  `channel-build-repo.sh` now drops the colon before `repo-add`, so the database
+  records the name the mirror actually serves; the epoch still reaches pacman
+  through `%VERSION%`, which is read from `.PKGINFO`, not from the filename.
 
-The last two are not code, and no test suite was ever going to catch them.
+The last three are not code, and no test suite was ever going to catch them.
 
 Splitting that list is not bookkeeping — it found five defects, none of which
 needed hardware to expose. **The session duress credential had never worked at
