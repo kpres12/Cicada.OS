@@ -36,7 +36,7 @@
 - [x] `cicada-profile`: Work / Personal / Burner (directory homes; `--encrypt` LUKS; `--user` Unix UID)
 - [x] Freeze / dispose (encrypted unmount; dispose is `cicada-auth` gated)
 - [x] Settings wallpaper picker; install-only first-run wizard (public beta path)
-- [ ] Signed `cicada-stable` pacman repo (lockfile + helium.lock today)
+- [x] Signed `cicada-stable` pacman repo (`channel-latest` + `channel-latest-2`; verify before undraft)
 - [x] Messengers hosted, not written (`cicada-comms`): store bound into an
       encrypted profile, Flatpak floors below Flathub's, honest at-rest verdict
       (`docs/COMMS.md`, `tests/comms.sh`)
@@ -45,9 +45,9 @@
 
 - [x] Site (GitHub Pages) + honest live vs install messaging
 - [x] `docs/RELEASE.md` + `scripts/prepare-release.sh`
-- [ ] First GitHub Release with ISO + signed sha256 (`prepare-release.sh`)
+- [x] GitHub Release with ISO + signed sha256 (`v2026.08.19-beta`, `v2026.08.20-beta`)
 - [ ] One successful `cicada-install` smoke on spare disk (human)
-- [ ] Hosted signed channel (blocks calling updates “done”)
+- [x] Hosted signed channel (split across two releases under the 1000-asset cap)
 
 ## Phase 4 — Hard custom (ongoing)
 

@@ -343,10 +343,11 @@ certifying the broken behaviour.
   reachable via NOPASSWD sudo: `cicada-profile-helper dispose work` destroyed a
   profile with no prompt. Same shape for `cicada-usb-gate 1`, which could reopen
   USB enumeration while the screen was still locked.
-- **The published ISO is not signed.** README and the site both claimed GPG
-  signing and told users to verify a `.sha256.asc` the release does not carry.
-- **The update channel 404s for everyone.** `channel-mirror.url` points at a
-  release that is still a draft.
+- **The published ISO was unsigned** (fixed starting `v2026.08.19-beta`; this
+  cut ships `.sha256.asc` + `cicada-stable.pub`).
+- **The update channel 404’d** because `channel-latest` stayed a draft under
+  GitHub’s 1000-asset cap (fixed by splitting across `channel-latest` +
+  `channel-latest-2` and publishing both after `channel-verify-release.sh`).
 
 The last two are not code, and no test suite was ever going to catch them.
 
