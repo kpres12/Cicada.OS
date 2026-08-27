@@ -1,15 +1,21 @@
 # Cicada is its own OS
 
-Arch is the warehouse. Cicada is the product. Graphene is still AOSP; people do not call it “AOSP + hardening” because the user cannot launch AOSP. Same rule here: **the user cannot launch Arch.**
+**Base OS: Arch Linux** (official repos — kernel, pacman, systemd). Cicada is the product layer on top.
+It is **not** GrapheneOS, not AOSP, and not a phone OS. Graphene’s permission UX is an inspiration;
+the enforcement here is Linux (`cicada-run` + bwrap + policy files), which is weaker than Android UIDs.
 
-## Claims (do not collapse them)
+People do not call Graphene “AOSP + hardening” because the user cannot casually launch stock AOSP.
+Same product rule here: the dock should not hand you raw Arch launchers — only Cicada wrappers.
+Kitty remains an intentional owner-shell escape.
 
-| Claim | When true |
-|---|---|
-| Trackers / school HTTPS filter / casual thief with disk **off** | Strong passphrase + Helium managed policy + LUKS. Mostly now. |
-| LEO with **AFU** (on or just locked) | Never “can’t.” Shorten the window; HID-allow USBGuard; reboot timer. Still userspace. |
-| Firmware / evil maid on Apple EFI Air | Never. Different laptop (Heads/PureBoot) is the boot story. |
-| **Cicada is its own OS** | Launcher monopoly + default-deny scopes for boxed apps; Work-as-UID; channel-shaped updates. Kitty / Settings / Wi-Fi stay host-admin; Helium gets an outer bwrap without `--unshare-pid` (zygote) and still needs `--no-sandbox` inside. Identity, not uncrackability. |
+## Threats vs evidence (do not collapse them)
+
+| Threat | What we ship | What we do not claim |
+|---|---|---|
+| Trackers / school HTTPS filter / cold stolen disk | Helium managed policy + LUKS2 (installed) | Graphene attestation / “uncrackable” |
+| Seized while on or just locked (AFU) | Lock reboot timer, USB authorize gate, optional duress | Cellebrite-matrix “no access” |
+| Evil maid on Apple EFI Air | Nothing that survives that class | Verified boot (needs Heads/PureBoot hardware) |
+| “Just Arch with a theme?” | Launcher monopoly, scopes, Work UID, `cicada-update` | Android UID isolation or Qubes |
 
 ## Product layers (ship order)
 

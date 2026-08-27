@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>FAQ — Cicada.OS</title>
-  <meta name="description" content="Cicada.OS FAQ — hardware, claims, Arch, Qubes."/>
+  <meta name="description" content="Cicada.OS FAQ — Arch base, not GrapheneOS, hardware tiers, Qubes."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
@@ -30,24 +30,34 @@
     <p class="page-sub">Short answers. Longer threat model: <code>docs/THREAT_MODEL.md</code> in the repo.</p>
 
     <div class="panel">
+      <div class="panel-head"><h2>What base OS is this?</h2></div>
+      <p style="margin:0;color:var(--muted)">
+        <strong>Arch Linux.</strong> Kernel, pacman, and systemd are stock Arch packages from official repos.
+        Cicada is the product layer (desk, scopes, install, channel). We do not rebase to NixOS or Fedora Atomic.
+      </p>
+    </div>
+    <div class="panel" style="margin-top:1rem">
       <div class="panel-head"><h2>Is this GrapheneOS for laptops?</h2></div>
       <p style="margin:0;color:var(--muted)">
-        Graphene <em>intent</em> — policy OS, hardened defaults, honest hardware tiers.
-        Not a port of AOSP. Not Titan. Not “they can’t crack it.”
+        <strong>No.</strong> GrapheneOS is an Android OS. Cicada is not a port of AOSP and does not claim Titan,
+        Auditor, or Graphene’s kernel sandbox. We borrowed the <em>idea</em> of a permission sheet and hostile
+        defaults — then implemented those with Linux tools (<code>bwrap</code>, policy files, LUKS). Saying
+        “GrapheneOS” as the base was wrong; if you saw that, the site needed this FAQ entry.
       </p>
     </div>
     <div class="panel" style="margin-top:1rem">
       <div class="panel-head"><h2>Isn’t this just Arch?</h2></div>
       <p style="margin:0;color:var(--muted)">
-        Arch is the warehouse. You cannot casually launch Arch from the dock —
-        only Cicada wrappers. That identity gap is the product.
+        Arch packages power it. The dock and launcher do not hand you raw Arch <code>.desktop</code> files —
+        they start <code>cicada-run</code> wrappers with per-app scopes. You can still open Kitty and escape to a
+        normal shell; that is intentional (owner shell), not a secret.
       </p>
     </div>
     <div class="panel" style="margin-top:1rem">
       <div class="panel-head"><h2>Why not Qubes?</h2></div>
       <p style="margin:0;color:var(--muted)">
-        Qubes wins compartmentalization. Cicada is a Hyprland daily driver with Graphene-shaped scopes.
-        Different job. Use Qubes if the threat is malicious PDFs across trust domains.
+        Qubes wins real compartments (VMs). Cicada is a single-user Hyprland daily driver with process-level
+        scopes. Different job. Use Qubes if the threat is malicious PDFs across trust domains.
       </p>
     </div>
     <div class="panel" style="margin-top:1rem">
@@ -60,8 +70,8 @@
     <div class="panel" style="margin-top:1rem">
       <div class="panel-head"><h2>Can I run this on my Framework?</h2></div>
       <p style="margin:0;color:var(--muted)">
-        Yes — that is the daily-driver tier. Enroll TPM2 and Secure Boot after install.
-        Prototype development still happens on Intel MBA 2015–2017.
+        That is the intended daily-driver tier. Enroll TPM2 and Secure Boot after install.
+        Prototype development still happens on Intel MBA 2015–2017 (no Graphene-class boot story there).
       </p>
     </div>
   </main>

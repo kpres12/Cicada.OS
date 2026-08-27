@@ -1,19 +1,17 @@
 # Cicada.OS
 
-Arch-based privacy/security laptop OS. GrapheneOS *intent*, Hyprland daily-driver
-feel, Helium as the browser.
+**Arch Linux** laptop OS with hardened defaults, a launcher monopoly, per-app
+scopes, and Helium as the browser. Hyprland desk (dock + clickable Wi‑Fi).
 
-**Pre-alpha (build 2026.08.14):** [Download ISO](https://github.com/kpres12/Cicada.OS/releases/latest) · [Site](https://kpres12.github.io/Cicada.OS/) · [Install](https://kpres12.github.io/Cicada.OS/install/)
+**Not GrapheneOS.** Not AOSP. Graphene’s permission model inspired the scopes
+sheet; the code is Arch packages + Cicada wrappers (`cicada-run`, bwrap), which
+is weaker than Android UIDs. How much boot trust you get is set by hardware —
+see [Hardware tiers](#hardware-tiers).
 
-**Site:** [`site/`](site/) — download / install / features (GitHub Pages).  
-**North star:** hostile defaults and profile isolation on laptops — honest about
-hardware limits.
-**Method:** Arch is the engine. Cicada owns defaults, release channel, shell,
-and profiles.
+**Pre-alpha:** [Download ISO](https://github.com/kpres12/Cicada.OS/releases/latest) · [Site](https://kpres12.github.io/Cicada.OS/) · [Install](https://kpres12.github.io/Cicada.OS/install/)
 
-**The one-line summary:** *hostile defaults on a laptop that may not be able to
-attest.* How much of GrapheneOS you actually get is set by your hardware, not by
-this configuration — see [Hardware tiers](#hardware-tiers).
+**Site:** [`site/`](site/) — download / install / features (GitHub Pages).
+**Method:** Arch is the package engine. Cicada owns defaults, channel, shell, and profiles.
 
 ---
 
@@ -53,9 +51,9 @@ the TPM checks the PIN itself and its dictionary-attack lockout counts failures
 in silicon, so a short PIN is genuinely safe — the same property that makes a
 6-digit PIN safe on a Pixel.
 
-Tier 2 is as close to GrapheneOS as commodity x86 gets. Still missing versus a
-Pixel: a discrete secure element holding key material, and per-app hardware
-attestation.
+Tier 2 is the strongest commodity-x86 story Cicada aims for (your keys + PCR
+binding). Still missing versus a Pixel: a discrete secure element, and per-app
+hardware attestation. Do not call that “GrapheneOS.”
 
 Full detail: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 

@@ -309,7 +309,15 @@ img, svg { max-width: 100%; display: block; }
   font-weight: 500;
   font-size: 0.68rem;
 }
-.claim-table td:first-child { color: var(--magi); width: 42%; }
+.claim-table td:first-child { color: var(--magi); width: 28%; }
+.claim-table td:nth-child(2) { width: 40%; }
+.claim-table td:nth-child(3) { color: var(--muted); width: 32%; }
+@media (max-width: 720px) {
+  .claim-table { font-size: 0.72rem; }
+  .claim-table td:first-child,
+  .claim-table td:nth-child(2),
+  .claim-table td:nth-child(3) { width: auto; }
+}
 
 .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
 .steps li {

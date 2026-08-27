@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Cicada.OS — private laptop OS</title>
-  <meta name="description" content="Cicada.OS is a privacy and security focused laptop OS. GrapheneOS intent, Hyprland daily driver. Arch is the warehouse — Cicada is the product."/>
+  <title>Cicada.OS — Arch-based private laptop OS</title>
+  <meta name="description" content="Cicada.OS is an Arch Linux laptop OS with hardened defaults, a launcher monopoly, and per-app scopes. Not GrapheneOS. Not AOSP."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech&display=swap" rel="stylesheet"/>
@@ -32,13 +32,13 @@
     <div class="hero-bg" aria-hidden="true">
       <img src="assets/svg/hero-sentry.svg" alt=""/>
     </div>
-    <div class="hud-corner tl">MAGI-01 // SENTRY<br/><span class="val">CHANNEL · cicada-stable</span></div>
+    <div class="hud-corner tl">MAGI-01 // SENTRY<br/><span class="val">BASE · ARCH LINUX</span></div>
     <div class="hud-corner tr">SRC · GITHUB<br/><span class="val">TRACKED · LAPTOP OS</span></div>
     <div class="hero-inner">
       <p class="beta-pill">Pre-alpha · live USB = test · install = product</p>
       <p class="brand">CICADA<span class="dot">.</span>OS</p>
       <h1>The private laptop OS you can actually use.</h1>
-      <p class="lede">GrapheneOS intent. Hyprland daily driver. Flash the ISO to try; run cicada-install when you want files and wallpaper to stick.</p>
+      <p class="lede">Built on Arch Linux. Hyprland desk with a dock and clickable Wi‑Fi. Flash the ISO to try; run cicada-install when you want files to stick.</p>
       <div class="cta-row">
         <a class="btn" href="download/">Download ISO</a>
         <a class="btn btn-amber" href="install/">Install (keep your files)</a>
@@ -51,17 +51,18 @@
     <div class="panel">
       <div class="panel-head">
         <h2>About</h2>
-        <span class="tag">BALTHASAR-2</span>
+        <span class="tag">BASE · ARCH</span>
       </div>
       <p>
-        Cicada.OS is a privacy and security focused <strong>laptop</strong> operating system,
-        developed as an open source project. It hardens defaults, owns the launcher,
-        and ships Graphene-shaped permissions — without making you fight the machine for Wi‑Fi, files, or a browser.
+        Cicada.OS is an open-source <strong>laptop</strong> OS. The package engine is
+        <strong>Arch Linux</strong> (official repos). Cicada is the product layer on top:
+        greeter, dock, settings, launcher monopoly, per-app scopes, Helium browser policy,
+        and a pinned update channel.
       </p>
       <p>
-        Official releases land on the <a href="download/">download</a> page.
-        Installation instructions are on the <a href="install/">install</a> page.
-        Claims stay honest about silicon — see the table below.
+        It is <strong>not</strong> GrapheneOS, not AOSP, and not a phone OS. Graphene’s
+        permission model is an inspiration for the scopes sheet — not the codebase.
+        Official releases: <a href="download/">download</a>. Install: <a href="install/">install</a>.
       </p>
     </div>
 
@@ -80,55 +81,57 @@
         <li><span class="k">Needs the hardware</span><span class="v">hardened_malloc under Helium, chipset watchdog reset, kernel USB refusal, LoRa beacon</span></li>
       </ul>
       <p style="margin:0.75rem 0 0;color:var(--muted)">
-        Splitting &ldquo;unverified&rdquo; into those three lists is not bookkeeping — it is what exposed
-        the last five defects, including a session duress credential that had never fired.
         Full list: <a href="https://github.com/kpres12/Cicada.OS#status">Status in the README</a>.
       </p>
     </div>
 
     <div class="grid-2" style="margin-top:1rem">
       <div class="panel">
-        <div class="panel-head"><h2>Product layers</h2><span class="tag">POLICY OS</span></div>
+        <div class="panel-head"><h2>What ships (in the tree)</h2><span class="tag">MECHANISMS</span></div>
         <ul class="feature-list">
-          <li><span class="k">Launcher</span><span class="v">Dock / Wofi / MIME only start Cicada wrappers</span></li>
-          <li><span class="k">Scopes</span><span class="v">Default-deny network, files, cam, mic</span></li>
-          <li><span class="k">Work UID</span><span class="v">Second Unix user — not a folder named Burner</span></li>
-          <li><span class="k">Browser</span><span class="v">Helium with Vanadium-class managed policy</span></li>
-          <li><span class="k">Channel</span><span class="v">Pinned cicada-stable — not floating Arch extra</span></li>
+          <li><span class="k">Launcher</span><span class="v"><code>cicada-wofi</code> + dock only start Cicada wrappers / <code>cicada-run</code></span></li>
+          <li><span class="k">Scopes</span><span class="v">bwrap default-deny for boxed apps (net/files/cam/mic)</span></li>
+          <li><span class="k">Work UID</span><span class="v">Second Unix user <code>cicada-work</code> — not a folder rename</span></li>
+          <li><span class="k">Browser</span><span class="v">Helium + managed Chromium policy (JIT/telemetry off)</span></li>
+          <li><span class="k">Channel</span><span class="v"><code>cicada-update</code> → <code>[cicada-stable]</code> only</span></li>
         </ul>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Not Google · Not AOSP theater</h2><span class="tag">ENGINE</span></div>
+        <div class="panel-head"><h2>Base OS · transparent</h2><span class="tag">ENGINE</span></div>
         <p style="margin:0;color:var(--muted)">
-          Cicada will never ship a fake Titan story on Apple EFI.
-          Arch remains the package engine; the product layer is what you touch.
-          Kitty is Owner <code>adb</code> — power user escape, not the UI.
+          Kernel, pacman, and systemd come from Arch. Cicada does not fork them.
+          We do not ship a fake Titan / Auditor story on Apple EFI.
+          Kitty is an owner shell (power-user escape), not the product UI.
         </p>
       </div>
     </div>
 
     <div class="panel" style="margin-top:1rem">
-      <div class="panel-head"><h2>Claims — do not collapse them</h2><span class="tag">THREAT MODEL</span></div>
+      <div class="panel-head"><h2>Threats vs evidence</h2><span class="tag">HONEST</span></div>
       <table class="claim-table">
         <thead>
-          <tr><th>Claim</th><th>When true</th></tr>
+          <tr><th>Threat</th><th>What we ship</th><th>What we do not claim</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td>Trackers / school filter / cold disk thief</td>
-            <td>Strong passphrase + Helium policy + LUKS — mostly now</td>
+            <td>Trackers / school HTTPS filter / cold stolen disk</td>
+            <td>Helium managed policy + LUKS2 passphrase (installed systems)</td>
+            <td>“Unbreakable” crypto or Graphene-class attestation</td>
           </tr>
           <tr>
-            <td>LEO with AFU (on or just locked)</td>
-            <td>Never “can’t.” Shorten the window. Still userspace.</td>
+            <td>Device seized while on or just locked (AFU)</td>
+            <td>Lock timer reboot, USB authorize gate, optional duress wipe</td>
+            <td>Cellebrite / GrayKey “no access” — that is userspace, not Titan</td>
           </tr>
           <tr>
-            <td>Firmware / evil maid on Apple EFI Air</td>
-            <td>Never. Heads/PureBoot is a different laptop.</td>
+            <td>Evil maid / firmware on Apple EFI Air</td>
+            <td>Nothing that survives that class</td>
+            <td>Verified boot — needs Heads/PureBoot-class hardware</td>
           </tr>
           <tr>
-            <td>Cicada is its own OS</td>
-            <td>No unsandboxed dock path; scopes; Work UID; signed channel. Identity, not uncrackability.</td>
+            <td>“Is this just Arch with a theme?”</td>
+            <td>Launcher monopoly + scopes + Work UID + channel path</td>
+            <td>Android UID isolation or Qubes VMs</td>
           </tr>
         </tbody>
       </table>
@@ -146,7 +149,7 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <span>CICADA.OS · OPEN SOURCE · FAIL CLOSED</span>
+      <span>CICADA.OS · ARCH ENGINE · FAIL CLOSED</span>
       <span>
         <a href="https://github.com/kpres12/Cicada.OS">GitHub</a>
         · <a href="faq/">FAQ</a>
