@@ -4,8 +4,8 @@ Hardware under test: Intel MacBook Air 2015–2017 live USB unless noted.
 
 | Test | Result | Date | Notes |
 |---|---|---|---|
-| Live ISO boots to Hyprland + left dock + Waybar | pending | 2026-08-13 | this ISO |
-| Wi-Fi: click dock / Super+N, associate, browse | pending | | radios start blocked on purpose |
+| Live ISO boots to Hyprland + left dock + Waybar | pending | | Flash `cicada-2026.08.20` (or newer) |
+| Wi-Fi: click dock / Super+N, associate, browse | pending | | See `docs/HARDWARE.md` Broadcom checklist; default/`linux` boot entry |
 | Wallpaper visible; Kitty translucent | pending | | |
 | `ldd`/`LD_PRELOAD` on Chromium shows hardened_malloc | pending | | GrapheneOS tag 14 built in ISO Docker; live wrapper preloads; global preload on installed |
 | Doom under `cicada-run` (Chocolate Doom 3.1.1 + Freedoom 0.13.0) | pass | ~2026-08-17 | Played on hardware. `cicada-doom` execs `cicada-run org.cicada.doom`, so this is the only end-to-end evidence that a demanding GPU + audio + input application actually works inside a bwrap scope with the seccomp filter loaded. Worth more than the game. Played on the Intel MacBook Air (the prototype in this file's header); date is approximate, reported by the developer rather than logged. |

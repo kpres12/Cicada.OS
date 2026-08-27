@@ -15,7 +15,7 @@
 - [x] Firewall defaults live (nft drop). Wi-Fi available at boot; telemetry off.
 - [x] OT/Eva shell readable as Cicada in first 5 seconds
 - [x] Calamares or scripted install → disk (`cicada-install` LUKS2 + systemd-boot; `--internal` for non-Apple NVMe)
-- [ ] Broadcom Wi‑Fi documented/working (NM picker + firmware + broadcom-wl on default `linux`)
+- [x] Broadcom Wi‑Fi documented (NM + wpa_supplicant + `broadcom-wl` on stock `linux`; Air checklist in `docs/HARDWARE.md`). Hardware associate still recorded in `docs/test-results.md`.
 
 ## Phase 2 — Daily-driver alpha (2–4 weeks)
 
