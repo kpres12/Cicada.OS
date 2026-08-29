@@ -38,7 +38,7 @@ believes it is current.
 The pin is a date, so the lag is arithmetic anyone can do:
 
 ```
-cat /etc/cicada/channel      # e.g. cicada-stable-2026.08.12
+cat /etc/cicada/channel      # e.g. cicada-stable-2026.08.20
 ```
 
 `cicada-update` computes it for you and says it out loud: over 7 days it prints
