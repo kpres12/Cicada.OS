@@ -24,6 +24,13 @@ rely on this for anything that matters yet.
 Build id (tree when the ISO was assembled): commit `751b24b` (2026-08-20).
 Site/docs honesty landing after that is on `main` and does not change the ISO bytes.
 
+One cosmetic wart in the shipped image: `cicada-update` and Settings report the
+channel pin as `cicada-stable-2026.08.12`, because `channel/CURRENT` still named
+the older snapshot when the ISO was assembled. The mirror it syncs from is the
+2026.08.20 set either way — the label is display-only and nothing resolves
+against it. The pin is corrected in-tree and will read correctly in the next
+image.
+
 ## Verify before you boot
 
 ```bash

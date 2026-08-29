@@ -32,6 +32,12 @@ Packages are copied into the repo **with their `.sig` files**. `SigLevel = Requi
 
 ## Snapshots
 
-- [cicada-stable-2026.08.12.pkglist.txt](cicada-stable-2026.08.12.pkglist.txt)
+`CURRENT` names the snapshot the hosted mirror serves; the matching
+`.pkglist.txt` is its NEVR list, generated from the signed database by
+`scripts/channel-snapshot.sh` so the two cannot drift by hand. Older lists are
+kept as history rather than deleted.
+
+- [cicada-stable-2026.08.20.pkglist.txt](cicada-stable-2026.08.20.pkglist.txt) — current (860 packages)
+- [cicada-stable-2026.08.12.pkglist.txt](cicada-stable-2026.08.12.pkglist.txt) — superseded (654; the ISO's own set, not the channel's)
 - [helium.lock](helium.lock)
 - [CURRENT](CURRENT)
