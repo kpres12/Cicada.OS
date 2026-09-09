@@ -1,0 +1,20 @@
+name: debug-scratch
+on:
+  workflow_dispatch:
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          openssl version
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/seal" "$tmp/home"
+          export CICADA_SEAL_DIR="$tmp/seal"
+          export HOME="$tmp/home"
+          export CICADA_BEACON_CONF="$tmp/beacon.conf"
+          printf 'TRANSPORTS=file\n' > "$tmp/beacon.conf"
+          export PATH="$PWD/packages/cicada-defaults/files/usr/local/bin:$PATH"
+          set +e
+          python3 packages/cicada-defaults/files/usr/local/bin/cicada-beacon
+          echo "EXIT: $?"
