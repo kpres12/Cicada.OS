@@ -1,0 +1,40 @@
+name: tests
+
+# Everything in tests/ that does not need the Air, real Wi-Fi, or an Apple
+# EFI/T2 boot story — i.e. everything checked by tests/here.sh,
+# tests/preflight.sh and tests/linux.sh. It stayed unrun on every push until
+# now, which is how tests/linux.sh's own nftables case sat broken (a partial
+# -Sy pacman upgrade left libnftnl behind nftables and `nft` refused to load)
+# without anyone noticing — see tests/linux.sh for the fix.
+#
+# This does not build the ISO and is not the "Reproducible build CI" item on
+# docs/ROADMAP.md in full — that means a bit-for-bit mkarchiso rebuild, which
+# is a separate, heavier job. This is the cheap, always-on regression net
+# underneath it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac-safe:
+    # Named for the contract, not the runner: no root, no bwrap, no hardware.
+    # tests/here.sh's own header promises it stays runnable "on a plane" —
+    # ubuntu-latest satisfies the same contract for free.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/preflight.sh
+      - run: bash tests/here.sh
+
+  linux-safe:
+    # tests/linux.sh needs Docker + a privileged container; both are on the
+    # standard GitHub-hosted ubuntu-latest runner already.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/linux.sh

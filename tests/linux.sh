@@ -31,6 +31,16 @@ fi
 # it every install fails silently and the suite runs against whatever the base
 # image happens to ship — which is how these tests spent their first run
 # reporting a pass for a program that was not installed.
+#
+# -Syu, not -Sy: the base image ships nftables already installed, and `-Sy
+# nftables` syncs the db and upgrades only the package named on the command
+# line, leaving libnftnl at whatever the image baked in. When the repo's
+# nftables build has moved on and wants a newer libnftnl symbol
+# (LIBNFTNL_19), that is a partial upgrade — the exact thing docs/SECURITY_
+# UPDATES.md tells a user never to do to their own machine — and `nft`
+# fails to even load with "version `LIBNFTNL_19' not found". `-Syu` pulls
+# already-installed dependencies forward with the packages under test, same
+# as the advice given to users.
 CASES=(
   "nftables:nftables iproute2 iputils python"
   "time-tor:chrony tor iproute2 curl"
@@ -51,7 +61,7 @@ for entry in "${CASES[@]}"; do
   echo "=== linux/${name} ==="
   if ! docker run --rm --privileged --platform linux/amd64 \
         -v "${ROOT}:/src:ro" "${IMAGE}" \
-        bash -c "pacman -Sy --noconfirm --quiet --disable-sandbox ${pkgs} >/tmp/pac.log 2>&1 \
+        bash -c "pacman -Syu --noconfirm --quiet --disable-sandbox ${pkgs} >/tmp/pac.log 2>&1 \
                  || { echo '  FAIL pacman could not install: ${pkgs}'; tail -3 /tmp/pac.log; exit 1; }
              bash /src/tests/linux/${name}.sh"
   then
