@@ -183,8 +183,18 @@ def _esp() -> Path | None:
         return d if d.is_dir() else None
     for p in ("/efi", "/boot/efi", "/boot"):
         d = Path(p)
-        if (d / "EFI").is_dir() or (d / "loader").is_dir():
-            return d
+        try:
+            if (d / "EFI").is_dir() or (d / "loader").is_dir():
+                return d
+        except OSError:
+            # A candidate that exists but is not readable by this user (e.g.
+            # /boot/efi owned root:root 0700 — normal on stock Ubuntu, and
+            # unrelated to whether Cicada's own ESP is present) is not a
+            # signal that this is not the ESP; it is a signal to try the
+            # next candidate. Letting this raise took down the whole duress
+            # beacon with an uncaught PermissionError instead of sending the
+            # signal — the one outcome this tool exists to prevent.
+            continue
     return None
 
 
