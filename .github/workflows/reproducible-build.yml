@@ -47,10 +47,25 @@ jobs:
 
       - name: Compare
         run: |
-          iso_a="$(ls out-a/cicada-*-x86_64.iso)"
-          iso_b="$(ls out-b/cicada-*-x86_64.iso)"
+          # -not -type l: cicada-latest-x86_64.iso is a symlink alongside the
+          # real dated ISO. A bare glob matches both, sha256sum gets two paths
+          # glued into one bad argument, fails, and — because that failure is
+          # inside a VAR=$(...) assignment, which `set -e` does not catch —
+          # both hashes silently end up as empty strings that trivially
+          # "match". Exactly that happened on the first run of this workflow.
+          find_one() {
+            local hits
+            hits="$(find "$1" -maxdepth 1 -name 'cicada-*-x86_64.iso' -not -type l)"
+            [[ "$(wc -l <<<"${hits}")" -eq 1 && -n "${hits}" ]] \
+              || { echo "expected exactly one dated ISO in $1, found: ${hits:-<none>}" >&2; exit 1; }
+            printf '%s' "${hits}"
+          }
+          iso_a="$(find_one out-a)"
+          iso_b="$(find_one out-b)"
           sha_a="$(sha256sum "${iso_a}" | cut -d' ' -f1)"
           sha_b="$(sha256sum "${iso_b}" | cut -d' ' -f1)"
+          [[ "${sha_a}" =~ ^[0-9a-f]{64}$ ]] || { echo "sha_a did not come back as a real sha256: '${sha_a}'" >&2; exit 1; }
+          [[ "${sha_b}" =~ ^[0-9a-f]{64}$ ]] || { echo "sha_b did not come back as a real sha256: '${sha_b}'" >&2; exit 1; }
           echo "A: ${iso_a} ${sha_a}"
           echo "B: ${iso_b} ${sha_b}"
           if [[ "${sha_a}" == "${sha_b}" ]]; then
