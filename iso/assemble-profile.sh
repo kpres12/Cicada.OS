@@ -216,9 +216,21 @@ install -Dm755 "${ROOT}/tests/boot-verify.sh" \
 # Build stamp. Without this there is no way to tell a freshly built ISO from one
 # sitting in out/ from three commits ago — which is exactly how a known-fixed
 # bug gets re-tested on a stale image. Compare against `git rev-parse HEAD`.
+#
+# `built=` normally wants real wall-clock time — that is the whole point of
+# it — but a real timestamp also means two builds of the identical commit can
+# never produce a bit-identical image, because this file ships inside the
+# squashfs. SOURCE_DATE_EPOCH (already the convention profiledef.sh uses for
+# iso_label/iso_version) lets a reproducibility check pin this file's
+# timestamp too, without changing anything for a normal build where it is
+# unset. GNU `date -d @epoch` first; BSD `date -r epoch` (this script also
+# runs unassembled on the Mac, per tests/preflight.sh).
 mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
+built_epoch="${SOURCE_DATE_EPOCH:-$(date +%s)}"
+built_iso="$(date -u -d "@${built_epoch}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+          || date -u -r "${built_epoch}" +%Y-%m-%dT%H:%M:%SZ)"
 {
-  printf 'built=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'built=%s\n' "${built_iso}"
   if git -C "${ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
     printf 'commit=%s\n' "$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     if [[ -n "$(git -C "${ROOT}" status --porcelain 2>/dev/null)" ]]; then

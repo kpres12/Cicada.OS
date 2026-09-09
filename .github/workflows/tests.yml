@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash tests/preflight.sh
       - run: bash tests/here.sh
+      - run: bash tests/reproducible-assemble.sh
 
   linux-safe:
     # tests/linux.sh needs Docker + a privileged container; both are on the

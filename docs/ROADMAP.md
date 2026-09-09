@@ -66,7 +66,15 @@
       maid on Tier 0, where prevention is impossible (`tests/beacon.sh`)
 - [ ] Beacon exercised on real hardware: Meshtastic radio, and a boot-hash
       change that is a genuine kernel upgrade rather than a fixture
-- [ ] Reproducible build CI
+- [ ] Reproducible build CI — `SOURCE_DATE_EPOCH` now threaded through
+      `iso/build.sh` (defaults to the commit's own timestamp) and the
+      assemble stage is proven byte-identical across independent runs
+      (`tests/reproducible-assemble.sh`, in CI). `.github/workflows/
+      reproducible-build.yml` builds the actual ISO twice and diffs it, but
+      is manual/weekly (a full build is minutes and gigabytes even natively)
+      and has not yet been run — mkarchiso/squashfs/xorriso have their own
+      timestamp and ordering surface this hasn't touched, so the ISO itself
+      is still unproven
 - [ ] Immutable signed rootfs (the only thing dm-verity would add over FDE — a
       redesign, not a patch; see docs/GRAPHENE_PARITY.md)
 - [ ] Tier-3 hardware docs (Librem / NitroPad / Heads)

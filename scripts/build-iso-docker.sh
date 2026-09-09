@@ -96,6 +96,7 @@ docker run --rm \
   -e CICADA_OUT=/out \
   -e CICADA_WORK=/work \
   -e CICADA_SRC=/src \
+  -e SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
   -v "${ROOT}:/src:ro" \
   -v "${WORK_VOL}:/work" \
   -v "${PKG_VOL}:/var/cache/pacman/pkg" \

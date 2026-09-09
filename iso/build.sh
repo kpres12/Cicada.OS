@@ -21,6 +21,18 @@ fi
 
 mkdir -p "${OUT}" "${WORK}"
 export CICADA_PROFILE_DIR="${PROFILE}"
+
+# SOURCE_DATE_EPOCH drives iso_label/iso_version in profiledef.sh and the
+# BUILD-ID stamp in assemble-profile.sh — both fall back to wall-clock "now"
+# when it is unset, which means two builds of the identical commit can never
+# match bit-for-bit. Default it to the commit's own timestamp: deterministic
+# per source tree, and it moves only when the tree actually changes, which is
+# the property "reproducible" is supposed to mean. A caller (a reproducibility
+# check building the same commit twice) can still pin an explicit value.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]] && git -C "${ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
+  export SOURCE_DATE_EPOCH="$(git -C "${ROOT}" log -1 --format=%ct)"
+fi
+
 "${ROOT}/iso/assemble-profile.sh"
 
 if [[ -x "${ROOT}/scripts/build-hardened-malloc.sh" ]]; then

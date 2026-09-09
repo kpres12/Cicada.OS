@@ -1,0 +1,62 @@
+name: reproducible-build
+
+# The real "Reproducible build CI" item on docs/ROADMAP.md: build the actual
+# ISO twice from the same commit and prove the images match. Deliberately not
+# part of tests.yml — a full mkarchiso build downloads and installs the whole
+# system twice (kernel, Hyprland, Helium, firmware), which is minutes of work
+# and gigabytes of transfer even on a native amd64 runner, not something every
+# push/PR should pay for. Runs on demand and once a week instead.
+#
+# ubuntu-latest is amd64 natively, so this runs Dockerfile.build/iso/build.sh
+# without the --platform linux/amd64 QEMU translation the Mac-side
+# scripts/build-iso-docker.sh needs — meaningfully faster than a local build
+# on Apple Silicon.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # Monday 06:00 UTC
+
+jobs:
+  build-twice-and-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin SOURCE_DATE_EPOCH to this commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      - name: Build builder image
+        run: docker build -f Dockerfile.build -t cicada-iso-builder .
+
+      - name: Build A
+        run: |
+          mkdir -p out-a work-a
+          docker run --rm --privileged \
+            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH \
+            -v "${PWD}:/src:ro" -v "${PWD}/out-a:/out" -v "${PWD}/work-a:/work" \
+            cicada-iso-builder
+
+      - name: Build B
+        run: |
+          mkdir -p out-b work-b
+          docker run --rm --privileged \
+            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH \
+            -v "${PWD}:/src:ro" -v "${PWD}/out-b:/out" -v "${PWD}/work-b:/work" \
+            cicada-iso-builder
+
+      - name: Compare
+        run: |
+          iso_a="$(ls out-a/cicada-*-x86_64.iso)"
+          iso_b="$(ls out-b/cicada-*-x86_64.iso)"
+          sha_a="$(sha256sum "${iso_a}" | cut -d' ' -f1)"
+          sha_b="$(sha256sum "${iso_b}" | cut -d' ' -f1)"
+          echo "A: ${iso_a} ${sha_a}"
+          echo "B: ${iso_b} ${sha_b}"
+          if [[ "${sha_a}" == "${sha_b}" ]]; then
+            echo "REPRODUCIBLE: both builds match bit-for-bit"
+          else
+            echo "NOT REPRODUCIBLE: builds differ — see byte offset below"
+            cmp "${iso_a}" "${iso_b}" || true
+            exit 1
+          fi
