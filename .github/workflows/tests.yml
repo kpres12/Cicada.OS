@@ -27,7 +27,14 @@ jobs:
     # ubuntu-latest satisfies the same contract for free.
     runs-on: ubuntu-latest
     steps:
+      # submodules: true — assemble-profile.sh (preflight/here/reproducible-
+      # assemble all call it) needs vendor/archiso/configs/releng, and
+      # actions/checkout does not fetch submodules by default. Bit me on the
+      # first three pushes: passed locally (submodule already checked out on
+      # the Mac that wrote this workflow) and failed in CI every time.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - run: bash tests/preflight.sh
       - run: bash tests/here.sh
       - run: bash tests/reproducible-assemble.sh

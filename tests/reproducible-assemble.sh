@@ -18,6 +18,16 @@ fail=0
 say() { printf '  OK  %s\n' "$*"; }
 die() { printf '  FAIL %s\n' "$*"; fail=1; }
 
+# sha256sum (GNU/Linux, incl. CI) or shasum -a256 (BSD/macOS) — this script
+# runs on both.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a256 "$1" | cut -d' ' -f1
+  fi
+}
+
 manifest() {
   # F <path> <sha256> for regular files, L <path> -> <target> for symlinks.
   # Symlinks are reported by target string, not followed — several dangling
@@ -29,7 +39,7 @@ manifest() {
           if [[ -L "${f}" ]]; then
             printf 'L %s -> %s\n' "${f}" "$(readlink "${f}")"
           else
-            printf 'F %s %s\n' "${f}" "$(shasum -a256 "${f}" | cut -d' ' -f1)"
+            printf 'F %s %s\n' "${f}" "$(sha256 "${f}")"
           fi
         done | sort )
 }
