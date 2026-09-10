@@ -687,7 +687,7 @@ else
   sgdisk --zap-all "${TARGET}"
   sgdisk -n 1:0:+1G -t 1:ef00 -c 1:ESP "${TARGET}"
   sgdisk -n 2:0:0 -t 2:8309 -c 2:CICADA "${TARGET}"
-  sleep 1
+
   if [[ "${TARGET}" == /dev/nvme* ]] || [[ "${TARGET}" == /dev/mmcblk* ]]; then
     ESP="${TARGET}p1"
     ROOTP="${TARGET}p2"
@@ -695,7 +695,23 @@ else
     ESP="${TARGET}1"
     ROOTP="${TARGET}2"
   fi
-  [[ -b "${ESP}" && -b "${ROOTP}" ]] || { ESP="${TARGET}p1"; ROOTP="${TARGET}p2"; }
+
+  # A flat `sleep 1` used to stand in for "the kernel has made the partition
+  # nodes yet", and when it guessed wrong the fallback assumed EVERY disk uses
+  # nvme's pN naming — so on a plain /dev/sdX target that was merely slow to
+  # settle (internal disks under a hypervisor or an external enclosure both do
+  # this), it silently retargeted to /dev/sdXp1, a path that is never valid on
+  # that device and fails loudly much later, deep inside cryptsetup, far from
+  # the actual cause. Wait for the real path instead of guessing a different
+  # wrong one.
+  command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=10 2>/dev/null
+  command -v partprobe >/dev/null 2>&1 && partprobe "${TARGET}" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -b "${ESP}" && -b "${ROOTP}" ]] && break
+    sleep 1
+  done
+  [[ -b "${ESP}" && -b "${ROOTP}" ]] \
+    || die "partition nodes never appeared: ${ESP} / ${ROOTP} (sgdisk ran, but the kernel has not created them — re-run, or check dmesg)"
 
   mkfs.fat -F32 -n CICADAESP "${ESP}"
 fi
