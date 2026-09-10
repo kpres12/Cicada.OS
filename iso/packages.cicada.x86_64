@@ -109,7 +109,7 @@ bubblewrap
 xdg-dbus-proxy
 keepassxc
 gnupg
-pinentry-qt
+pinentry
 kleopatra
 age
 wireguard-tools
