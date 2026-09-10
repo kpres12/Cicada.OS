@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Thunderbird
+GenericName=Mail Client
+Comment=Email — Proton Mail via the web, or Proton Mail Bridge
+Exec=cicada-thunderbird %u
+Icon=thunderbird
+Terminal=false
+StartupNotify=true
+Categories=Network;Email;
+StartupWMClass=Mail
+MimeType=x-scheme-handler/mailto;

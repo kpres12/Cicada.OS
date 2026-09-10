@@ -12,7 +12,7 @@
 # it normally if this step did not land it. Failure is loud, not silent.
 set -uo pipefail
 
-APPS=(org.signal.Signal)
+APPS=(org.signal.Signal ch.protonmail.protonmail-bridge)
 
 echo "==> cicada: preloading Flatpak apps (${APPS[*]})"
 

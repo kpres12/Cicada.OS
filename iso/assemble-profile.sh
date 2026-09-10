@@ -295,7 +295,8 @@ cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/USER-GUIDE.txt"
 mkdir -p "${PROFILE}/airootfs/usr/local/share/applications"
 for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desktop \
             alacritty.desktop foot.desktop org.gnome.Nautilus.desktop \
-            nm-connection-editor.desktop org.kde.kleopatra.desktop; do
+            nm-connection-editor.desktop org.kde.kleopatra.desktop \
+            org.mozilla.Thunderbird.desktop; do
   cat > "${PROFILE}/airootfs/usr/local/share/applications/${base}" <<EOF
 [Desktop Entry]
 Hidden=true
@@ -497,6 +498,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/home/cicada/Desktop/power.desktop"]="1000:1000:755"
   ["/usr/local/bin/cicada-doom"]="0:0:755"
   ["/usr/local/bin/cicada-kleopatra"]="0:0:755"
+  ["/usr/local/bin/cicada-thunderbird"]="0:0:755"
   ["/usr/local/bin/cicada-power"]="0:0:755"
   ["/usr/local/bin/cicada-pkg"]="0:0:755"
   ["/usr/local/bin/cicada-pkg-helper"]="0:0:755"

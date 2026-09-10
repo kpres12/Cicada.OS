@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Thunderbird — native package (Extra), sandboxed like every other app here.
+# Proton Mail: use it via the web in Helium, or Proton Mail Bridge (preloaded,
+# Kleopatra-adjacent launcher) to connect it to Thunderbird over local IMAP/SMTP.
+set -euo pipefail
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.cicada.thunderbird -- thunderbird "$@"
+fi
+echo "cicada-thunderbird: cicada-run missing" >&2
+exit 78

@@ -180,6 +180,16 @@ case "${APP_ID}" in
   chat.simplex.simplex)
     mkdir -p "${HOME}/.local/share/simplex" "${HOME}/.config/simplex"
     ;;
+  org.cicada.kleopatra)
+    # The keyring lives in ~/.gnupg, not ~/.local/share/<app-id> — without this
+    # case it falls to the generic bind below and Kleopatra starts with an
+    # empty keyring every single launch.
+    mkdir -p "${HOME}/.gnupg" "${HOME}/.config/kleopatra"
+    chmod 700 "${HOME}/.gnupg"
+    ;;
+  org.cicada.thunderbird)
+    mkdir -p "${HOME}/.thunderbird"
+    ;;
 esac
 
 # Chromium / Tor Browser: --unshare-pid kills the zygote. Keep other isolation.
@@ -367,6 +377,13 @@ case "${FILES}" in
       chat.simplex.simplex)
         args+=(--bind "${HOME}/.local/share/simplex" "${HOME}/.local/share/simplex")
         args+=(--bind "${HOME}/.config/simplex" "${HOME}/.config/simplex")
+        ;;
+      org.cicada.kleopatra)
+        args+=(--bind "${HOME}/.gnupg" "${HOME}/.gnupg")
+        args+=(--bind "${HOME}/.config/kleopatra" "${HOME}/.config/kleopatra")
+        ;;
+      org.cicada.thunderbird)
+        args+=(--bind "${HOME}/.thunderbird" "${HOME}/.thunderbird")
         ;;
       *)
         mkdir -p "${HOME}/.local/share/${APP_ID}"

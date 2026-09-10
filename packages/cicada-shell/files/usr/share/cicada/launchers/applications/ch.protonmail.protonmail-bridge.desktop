@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Proton Mail Bridge
+Comment=Connect Thunderbird to Proton Mail over local IMAP/SMTP (Flatpak)
+Exec=flatpak run ch.protonmail.protonmail-bridge
+Icon=ch.protonmail.protonmail-bridge
+Terminal=false
+StartupNotify=true
+Categories=Network;Email;
