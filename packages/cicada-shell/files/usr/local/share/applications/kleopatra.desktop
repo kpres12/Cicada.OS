@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kleopatra
+GenericName=GPG Keys
+Comment=Manage encryption/signing keys
+Exec=cicada-kleopatra
+Icon=kleopatra
+Terminal=false
+StartupNotify=false
+Categories=Utility;Security;Qt;
+StartupWMClass=kleopatra

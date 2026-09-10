@@ -1,0 +1,14 @@
+# Build-time only. Fires once flatpak itself lands during pacstrap, then
+# seeds the Flatpak apps Cicada preloads (Signal). mkarchiso deletes every
+# file under this directory at the end of the build (FS#49347 workaround), so
+# this hook — and the ability to re-trigger it — does not exist on the
+# shipped system. See usr/local/lib/cicada/preload-flatpak-apps.sh.
+[Trigger]
+Operation = Install
+Type = Package
+Target = flatpak
+
+[Action]
+Description = Cicada: preload Flatpak apps (Signal)
+When = PostTransaction
+Exec = /bin/bash /usr/local/lib/cicada/preload-flatpak-apps.sh

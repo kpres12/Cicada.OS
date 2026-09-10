@@ -38,7 +38,8 @@ cicada-comms — message stores, sandboxes, and where the key really is
 
 apps: signal  simplex  element        (ids: org.signal.Signal, chat.simplex.simplex, im.riot.Riot)
 
-Cicada packages none of these. `cicada-pkg` installs them from Flathub; this
+Signal ships preloaded (same Flathub build `cicada-pkg` would otherwise
+fetch). simplex and element are not: `cicada-pkg` installs them from Flathub; this
 tool only decides how they are hosted once they exist.
 EOF
   exit 1

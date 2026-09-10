@@ -7,7 +7,7 @@ persists. Reboot or unplug the stick and it's like it never happened.
 
 - You're `cicada`, no password. Click the dock or **SETTINGS** on the top bar.
 - **WIFI** in Settings — pick a network. Telemetry stays off.
-- **Web** is Helium. The launcher only shows Cicada apps, not the full Arch menu.
+- **Web** is Helium. **Signal** and **Kleopatra** (GPG keys) are preloaded too. The launcher only shows Cicada apps, not the full Arch menu.
 - Windows tile. **CLOSE** on the bar or Alt+F4. Super+V floats one window.
 - Picked **Cicada.OS (copy to RAM)** at the boot menu instead of the default?
   That's amnesic mode — needs more RAM, and yanking the stick force-reboots.

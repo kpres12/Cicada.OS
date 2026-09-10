@@ -1,6 +1,13 @@
 # Messaging
 
-Cicada does not ship a messenger, and the decision not to is the design.
+Cicada does not **write** a messenger, and the decision not to is the design.
+Signal Desktop now ships preloaded (the same Flathub Flatpak `cicada-pkg`
+would otherwise fetch — nothing forked, nothing rewritten), so the two
+sections below still hold exactly as written: `flatpak run org.signal.Signal`
+launches it, and everything about where its store lives, what `cicada-comms
+bind`/`harden`/`shred` do to it, and the honest-verdict philosophy applies
+identically to a preloaded install. Preloading only removes the Flathub
+download step; it changes nothing about the hosting story.
 
 The hard parts of Signal are not the ratchet. They are sealed sender, private
 contact discovery, a network the people you talk to are already on, and a decade

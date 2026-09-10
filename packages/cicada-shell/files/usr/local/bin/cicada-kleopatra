@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Kleopatra — GPG key management (Qt, matches the rest of this desktop's stack;
+# see org.cicada.kleopatra.env for why network is off by default).
+set -euo pipefail
+if command -v cicada-run >/dev/null 2>&1; then
+  exec cicada-run org.cicada.kleopatra -- kleopatra "$@"
+fi
+echo "cicada-kleopatra: cicada-run missing" >&2
+exit 78

@@ -109,6 +109,8 @@ bubblewrap
 xdg-dbus-proxy
 keepassxc
 gnupg
+pinentry-qt
+kleopatra
 age
 wireguard-tools
 macchanger

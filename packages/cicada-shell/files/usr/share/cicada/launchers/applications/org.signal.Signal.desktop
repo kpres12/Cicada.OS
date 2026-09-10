@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Signal
+Comment=Private messenger (Flatpak — see docs/COMMS.md for how it's hosted here)
+Exec=flatpak run org.signal.Signal
+Icon=org.signal.Signal
+Terminal=false
+StartupNotify=true
+Categories=Network;InstantMessaging;
+StartupWMClass=Signal

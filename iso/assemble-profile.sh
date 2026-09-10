@@ -295,7 +295,7 @@ cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/USER-GUIDE.txt"
 mkdir -p "${PROFILE}/airootfs/usr/local/share/applications"
 for base in kitty.desktop pcmanfm-qt.desktop thunar.desktop org.kde.dolphin.desktop \
             alacritty.desktop foot.desktop org.gnome.Nautilus.desktop \
-            nm-connection-editor.desktop; do
+            nm-connection-editor.desktop org.kde.kleopatra.desktop; do
   cat > "${PROFILE}/airootfs/usr/local/share/applications/${base}" <<EOF
 [Desktop Entry]
 Hidden=true
@@ -479,6 +479,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/lib/cicada/lock-flatpak-overrides.sh"]="0:0:755"
   ["/usr/local/lib/cicada/heal-helium.sh"]="0:0:755"
   ["/usr/local/lib/cicada/cicada-seccomp-gen.sh"]="0:0:755"
+  ["/usr/local/lib/cicada/preload-flatpak-apps.sh"]="0:0:755"
   ["/etc/systemd/system/cicada-duress.socket"]="0:0:644"
   ["/etc/systemd/system/cicada-duress@.service"]="0:0:644"
   ["/etc/sudoers.d/cicada-profile"]="0:0:440"
@@ -495,6 +496,7 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/home/cicada/Desktop/doom.desktop"]="1000:1000:755"
   ["/home/cicada/Desktop/power.desktop"]="1000:1000:755"
   ["/usr/local/bin/cicada-doom"]="0:0:755"
+  ["/usr/local/bin/cicada-kleopatra"]="0:0:755"
   ["/usr/local/bin/cicada-power"]="0:0:755"
   ["/usr/local/bin/cicada-pkg"]="0:0:755"
   ["/usr/local/bin/cicada-pkg-helper"]="0:0:755"
