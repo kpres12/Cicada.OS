@@ -13,8 +13,8 @@ You will see two different machines:
 
 ## 1. Live USB (today)
 
-1. Confirm the stick is the 250 GB **JACKSPARROW**, then flash (macOS will say the disk is unreadable — **Eject**, never Initialize).
-2. Air: hold **Option (⌥)** → Cicada.
+1. Flash the ISO to a USB stick (macOS will say the disk is unreadable — **Eject**, never Initialize).
+2. On a Mac: hold **Option (⌥)** at the chime → Cicada. On other hardware: your firmware's boot-device menu.
 3. You are `cicada` with **no password**. Click the dock or **SETTINGS** on the top bar.
 4. Click **WIFI**, pick a network. Telemetry stays off.
 5. Windows **tile**. **CLOSE** on the bar or Alt+F4. Super+V floats one window.

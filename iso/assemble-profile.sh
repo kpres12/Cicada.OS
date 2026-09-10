@@ -282,8 +282,13 @@ if [[ -f "${ROOT}/channel/CURRENT" ]]; then
 fi
 
 mkdir -p "${PROFILE}/airootfs/usr/share/cicada"
-cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
-cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/null || true
+# FIRST-BOOT.txt is what a live session opens by default (start-here.desktop) —
+# short and general on purpose, not the whole install/duress/backup manual.
+# That full manual still ships, as USER-GUIDE.txt, since FIRST-BOOT.txt points
+# to it and the pointer needs to resolve on a stick with no network.
+cp "${ROOT}/docs/FIRST-BOOT.md" "${PROFILE}/airootfs/usr/share/cicada/FIRST-BOOT.txt"
+cp "${ROOT}/docs/FIRST-BOOT.md" "${PROFILE}/airootfs/etc/skel/FIRST-BOOT.txt" 2>/dev/null || true
+cp "${ROOT}/docs/USER.md" "${PROFILE}/airootfs/usr/share/cicada/USER-GUIDE.txt"
 
 # Also seed Hidden overrides for known Arch apps into the profile so live boots
 # are sealed before firstboot runs (paths relative to PROFILE airootfs).
