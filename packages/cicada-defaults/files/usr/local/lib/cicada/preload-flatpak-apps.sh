@@ -21,6 +21,37 @@ if ! command -v flatpak >/dev/null 2>&1; then
   exit 0
 fi
 
+# systemd-resolvconf ships /etc/resolv.conf as a symlink to
+# /run/systemd/resolve/stub-resolv.conf, which is only ever populated by a
+# *running* systemd-resolved — never true during pacstrap (no init system,
+# nothing running but this hook). DNS resolution fails for anything that
+# isn't pacman's own downloader (which the outer mkarchiso process handles
+# differently). Point resolv.conf at real nameservers just for this
+# operation, then restore exactly what was there, so the shipped image still
+# gets its DNS from systemd-resolved like every other Cicada install — this
+# must never leak a hardcoded resolver onto a real machine.
+_orig_is_link=0
+_orig_link=""
+_orig_backup=""
+if [[ -L /etc/resolv.conf ]]; then
+  _orig_is_link=1
+  _orig_link="$(readlink /etc/resolv.conf)"
+elif [[ -f /etc/resolv.conf ]]; then
+  _orig_backup="$(mktemp)"
+  cp /etc/resolv.conf "${_orig_backup}"
+fi
+_restore_resolv() {
+  rm -f /etc/resolv.conf
+  if [[ "${_orig_is_link}" == 1 ]]; then
+    ln -sf "${_orig_link}" /etc/resolv.conf
+  elif [[ -n "${_orig_backup}" ]]; then
+    mv "${_orig_backup}" /etc/resolv.conf
+  fi
+}
+trap _restore_resolv EXIT
+rm -f /etc/resolv.conf
+printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
+
 if ! flatpak remote-add --if-not-exists --system flathub \
       https://dl.flathub.org/repo/flathub.flatpakrepo; then
   echo "cicada: preload-flatpak-apps: could not add flathub remote (no network at build time?) — skipping" >&2
