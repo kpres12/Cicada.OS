@@ -18,3 +18,7 @@ channel/repo/**
 channel/keys/gnupg/
 channel/keys/batch-keygen
 channel/keys/*.sec
+
+# Python bytecode cache — never belongs in a shell/script package tree
+__pycache__/
+*.pyc
