@@ -1,6 +1,6 @@
 # Maintainer: Cicada.OS
 pkgname=cicada-install
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Cicada installer — LUKS2 onto removable disks only"
 arch=('any')

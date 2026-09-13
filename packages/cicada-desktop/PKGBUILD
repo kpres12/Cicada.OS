@@ -1,14 +1,17 @@
 # Maintainer: Cicada.OS
 # Meta-package: one unit = desk + greeter + browser stack + Cicada product layer.
 pkgname=cicada-desktop
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Cicada.OS desktop product (session, greeter, dock, files, browser hooks)"
 arch=('any')
 url="https://github.com/kpres12/Cicada.OS"
 license=('GPL-3.0-or-later')
 depends=(
-  # Product layer (file trees shipped on ISO; named for the channel story)
+  # Product layer — also built as cicada-* packages on cicada-stable
+  'cicada-shell'
+  'cicada-run'
+  'cicada-defaults'
   'hyprland'
   'hyprpaper'
   'hyprlock'

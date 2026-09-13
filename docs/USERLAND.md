@@ -10,8 +10,8 @@ Cicada does **not** rebase to NixOS / Atomic / immutable Fedora. Arch stays the 
 | Session | `cicada-login` → preferred session (`cicada-session` default; optional Sway/niri) |
 | Login | greetd + tuigreet on etched installs (live stays autologin demo) |
 | Apps | Helium pin, dock catalog, `cicada-run` scopes, `cicada-pkg` / Flatpak allowlist |
-| Product unit | Meta-package `cicada-desktop` (desk + greeter + portal stack) |
-| Updates | `cicada-update` upgrades **only** `[cicada-stable]` — not raw Arch rolling |
+| Product unit | Pacman packages on `[cicada-stable]`: `cicada-shell`, `cicada-run`, `cicada-defaults`, `cicada-profiles`, `cicada-install`, meta `cicada-desktop` |
+| Updates | `cicada-update` upgrades **only** `[cicada-stable]` — not raw Arch rolling. Product packages ship Cicada `.sig`s; Arch packages keep upstream sigs |
 | Kernel choice | Etched default = `linux-hardened` + lockdown; `linux` = Wi‑Fi/Broadcom fallback |
 | Disk unlock | `cicada-crypt` (duress + attempt cap); TPM PIN via `cicada-tpm-enroll` with passphrase fallback |
 | Verified boot | `cicada-sbctl-enroll` + pacman re-sign hook (Setup Mode; not Apple EFI) |
@@ -21,12 +21,15 @@ Cicada does **not** rebase to NixOS / Atomic / immutable Fedora. Arch stays the 
 
 ## Channel (hosted signed)
 
-1. Build ISO → `out/channel-repo/` via `scripts/channel-build-repo.sh`
-2. Sign → `scripts/channel-sign.sh out/channel-repo`
-3. Publish → `scripts/channel-publish.sh` (GitHub Release tag `channel-latest`)
-4. On machine: put the release download root in `/etc/cicada/channel-mirror.url`, then `cicada-update`
+1. Build ISO → `out/channel-repo/` via `scripts/channel-build-repo.sh` (includes `channel-build-meta.sh` for all `cicada-*` product packages)
+2. Sign → `scripts/channel-sign.sh out/channel-repo` (database + Cicada-signed product packages)
+3. Publish → `scripts/channel-publish.sh` (GitHub Release tag `channel-latest` + overflow `channel-latest-2`)
+4. Product-only refresh (no full Arch republish) → build packages in Docker, then `scripts/channel-publish-product.sh`
+5. On machine: put the release download root(s) in `/etc/cicada/channel-mirror.url`, then `cicada-update`
 
 Pubkey: `channel/keys/cicada-stable.pub` → `/etc/pacman.d/cicada-stable-key.gpg` on ISO. With the key present, `SigLevel = Required`.
+
+ISO still rsyncs product trees into airootfs for first boot. After etch, `cicada-update` can replace those trees when newer `cicada-*` packages land on the channel — that is how the desk becomes *ours* without forking Arch.
 
 ## Optional sessions
 

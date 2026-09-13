@@ -20,11 +20,13 @@ root="https://github.com/${slug}/releases/download/${TAG}"
 cat > "${notes}" <<EOF
 Cicada.OS channel mirror (${pin}).
 
-This is the tested Arch snapshot the matching ISO was built from — kernel,
-openssl, browser runtime and the rest. The database is signed with the Cicada
-stable key that ships in \`/etc/pacman.d/cicada-stable-key.gpg\`; each package
-keeps its original Arch developer signature. \`cicada-update\` syncs only this
-repository. Raw Arch rolling is not the product update path.
+This is the tested package snapshot the matching ISO was built from — kernel,
+openssl, browser runtime, and Cicada product packages (\`cicada-shell\`,
+\`cicada-run\`, …). The database is signed with the Cicada stable key that ships
+in \`/etc/pacman.d/cicada-stable-key.gpg\`. Arch packages keep their original
+developer signatures; Cicada product packages are signed with the same Cicada
+key. \`cicada-update\` syncs only this repository. Raw upstream rolling is not
+the product update path.
 
 Cicada.OS images from this release onward point here automatically — there is
 nothing to configure. Updates are pulled only when the user runs

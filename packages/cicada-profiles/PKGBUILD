@@ -1,8 +1,8 @@
 # Maintainer: Cicada.OS
 pkgname=cicada-profiles
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Cicada.OS Graphene-like user profiles (stub)"
+pkgdesc="Cicada.OS Work / personal profiles (stub)"
 arch=('any')
 url="https://github.com/cicada-os/Cicada.OS"
 license=('GPL-3.0-or-later')

@@ -1,6 +1,6 @@
 # Maintainer: Cicada.OS
 pkgname=cicada-shell
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Cicada.OS desktop shell (session, dock, settings, skel)"
 arch=('any')

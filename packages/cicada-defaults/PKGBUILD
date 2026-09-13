@@ -1,6 +1,6 @@
 # Maintainer: Cicada.OS
 pkgname=cicada-defaults
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Cicada.OS hostile privacy/security defaults"
 arch=('any')

@@ -170,7 +170,7 @@ desktop_session_picker() {
     Sway)
       if ! command -v sway >/dev/null 2>&1; then
         zenity --question --title="Install Sway?" --width=420 \
-          --text="Sway is not installed. Install from Arch repos now?" 2>/dev/null || return 0
+          --text="Sway is not installed. Install from Cicada mirrors now?" 2>/dev/null || return 0
         pkexec pacman -S --needed --noconfirm sway || {
           zenity --error --title="Cicada" --text="Could not install sway." 2>/dev/null || true
           return 1
@@ -181,7 +181,7 @@ desktop_session_picker() {
     niri)
       if ! command -v niri >/dev/null 2>&1; then
         zenity --question --title="Install niri?" --width=420 \
-          --text="niri is not installed. Install from Arch repos now?" 2>/dev/null || return 0
+          --text="niri is not installed. Install from Cicada mirrors now?" 2>/dev/null || return 0
         pkexec pacman -S --needed --noconfirm niri || {
           zenity --error --title="Cicada" --text="Could not install niri." 2>/dev/null || true
           return 1
@@ -463,7 +463,7 @@ pick="$(zenity --list --title="Settings" \
   "Brightness" "Screen brightness" \
   "Displays" "Resolution and UI scale" \
   "Appearance" "Wallpaper, dark/light, desktop icon size" \
-  "Install software…" "Official Arch package (pacman)" \
+  "Install software…" "Curated tools, Cicada mirrors, Flatpak" \
   "App permissions" "Scopes — network/files/camera per app" \
   "Camera & microphone" "Software kill — not a hardware switch" \
   "Security" "TPM, Secure Boot, updates, allocator" \

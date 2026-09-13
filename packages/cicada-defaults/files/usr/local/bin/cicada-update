@@ -71,7 +71,7 @@ if [[ ${#channel_pkgs[@]} -eq 0 ]]; then
 Your ISO pin is the product version (${pin}).
 Host a signed repo (scripts/channel-publish.sh) or reflash for a new build.
 
-Raw Arch rolling is not the Cicada update path."
+Raw mirrors outside cicada-stable are not the Cicada update path."
   exit 0
 fi
 
@@ -101,7 +101,7 @@ if [[ -n "${pin_date}" ]]; then
 
 A pin this far behind is very likely missing browser and kernel security fixes.
 Check for a newer channel release, or see docs/SECURITY_UPDATES.md for the
-supported way to pull an urgent fix straight from Arch."
+supported way to pull an urgent fix (docs/SECURITY_UPDATES.md)."
     elif (( age_days > 7 )); then
       echo "==> channel pin ${pin} is ${age_days} days old"
       info "Channel update finished (${pin}, ${age_days} days old)."

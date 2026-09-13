@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install software — Tirimid item 4 + daily apps.
-# Paths: curated Arch packages, free-form official pacman (password), or Flatpak allowlist.
+# Paths: curated packages from cicada-stable / official mirrors, free-form
+# pacman (password), or Flatpak allowlist. No AUR.
 set -euo pipefail
 
 die() {
@@ -22,12 +23,12 @@ run_helper() {
 }
 
 pick="$(zenity --list --title="Install software" \
-  --text="Curated apps (password once), or any official Arch package.
+  --text="Curated apps (password once), any package from Cicada mirrors, or Flatpak.
 No AUR. Needs Wi-Fi." \
   --column=Kind --column=Does --print-column=1 --hide-header \
   --width=560 --height=420 \
-  "Curated Arch…" "htop, git, code, python, …" \
-  "Any Arch package…" "official repo name (extra confirm)" \
+  "Curated tools…" "htop, git, code, python, …" \
+  "Any package…" "name from Cicada mirrors (extra confirm)" \
   "Any Flathub app…" "any app id — same permission floors apply" \
   "Spotify" "Flatpak — music (home denied)" \
   "Discord" "Flatpak — chat (home denied)" \
@@ -103,7 +104,7 @@ Needs network and your password." \
       || die "Could not install ${app_id}. Check the app id, Wi-Fi and your password."
     ;;
 
-  "Curated Arch…")
+  "Curated tools…")
     # Derived from the helper, never duplicated. This list used to be typed out
     # here as well, and the moment CURATED_PACMAN changed the two disagreed:
     # the menu still offered gimp and mpv after they moved to Flatpak, so the
@@ -128,7 +129,7 @@ Needs network and your password." \
     [[ ${#curated[@]} -gt 0 ]] || die "cicada-pkg: could not read the curated list from ${HELPER}"
     args=()
     for c in "${curated[@]}"; do args+=("${c}" ""); done
-    pkg="$(zenity --list --title="Curated Arch packages" \
+    pkg="$(zenity --list --title="Curated tools" \
       --text="Command-line and system tools (still needs your password).
 
 Graphical applications are installed as Flatpaks instead, so they run under
@@ -147,9 +148,9 @@ Needs your password (admin install)." \
       && zenity --info --title="Install software" --text="Installed: ${pkg}" 2>/dev/null \
       || die "Could not install ${pkg}. Check Wi-Fi and password."
     ;;
-  "Any Arch package…")
-    pkg="$(zenity --entry --title="Arch package" \
-      --text="Official package name only (no AUR).
+  "Any package…")
+    pkg="$(zenity --entry --title="Install package" \
+      --text="Package name from Cicada mirrors only (no AUR).
 
 Not on the curated list — still installable with your password.
 Examples: btop  ripgrep  docker" \
@@ -160,9 +161,9 @@ Examples: btop  ripgrep  docker" \
       die "Invalid package name: ${pkg}"
     fi
     zenity --question --title="Install ${pkg}?" \
-      --text="Install «${pkg}» from official Arch repos?
+      --text="Install «${pkg}» from Cicada mirrors?
 
-This is outside the curated list. Prefer Curated Arch… when you can.
+This is outside the curated list. Prefer Curated tools… when you can.
 Needs your password." \
       --ok-label="Install" --cancel-label="Cancel" 2>/dev/null || exit 0
     run_helper install-any "${pkg}" \
