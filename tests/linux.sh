@@ -50,6 +50,7 @@ CASES=(
   # The installer writes to block devices; these guards need real loop devices,
   # a real GPT and real filesystems to prove it leaves the neighbours alone.
   "install-guards:util-linux"
+  "pkg-pin:coreutils sed grep diffutils"
 )
 
 want="${1:-}"

@@ -69,6 +69,18 @@ grep -q 'UNSHARE_PID=0' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-
   || die "Helium/Tor must set UNSHARE_PID=0 (zygote dies with --unshare-pid)"
 grep -q 'org.cicada.helium|org.torproject.torbrowser' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
   || die "Helium/Tor must be boxed without unshare-pid"
+grep -qE '^[[:space:]]*(bind_rw|bind_opt)[[:space:]]+/dev/shm|--(ro-)?bind[[:space:]]+/dev/shm' \
+  "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  && die "cicada-run must not bind the host /dev/shm (one shm directory shared by every scope)"
+for f in packages/cicada-defaults/files/usr/local/bin/cicada-profile-helper \
+         packages/cicada-install/files/usr/local/lib/cicada/install-chroot.sh; do
+  grep -E 'useradd .*-G ' "${ROOT}/${f}" | grep -qE '[ ,]input(,| )' \
+    && die "${f}: users must not join the input group (keystroke read access)"
+done
+grep -qE '^m[[:space:]]+cicada[[:space:]]+input' "${ROOT}/iso/overlay/airootfs/usr/lib/sysusers.d/cicada.conf" \
+  && die "live user must not join the input group"
+grep -qE '^[^#]*NOPASSWD:.*passwd' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
+  && die "resetting a profile password must cost the owner's password"
 grep -q 'STORE_SYS=' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
   || die "cicada-run must load system scope floors"
 test -f "${ROOT}/packages/cicada-shell/files/usr/share/cicada/scopes/org.cicada.helium.env" \
@@ -217,7 +229,13 @@ grep -q '^NETWORK=allow' "${hel}" || die "Helium NETWORK must be allow"
 grep -q '^CAMERA=deny' "${hel}" || die "Helium CAMERA deny"
 grep -q '^NETWORK=deny' "${kp}" || die "KeePassXC NETWORK deny"
 grep -q '^FILES=allow' "${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes/org.cicada.files.env" || die "Files scope needs home"
-say "scopes (browser works, keepass net-off, files home, default-deny)"
+# Every scope, not a sample: the skel copy is what a new user starts from and
+# the system copy is the floor, and one that drifts looser than the other is a
+# permission nobody decided to grant.
+diff -r "${ROOT}/packages/cicada-shell/files/usr/share/cicada/scopes" \
+        "${ROOT}/packages/cicada-shell/files/etc/skel/.local/share/cicada/scopes" >/dev/null \
+  || die "skel scopes drifted from the system floors (diff -r the two trees)"
+say "scopes (browser works, keepass net-off, files home, default-deny, skel == floors)"
 
 echo "==> cicada-run is not bind-all"
 grep -q -- '--bind / /' "${RUN_BIN}/cicada-run" && die "cicada-run still bind-mounts /" || true

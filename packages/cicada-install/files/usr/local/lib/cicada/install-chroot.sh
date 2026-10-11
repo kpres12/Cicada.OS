@@ -153,7 +153,7 @@ fi
 }
 
 # User: no autologin. Empty live password must not follow onto disk.
-id cicada >/dev/null 2>&1 || useradd -m -G wheel,video,audio,storage,rfkill,network,input,users -s /bin/bash cicada
+id cicada >/dev/null 2>&1 || useradd -m -G wheel,video,audio,storage,rfkill,network,users -s /bin/bash cicada
 # Installed: passworded sudo. Never keep live NOPASSWD.
 rm -f /etc/sudoers.d/cicada-live
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel

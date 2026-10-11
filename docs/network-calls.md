@@ -8,6 +8,7 @@ Anything not on this list is a bug. NetworkManager connectivity checks are disab
 | TLS to user-chosen sites | 443/tcp | Browser, pacman, git | User |
 | systemd-timesyncd | NTP (udp/123) to Arch NTP | TLS cert validity | Allowed. Do not disable or HTTPS breaks. |
 | pacman -Sy | Arch HTTPS mirrors | Updates | Manual / install |
+| `cicada-pkg` install (pacman path) | `archive.archlinux.org` 443/tcp | Extra packages from the channel snapshot's own date, not today's mirrors | User click / password |
 | WireGuard handshake | udp/51820 to configured endpoint | `cicada-vpn on` only | Opt-in |
 | iwd/NM scan | local 802.11 | SSID list | After radio unblock |
 

@@ -256,7 +256,12 @@ else
 fi
 
 bind_rw /dev/dri
-bind_rw /dev/shm
+# /dev/shm is deliberately NOT bound. `--dev /dev` above already gives the
+# sandbox its own empty tmpfs there, and binding the host's over it put every
+# scope — and every unsandboxed process of this user — in one shared POSIX shm
+# directory: the same cross-scope channel --unshare-ipc closes for SysV, left
+# open one line later. Wayland buffers and PipeWire memfds travel as file
+# descriptors over their sockets, so nothing needs the host directory.
 bind_opt /run/systemd/resolve
 
 # XDG_RUNTIME_DIR is always a tmpfs with named sockets bound back in, for both

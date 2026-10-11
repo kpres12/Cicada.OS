@@ -16,7 +16,11 @@
 %wheel ALL=(root) PASSWD: /usr/local/bin/cicada-profile-helper dispose *
 
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-av-kill
-%wheel ALL=(root) NOPASSWD: /usr/bin/passwd cicada-work
+# `passwd cicada-work` is NOT listed, so it costs the owner's password like any
+# other sudo call. It used to be NOPASSWD, which let anything running as the
+# owner silently replace the Work profile's password — the same routed-around
+# gate as dispose above. Both callers (Settings, first-run) already run it in a
+# terminal, so the prompt has somewhere to appear.
 %wheel ALL=(root) NOPASSWD: /usr/local/lib/cicada/heal-helium.sh
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-malloc
 # Both directions stay passwordless: cicada-lock closes the gate on the way in

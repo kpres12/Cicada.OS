@@ -19,7 +19,9 @@ on:
 jobs:
   build-twice-and-diff:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # Two full builds finish in under an hour. 180 let a hung build burn three
+    # runner-hours every Monday for a month before anyone looked.
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
 

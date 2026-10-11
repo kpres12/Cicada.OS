@@ -52,7 +52,54 @@ trap _restore_resolv EXIT
 rm -f /etc/resolv.conf
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 
-if ! flatpak remote-add --if-not-exists --system flathub \
+# Nothing flatpak starts may hold this script's stdout. pacman reads a hook's
+# output until EOF on the pipe, not until the hook exits, so one helper that
+# flatpak leaves behind (it daemonises several, and they inherit every open
+# descriptor) keeps the pipe open and pacman waits on it forever. That is what
+# the weekly reproducible-build job did four times running: the last line below
+# printed, the script exited 0, and the build sat silent until the 3 h timeout.
+#
+# So flatpak writes to a file and the file is replayed afterwards. A survivor
+# then holds a log nobody is waiting on.
+_log="$(mktemp)"
+_run() {
+  local rc=0
+  "$@" </dev/null >>"${_log}" 2>&1 || rc=$?
+  cat "${_log}"
+  : > "${_log}"
+  return "${rc}"
+}
+
+# The survivors are also reaped, because they keep the chroot busy for the
+# unmount mkarchiso does next. "Ours" is narrow on purpose: started after this
+# point AND rooted in the same directory as this script. /proc here can be the
+# build host's own when iso/build.sh runs natively, and nothing outside the
+# chroot shares its root inode — so this cannot reach a host process.
+_root_id="$(stat -L -c '%d:%i' / 2>/dev/null || true)"
+_pids_before=" $(cd /proc 2>/dev/null && echo [0-9]*) "
+_reap_strays() {
+  local d pid sig
+  [[ -n "${_root_id}" ]] || return 0
+  for sig in TERM KILL; do
+    for d in /proc/[0-9]*; do
+      pid="${d#/proc/}"
+      [[ "${pid}" == "$$" || "${pid}" == "${BASHPID}" ]] && continue
+      [[ "${_pids_before}" == *" ${pid} "* ]] && continue
+      [[ "$(stat -L -c '%d:%i' "${d}/root" 2>/dev/null)" == "${_root_id}" ]] || continue
+      kill "-${sig}" "${pid}" 2>/dev/null || true
+    done
+    [[ "${sig}" == TERM ]] && sleep 1
+  done
+  return 0
+}
+_finish() {
+  _reap_strays
+  rm -f "${_log}"
+  _restore_resolv
+}
+trap _finish EXIT
+
+if ! _run flatpak remote-add --if-not-exists --system flathub \
       https://dl.flathub.org/repo/flathub.flatpakrepo; then
   echo "cicada: preload-flatpak-apps: could not add flathub remote (no network at build time?) — skipping" >&2
   exit 0
@@ -60,7 +107,7 @@ fi
 
 fail=0
 for app in "${APPS[@]}"; do
-  if flatpak install -y --system --noninteractive flathub "${app}"; then
+  if _run flatpak install -y --system --noninteractive flathub "${app}"; then
     echo "==> cicada: preloaded ${app}"
   else
     echo "cicada: preload-flatpak-apps: failed to preload ${app} — it will be missing until installed via cicada-pkg" >&2

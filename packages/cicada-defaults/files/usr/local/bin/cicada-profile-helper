@@ -16,7 +16,11 @@ case "${cmd}" in
   create|create-locked)
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }
     id "${user}" >/dev/null 2>&1 && { echo "exists: ${user}" >&2; exit 1; }
-    useradd -m -G video,audio,input,storage,rfkill,network,users -s /bin/bash "${user}"
+    # No `input` group. It grants read on /dev/input/event*, which is every
+    # keystroke on the machine regardless of which VT has focus — a Work or
+    # Burner session left running would log the owner's sudo password and
+    # duress PIN. The compositor gets its devices from logind, not from groups.
+    useradd -m -G video,audio,storage,rfkill,network,users -s /bin/bash "${user}"
     if [[ -d /etc/skel ]]; then
       rsync -a /etc/skel/ "/home/${user}/"
       chown -R "${user}:${user}" "/home/${user}"

@@ -154,9 +154,52 @@ validate_pkg_name() {
   esac
 }
 
+# A package added later has to come from the same day as everything already on
+# the machine. The base system is the channel snapshot; Arch's live mirrors are
+# however many weeks past it. `pacman -Sy <pkg>` against those is a partial
+# upgrade: the new package is built against today's libraries, and pacman either
+# leaves the old ones (it fails to load) or pulls one newer library in under
+# everything else that was linked against the old one (they fail to load). The
+# wider the gap, the more likely — and the gap is the channel's age.
+#
+# The Arch Linux Archive keeps every day's repositories at a dated URL, signed
+# by the same Arch keys. So core/extra are pointed at the snapshot's own date
+# for this one transaction, through a throwaway config; /etc/pacman.conf is not
+# touched, and [cicada-stable] stays listed first exactly as it is there.
+ARCHIVE_ROOT=https://archive.archlinux.org/repos
+
+pinned_pacman_conf() {
+  local pin conf server
+  pin="$(cat /etc/cicada/channel 2>/dev/null || cat /usr/share/cicada/channel/CURRENT 2>/dev/null || true)"
+  [[ "${pin}" =~ ([0-9]{4})\.([0-9]{2})\.([0-9]{2}) ]] || return 1
+  server="${ARCHIVE_ROOT}/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${BASH_REMATCH[3]}/\$repo/os/\$arch"
+  [[ -f /etc/pacman.conf ]] || return 1
+  # /run/cicada, not /tmp — same reasoning as cicada-update's sync log.
+  mkdir -p /run/cicada && chmod 700 /run/cicada
+  conf="$(mktemp /run/cicada/pacman-pinned.XXXXXX)" || return 1
+  sed -E "s|^[[:space:]]*Include[[:space:]]*=[[:space:]]*/etc/pacman\.d/mirrorlist[[:space:]]*$|Server = ${server}|" \
+    /etc/pacman.conf > "${conf}"
+  # A pacman.conf with hand-written Server lines has nothing to rewrite. Say
+  # no rather than hand back a config that is quietly still live.
+  grep -q "^Server = ${ARCHIVE_ROOT}/" "${conf}" || { rm -f "${conf}"; return 1; }
+  printf '%s' "${conf}"
+}
+
 pacman_install() {
-  local pkg="$1"
+  local pkg="$1" conf="" rc=0
   export LANG=C
+  if conf="$(pinned_pacman_conf)"; then
+    # -Syy, not -Sy: pacman skips a database that is not newer than its local
+    # copy, and after any cicada-update the local copy is the live one — so a
+    # single y would keep today's database and install today's package.
+    pacman --config "${conf}" -Syy --noconfirm --needed "${pkg}" || rc=$?
+    rm -f "${conf}"
+    return "${rc}"
+  fi
+  # No dated pin to match. Less protection, no leaked secret: degrade visibly.
+  echo "cicada-pkg-helper: no dated channel pin (or no mirrorlist Include to rewrite) —" >&2
+  echo "  installing ${pkg} from the live Arch mirrors. If the base system is an older" >&2
+  echo "  snapshot this is a partial upgrade; run cicada-update first." >&2
   pacman -Sy --noconfirm --needed "${pkg}"
 }
 

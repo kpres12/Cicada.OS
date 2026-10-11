@@ -71,10 +71,14 @@
       assemble stage is proven byte-identical across independent runs
       (`tests/reproducible-assemble.sh`, in CI). `.github/workflows/
       reproducible-build.yml` builds the actual ISO twice and diffs it, but
-      is manual/weekly (a full build is minutes and gigabytes even natively)
-      and has not yet been run — mkarchiso/squashfs/xorriso have their own
-      timestamp and ordering surface this hasn't touched, so the ISO itself
-      is still unproven
+      is manual/weekly (a full build is minutes and gigabytes even natively).
+      It has run, and the answer so far is **no**: the one honest comparison
+      (2026-09-09) produced two ISOs that differ from byte 32947 —
+      mkarchiso/squashfs/xorriso have their own timestamp and ordering surface
+      this hasn't touched. Every scheduled run after that hung instead of
+      comparing, on a Flatpak helper holding the preload hook's output pipe
+      (fixed in `preload-flatpak-apps.sh`); the next run is the first that can
+      say where the two images actually diverge
 - [ ] Immutable signed rootfs (the only thing dm-verity would add over FDE — a
       redesign, not a patch; see docs/GRAPHENE_PARITY.md)
 - [ ] Tier-3 hardware docs (Librem / NitroPad / Heads)
