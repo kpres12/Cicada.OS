@@ -81,6 +81,12 @@ grep -qE '^m[[:space:]]+cicada[[:space:]]+input' "${ROOT}/iso/overlay/airootfs/u
   && die "live user must not join the input group"
 grep -qE '^[^#]*NOPASSWD:.*passwd' "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile" \
   && die "resetting a profile password must cost the owner's password"
+grep -qE 'openvt .*-- su ' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-profile-helper" \
+  && die "profile login must not run su as root (no password asked) — drop privilege first"
+grep -q 'cicada|cicada-\*)' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-update" \
+  || die "cicada-update must take existing Cicada accounts out of the input group"
+grep -q 'CICADA_UNSHARE_PID:-}" == 1 ]] && UNSHARE_PID=1' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "CICADA_UNSHARE_PID may only ever add the PID namespace"
 grep -q 'STORE_SYS=' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
   || die "cicada-run must load system scope floors"
 test -f "${ROOT}/packages/cicada-shell/files/usr/share/cicada/scopes/org.cicada.helium.env" \

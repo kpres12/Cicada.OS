@@ -24,6 +24,24 @@ if [[ -x /usr/local/lib/cicada/cicada-channel-enable.sh ]]; then
   /usr/local/lib/cicada/cicada-channel-enable.sh /etc/pacman.conf || true
 fi
 
+# One-time repair for machines installed before the `input` group was dropped
+# from every Cicada account. Membership is read access to /dev/input/event* —
+# every keystroke on the machine, whichever VT has focus — and useradd only runs
+# once, so a fixed installer does nothing for a disk that already exists. This
+# is the one root-run path every installed machine passes through. Only the
+# accounts Cicada itself created; takes effect at that user's next login.
+if getent group input >/dev/null 2>&1; then
+  IFS=',' read -r -a _input_members <<<"$(getent group input | cut -d: -f4)"
+  for _u in "${_input_members[@]}"; do
+    case "${_u}" in
+      cicada|cicada-*)
+        gpasswd -d "${_u}" input >/dev/null 2>&1 \
+          && echo "==> removed ${_u} from the input group (keystroke read access; applies at next login)"
+        ;;
+    esac
+  done
+fi
+
 pin="$(cat /etc/cicada/channel 2>/dev/null || cat /usr/share/cicada/channel/CURRENT 2>/dev/null || echo unknown)"
 echo "==> channel pin: ${pin}"
 

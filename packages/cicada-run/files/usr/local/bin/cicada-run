@@ -203,6 +203,16 @@ UNSHARE_PID=1
 case "${APP_ID}" in
   org.cicada.helium|org.torproject.torbrowser|org.signal.Signal|im.riot.Riot) UNSHARE_PID=0 ;;
 esac
+# What that exemption costs: these four share the host PID namespace, so each
+# can list every process of this user and read its command line. The exemption
+# was measured before the browser was launched with --no-sandbox, and a zygote
+# that no longer builds its own namespaces may not need it — headless Chromium
+# under these exact bwrap flags forks renderers fine with --unshare-pid. That is
+# not a window on real hardware, so the default stays put and this is the way
+# to find out:   CICADA_UNSHARE_PID=1 cicada-run org.cicada.helium -- chromium
+# It can only tighten. There is no value that removes the namespace from an app
+# that already has one.
+[[ "${CICADA_UNSHARE_PID:-}" == 1 ]] && UNSHARE_PID=1
 
 args=(
   bwrap

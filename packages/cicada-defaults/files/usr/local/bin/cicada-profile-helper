@@ -40,7 +40,19 @@ case "${cmd}" in
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }
     id "${user}" >/dev/null 2>&1 || { echo "missing ${user}" >&2; exit 1; }
     command -v openvt >/dev/null || { echo "openvt missing (kbd)" >&2; exit 1; }
-    openvt -c 3 -s -- su - "${user}" -c 'Hyprland || bash'
+    command -v setpriv >/dev/null || { echo "setpriv missing (util-linux)" >&2; exit 1; }
+    # This verb is NOPASSWD, so the gate has to live here and not in the caller
+    # — the same lesson as dispose. `su` run by root asks nothing, which made
+    # "open a session as the Work user" free for anything executing as the
+    # owner. Dropping to nobody first means su itself authenticates, on the new
+    # VT, against the PROFILE's password: the one secret the owner's processes
+    # do not hold. A create-locked account therefore cannot be entered until
+    # its password is set, which is what "locked" was supposed to mean.
+    #
+    # 65534 by number, because the group is `nobody` on Arch and `nogroup`
+    # elsewhere. No --no-new-privs: su is setuid and has to stay that way.
+    openvt -c 3 -s -- setpriv --reuid 65534 --regid 65534 --clear-groups -- \
+      su - "${user}" -c 'Hyprland || bash'
     ;;
   dispose)
     valid "${name}" || { echo "bad profile name" >&2; exit 1; }
