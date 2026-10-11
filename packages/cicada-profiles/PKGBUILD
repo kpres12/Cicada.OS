@@ -1,6 +1,6 @@
 # Maintainer: Cicada.OS
 pkgname=cicada-profiles
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Cicada.OS Work / personal profiles (stub)"
 arch=('any')

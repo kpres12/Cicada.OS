@@ -195,11 +195,54 @@ PY
 fi
 
 rsync -a "${ROOT}/iso/overlay/airootfs/" "${PROFILE}/airootfs/"
-rsync -a "${ROOT}/packages/cicada-defaults/files/" "${PROFILE}/airootfs/"
-rsync -a "${ROOT}/packages/cicada-shell/files/" "${PROFILE}/airootfs/"
-rsync -a "${ROOT}/packages/cicada-profiles/files/" "${PROFILE}/airootfs/"
-rsync -a "${ROOT}/packages/cicada-run/files/" "${PROFILE}/airootfs/"
-rsync -a "${ROOT}/packages/cicada-install/files/" "${PROFILE}/airootfs/"
+
+# Prefer pacman-owned product packages when the Arch builder can makepkg.
+# On macOS assemble (no makepkg) we rsync the same trees — same bytes, but
+# pacman does not track them until the next cicada-update pulls cicada-*.
+PRODUCT_REPO="${PROFILE}/cicada-product-repo"
+PRODUCT_PACMAN=0
+if [[ "${CICADA_PRODUCT_PACMAN:-1}" == "1" ]] \
+   && command -v makepkg >/dev/null 2>&1 \
+   && [[ -x "${ROOT}/scripts/iso-stage-product-pkgs.sh" || -f "${ROOT}/scripts/iso-stage-product-pkgs.sh" ]]; then
+  echo "==> staging cicada-* product packages for pacstrap"
+  bash "${ROOT}/scripts/iso-stage-product-pkgs.sh" "${PRODUCT_REPO}" || true
+  if [[ -f "${PRODUCT_REPO}/.cicada-product-pacman" ]]; then
+    PRODUCT_PACMAN=1
+  fi
+fi
+
+if [[ "${PRODUCT_PACMAN}" -eq 1 ]]; then
+  echo "==> product trees via pacman (cicada-shell, cicada-defaults, …)"
+  # Local repo for mkarchiso pacstrap only — not embedded in the squashfs.
+  {
+    echo ""
+    echo "[cicada-product]"
+    echo "SigLevel = Optional TrustAll"
+    echo "Server = file://${PRODUCT_REPO}"
+  } >> "${PROFILE}/pacman.conf"
+  for p in cicada-run cicada-defaults cicada-profiles cicada-install cicada-shell cicada-desktop; do
+    if compgen -G "${PRODUCT_REPO}/${p}-*.pkg.tar.*" >/dev/null; then
+      echo "${p}" >> "${PROFILE}/packages.x86_64"
+    fi
+  done
+  if compgen -G "${PRODUCT_REPO}/cicada-malloc-*.pkg.tar.*" >/dev/null; then
+    echo "cicada-malloc" >> "${PROFILE}/packages.x86_64"
+  fi
+  # Skel for the live user still has to be materialised; packages install to
+  # /etc/skel inside the pacstrap root, but home/cicada is created from the
+  # profile airootfs. Stage skel here from the package source so first boot
+  # matches, then pacstrap's package content is authoritative under /usr.
+  mkdir -p "${PROFILE}/airootfs/etc/skel"
+  rsync -a "${ROOT}/packages/cicada-shell/files/etc/skel/" \
+    "${PROFILE}/airootfs/etc/skel/"
+else
+  echo "==> product trees via rsync (makepkg unavailable — Mac assemble or CICADA_PRODUCT_PACMAN=0)"
+  rsync -a "${ROOT}/packages/cicada-defaults/files/" "${PROFILE}/airootfs/"
+  rsync -a "${ROOT}/packages/cicada-shell/files/" "${PROFILE}/airootfs/"
+  rsync -a "${ROOT}/packages/cicada-profiles/files/" "${PROFILE}/airootfs/"
+  rsync -a "${ROOT}/packages/cicada-run/files/" "${PROFILE}/airootfs/"
+  rsync -a "${ROOT}/packages/cicada-install/files/" "${PROFILE}/airootfs/"
+fi
 
 # Live user must get skel (dock, hypr, scopes). Overlay only ships .bash_profile.
 mkdir -p "${PROFILE}/airootfs/home/cicada"

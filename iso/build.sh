@@ -35,13 +35,18 @@ fi
 
 "${ROOT}/iso/assemble-profile.sh"
 
-if [[ -x "${ROOT}/scripts/build-hardened-malloc.sh" ]]; then
+# malloc: prefer cicada-malloc from the product pacstrap repo; otherwise bake
+# the .so into airootfs (rsync / legacy path).
+if compgen -G "${PROFILE}/cicada-product-repo/cicada-malloc-*.pkg.tar.*" >/dev/null 2>&1; then
+  echo "==> hardened_malloc via cicada-malloc package (pacstrap)"
+elif [[ -x "${ROOT}/scripts/build-hardened-malloc.sh" ]]; then
   "${ROOT}/scripts/build-hardened-malloc.sh" "${PROFILE}/airootfs" || \
     echo "==> hardened_malloc build skipped (ISO still boots; preload is a no-op)"
 fi
 
 # Official Helium tarball (hash-pinned). Fail the ISO if this cannot land —
-# Chromium is no longer the product browser.
+# Chromium is no longer the product browser. Channel ships cicada-helium for
+# post-install upgrades; the ISO still embeds /opt/helium for first boot.
 "${ROOT}/scripts/install-helium.sh" "${PROFILE}/airootfs"
 
 # Official Chocolate Doom + Freedoom (hash-pinned). Tirimid item 6 — required.
@@ -65,6 +70,13 @@ done
   exit 1
 }
 wall="${PROFILE}/airootfs/usr/share/cicada/wallpapers/cicada-3301.png"
+wall_src="${ROOT}/packages/cicada-shell/files/usr/share/cicada/wallpapers/cicada-3301.png"
+if [[ ! -f "${wall}" && -f "${wall_src}" ]]; then
+  # Pacman-owned product path: wallpaper arrives via cicada-shell pacstrap;
+  # stage a copy so this preflight (before mkarchiso) still fails closed.
+  mkdir -p "$(dirname "${wall}")"
+  cp -a "${wall_src}" "${wall}"
+fi
 [[ -f "${wall}" ]] || {
   echo "error: wallpaper missing at ${wall}" >&2
   exit 1

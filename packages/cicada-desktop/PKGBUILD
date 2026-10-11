@@ -1,7 +1,7 @@
 # Maintainer: Cicada.OS
 # Meta-package: one unit = desk + greeter + browser stack + Cicada product layer.
 pkgname=cicada-desktop
-pkgver=1.1.0
+pkgver=1.2.0
 pkgrel=1
 pkgdesc="Cicada.OS desktop product (session, greeter, dock, files, browser hooks)"
 arch=('any')
@@ -47,6 +47,8 @@ depends=(
   'qt6ct'
 )
 optdepends=(
+  'cicada-helium: default browser (Helium), hash-pinned'
+  'cicada-malloc: GrapheneOS hardened_malloc, opt-in via cicada-malloc'
   'sway: optional Cicada.OS (Sway) session via Settings'
   'niri: optional Cicada.OS (niri) session via Settings'
 )

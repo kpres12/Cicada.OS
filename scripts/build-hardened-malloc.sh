@@ -3,7 +3,19 @@
 # Not AUR. Upstream: https://github.com/GrapheneOS/hardened_malloc
 set -euo pipefail
 DEST="${1:?airootfs}"
-TAG="${HARDENED_MALLOC_TAG:-14}"
+TAG="${HARDENED_MALLOC_TAG:-}"
+if [[ -z "${TAG}" ]]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  lock="${HARDENED_MALLOC_LOCK:-${ROOT}/channel/malloc.lock}"
+  [[ -f "${lock}" ]] || lock="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/malloc.lock"
+  if [[ -f "${lock}" ]]; then
+    while IFS='=' read -r k v; do
+      [[ -z "${k}" || "${k}" == \#* ]] && continue
+      [[ "${k}" == tag ]] && TAG="${v}"
+    done < "${lock}"
+  fi
+fi
+TAG="${TAG:-14}"
 WORK="${HARDENED_MALLOC_WORK:-/tmp/hardened_malloc-src}"
 
 if ! command -v gcc >/dev/null 2>&1; then

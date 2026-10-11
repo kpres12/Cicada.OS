@@ -106,9 +106,13 @@ else
 fi
 
 if grep -qw apparmor /sys/kernel/security/lsm 2>/dev/null; then
-  [[ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" == "Y" ]] \
-    && g "apparmor" "in the LSM stack and enabled" \
-    || y "apparmor" "in the LSM stack but disabled"
+  if [[ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" == "Y" ]]; then
+    cicada_aa="$(find /etc/apparmor.d -maxdepth 1 -name 'cicada-*' ! -name '*.README' 2>/dev/null | wc -l | tr -d ' ')"
+    enforced="$(grep -c ' (enforce)' /sys/kernel/security/apparmor/profiles 2>/dev/null || echo 0)"
+    g "apparmor" "LSM on; ${cicada_aa} Cicada profile file(s); ${enforced} profile(s) enforcing"
+  else
+    y "apparmor" "in the LSM stack but disabled"
+  fi
 elif [[ -d /run/archiso ]]; then
   y "apparmor" "off on live by design — installed systems boot with lsm=...,apparmor"
 else

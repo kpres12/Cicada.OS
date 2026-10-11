@@ -1,5 +1,5 @@
 # Official Helium Linux tarball. Not AUR.
-# Source: https://github.com/imputnet/helium-linux/releases/tag/0.15.4.1
-version=0.15.4.1
-url=https://github.com/imputnet/helium-linux/releases/download/0.15.4.1/helium-0.15.4.1-x86_64_linux.tar.xz
-sha256=ab1f761b65567dddd062bd0462d342a0994d7c6380be1ef5710b8513903c1f3c
+# Source: https://github.com/imputnet/helium-linux/releases/tag/0.19.2.1
+version=0.19.2.1
+url=https://github.com/imputnet/helium-linux/releases/download/0.19.2.1/helium-0.19.2.1-x86_64_linux.tar.xz
+sha256=707cf319e3a3d2aa061ca15d754877bd18b8b289208738c829fcb0873bc7ecdb

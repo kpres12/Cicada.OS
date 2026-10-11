@@ -1,0 +1,31 @@
+#----------------------------------------------------------------
+# Cicada AppArmor profile — cicada-run (launcher)
+# Soft profile: allow executing helpers; real confinement is bwrap + scopes.
+#----------------------------------------------------------------
+#include <tunables/global>
+
+profile cicada-run /usr/local/bin/cicada-run {
+  #include <abstractions/base>
+  #include <abstractions/bash>
+  #include <abstractions/nameservice>
+
+  /usr/local/bin/cicada-run rix,
+  /usr/bin/bwrap rix,
+  /usr/bin/xdg-dbus-proxy rix,
+  /usr/bin/env rix,
+  /usr/bin/bash rix,
+  /usr/local/bin/** rix,
+  /usr/bin/** rix,
+  /usr/share/cicada/** r,
+  /etc/cicada/** r,
+  /run/cicada/** rwk,
+  /tmp/** rwk,
+  owner @{HOME}/.local/share/cicada/** r,
+  owner @{HOME}/.config/** r,
+
+  capability setuid,
+  capability setgid,
+  capability sys_admin,
+
+  deny /etc/shadow r,
+}

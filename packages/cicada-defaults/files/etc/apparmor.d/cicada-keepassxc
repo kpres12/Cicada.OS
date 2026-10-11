@@ -1,0 +1,32 @@
+#----------------------------------------------------------------
+# Cicada AppArmor profile — KeePassXC
+#----------------------------------------------------------------
+#include <tunables/global>
+
+profile cicada-keepassxc /usr/bin/keepassxc {
+  #include <abstractions/base>
+  #include <abstractions/fonts>
+  #include <abstractions/nameservice>
+  #include <abstractions/ssl_certs>
+  #include <abstractions/dbus-session>
+  #include <abstractions/dconf>
+
+  /usr/bin/keepassxc mr,
+  /usr/lib/keepassxc/** mr,
+  /usr/share/keepassxc/** r,
+  /usr/share/** r,
+  /etc/fonts/** r,
+  /tmp/** rwk,
+  /dev/dri/** rw,
+
+  owner @{HOME}/.config/keepassxc/** rwk,
+  owner @{HOME}/.cache/keepassxc/** rwk,
+  owner @{HOME}/Documents/** rw,
+  owner @{HOME}/Downloads/** rw,
+  owner @{HOME}/**.kdbx rw,
+  owner @{HOME}/**.kdbx.lock rwk,
+
+  deny @{HOME}/.ssh/** rwx,
+  deny /etc/shadow r,
+  deny network,
+}

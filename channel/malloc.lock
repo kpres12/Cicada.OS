@@ -1,0 +1,4 @@
+# GrapheneOS hardened_malloc pin. Not AUR.
+# Upstream: https://github.com/GrapheneOS/hardened_malloc
+tag=14
+url=https://github.com/GrapheneOS/hardened_malloc

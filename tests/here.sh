@@ -162,11 +162,21 @@ say "hyprland 0.56 / tile / no blur / launcher monopoly"
 echo "==> package policy"
 pkgs="${ROOT}/iso/packages.cicada.x86_64"
 grep -qx 'hardened_malloc' "${pkgs}" && die "AUR hardened_malloc in ISO list" || true
-grep -qiE '^helium' "${pkgs}" && die "do not pacman AUR helium; use channel/helium.lock" || true
+grep -qiE '^helium$' "${pkgs}" && die "do not pacman AUR helium; use cicada-helium / channel/helium.lock" || true
 grep -qx 'chromium' "${pkgs}" && die "Arch chromium must not be on the ISO; Helium is the browser" || true
 test -f "${ROOT}/channel/helium.lock" || die "helium.lock missing"
 grep -q '^sha256=' "${ROOT}/channel/helium.lock" || die "helium.lock missing sha256"
+test -f "${ROOT}/channel/malloc.lock" || die "malloc.lock missing"
+test -f "${ROOT}/channel/hyprland.lock" || die "hyprland.lock missing"
+test -f "${ROOT}/packages/cicada-helium/PKGBUILD" || die "cicada-helium PKGBUILD missing"
+test -f "${ROOT}/packages/cicada-malloc/PKGBUILD" || die "cicada-malloc PKGBUILD missing"
 grep -q 'install-helium.sh' "${ROOT}/iso/build.sh" || die "ISO build does not install Helium"
+grep -q 'iso-stage-product-pkgs\|cicada-product' "${ROOT}/iso/assemble-profile.sh" \
+  || die "assemble-profile must stage pacman-owned product packages"
+test -f "${ROOT}/packages/cicada-defaults/files/etc/apparmor.d/cicada-helium" \
+  || die "AppArmor cicada-helium profile missing"
+test -f "${ROOT}/scripts/check-helium-upstream.sh" || die "check-helium-upstream.sh missing"
+test -f "${ROOT}/scripts/channel-pin-hyprland.sh" || die "channel-pin-hyprland.sh missing"
 grep -q '/opt/helium/chrome' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/chromium" || die "wrapper must prefer /opt/helium"
 grep -q 'CICADA_RADIOS_OFF_DEFAULT=0' "${ROOT}/packages/cicada-defaults/files/etc/cicada/defaults.env" || die "Wi-Fi must not be rfkill-blocked at boot"
 grep -q 'cicada-radios-off.service' "${ROOT}/iso/assemble-profile.sh" && die "radios-off must not be enabled on live" || true
@@ -640,6 +650,11 @@ grep -q 'sys/kernel/security/lsm' "${CICADA_BIN}/cicada-firstboot" \
 grep -q 'sys/kernel/security/lsm' "${CICADA_BIN}/cicada-status" \
   || die "cicada-status does not report whether apparmor actually enforces"
 say "lsm= on the installed cmdline; firstboot and status verify rather than assume"
+aa="${ROOT}/packages/cicada-defaults/files/etc/apparmor.d"
+for p in cicada-helium cicada-keepassxc cicada-tor-browser cicada-run; do
+  test -f "${aa}/${p}" || die "AppArmor profile missing: ${p}"
+done
+say "Cicada AppArmor profiles present for Helium / KeePassXC / Tor / cicada-run"
 
 echo "==> duress reachable from a session, not just at power-on"
 dc="${CICADA_BIN}/cicada-duress-check"

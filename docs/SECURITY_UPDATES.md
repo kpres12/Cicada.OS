@@ -25,6 +25,7 @@ there is nothing to do until Arch has built it.
 | Class | What it is | Target |
 |---|---|---|
 | **A** | Actively exploited, or remote code execution in something a scope can reach: browser, kernel, systemd, glibc, OpenSSL, bubblewrap, Tor, cryptsetup, sudo, polkit, nftables | **72 hours** to a published channel build |
+| **A (Helium)** | New imputnet/helium-linux release (browser is not Arch chromium) | **72 hours** to bump `channel/helium.lock`, rebuild `cicada-helium`, publish via `channel-publish-product.sh` — check with `scripts/check-helium-upstream.sh` |
 | **B** | Other CVEs with a plausible path from a sandboxed app or the network | **14 days**, folded into the next snapshot |
 | **C** | Everything else | next snapshot, **≤ 30 days** |
 
@@ -54,7 +55,9 @@ are still configured on the machine (`[cicada-stable]` is simply listed first).
 Pull the single package from Arch:
 
 ```
-sudo pacman -Sy extra/chromium        # or whichever package
+sudo pacman -Sy extra/linux           # kernel example — not the browser
+# Browser: never pull Arch chromium. Re-pin Helium (channel/helium.lock) or
+# wait for cicada-helium on the channel.
 ```
 
 **Understand what this is.** Installing one package from a newer repository on

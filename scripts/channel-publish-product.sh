@@ -83,7 +83,7 @@ DB_NAMES=(
 echo "channel-publish-product: replacing DB assets on ${TAG}"
 for name in "${DB_NAMES[@]}" cicada-stable.db.tar.zst.old cicada-stable.files.tar.zst.old; do
   if gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${name}"; then
-    gh release delete-asset "${TAG}" "${name}" -y
+    gh release delete-asset "${TAG}" "${name}" -y || true
   fi
 done
 
@@ -91,7 +91,8 @@ db_assets=()
 for name in "${DB_NAMES[@]}"; do
   [[ -f "${WORK}/${name}" ]] && db_assets+=("${WORK}/${name}")
 done
-gh release upload "${TAG}" "${db_assets[@]}"
+# --clobber covers races where delete did not land before upload.
+gh release upload "${TAG}" "${db_assets[@]}" --clobber
 
 if ! gh release view "${OVERFLOW}" >/dev/null 2>&1; then
   pin="$(cat "${ROOT}/channel/CURRENT" 2>/dev/null || echo unknown)"

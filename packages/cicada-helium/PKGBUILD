@@ -1,0 +1,39 @@
+# Official Helium Linux tarball packaged as cicada-helium.
+# Pin source of truth: channel/helium.lock (copied next to this PKGBUILD at build time).
+pkgname=cicada-helium
+pkgver=0.19.2.1
+pkgrel=1
+pkgdesc="Cicada.OS default browser — Helium (imputnet), hash-pinned"
+arch=('x86_64')
+url="https://github.com/imputnet/helium-linux"
+license=('BSD-3-Clause')
+depends=(
+  'nss'
+  'nspr'
+  'gtk3'
+  'libxss'
+  'libcups'
+  'xdg-utils'
+  'alsa-lib'
+  'libxkbcommon'
+  'libdrm'
+)
+provides=('cicada-browser')
+conflicts=()
+# Staged by channel-build-meta / iso-stage-product-pkgs from the repo root.
+source=()
+sha256sums=()
+options=(!strip)
+
+package() {
+  local lock="${startdir}/helium.lock"
+  local installer="${startdir}/install-helium.sh"
+  [[ -f "${lock}" ]] || { echo "cicada-helium: helium.lock missing (stage from channel/)" >&2; exit 1; }
+  [[ -x "${installer}" || -f "${installer}" ]] \
+    || { echo "cicada-helium: install-helium.sh missing" >&2; exit 1; }
+  HELIUM_LOCK="${lock}" \
+  CICADA_HELIUM_SKIP_PROFILEDEF=1 \
+  ROOT="${startdir}" \
+    bash "${installer}" "${pkgdir}"
+  install -Dm644 "${lock}" "${pkgdir}/usr/share/cicada/helium.lock"
+}

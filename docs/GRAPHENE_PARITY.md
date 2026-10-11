@@ -99,7 +99,7 @@ Graphene: per-app network permission (network-down, not crash), Sensors, Storage
 - [x] `cicada-profile`: Work UID auto-created on install firstboot (`create-locked`); Burner is directory HOME; `--encrypt` LUKS loop
 - [x] **Syscall filter on every scope** (`--seccomp`, built at boot from the running kernel's table), plus `--new-session` and `--unshare-ipc`. Android confines apps by UID *and* by seccomp; namespaces alone were only the first half
 - [ ] Flatpak FileChooser as the *only* file path for every native toolkit
-- [ ] AppArmor profiles per shipped app — the LSM is now in the kernel stack on installed systems (`lsm=`), so a profile written here would actually enforce; none are written yet
+- [x] AppArmor profiles for shipped Cicada units — `cicada-helium`, `cicada-keepassxc`, `cicada-tor-browser`, `cicada-run` under `/etc/apparmor.d/` (installed systems; live leaves AppArmor off)
 - [ ] Landlock as a second filesystem floor under bwrap
 
 See [docs/SANDBOX.md](SANDBOX.md) and [docs/AMNESIC.md](AMNESIC.md) (live USB forgets; installed disk persists).
@@ -119,7 +119,7 @@ Graphene: DNS leak on VPN crash, multicast bypass block, no cross-profile tunnel
 Graphene Vanadium: JIT off by default with per-site toggle, strict site isolation, 3P cookies off, DRM off, WebGPU off, remote services stripped.
 
 **Cicada:**
-- [x] Helium as default browser — official `helium-linux` **0.15.4.1** tarball, sha256 in `channel/helium.lock`. Not AUR.
+- [x] Helium as default browser — official `helium-linux` tarball (`channel/helium.lock`, package `cicada-helium`). Not AUR. Class A cadence via `scripts/check-helium-upstream.sh`.
 - [x] Managed policy: JIT off, WebGPU off, 3P cookies, WebRTC non-proxied UDP off, DoH off, Privacy Sandbox off, HTTPS-Only, DDG search (not recommended — not user-overridable via chrome://flags)
 - [ ] Per-site JIT toggle is custom policy work, not inherited
 

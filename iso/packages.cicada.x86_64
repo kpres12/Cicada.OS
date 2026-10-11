@@ -71,7 +71,7 @@ ttf-font-awesome
 noto-fonts
 noto-fonts-emoji
 
-# --- browser runtime (Helium itself is the pinned tarball, not a pacman pkg) ---
+# --- browser runtime (Helium: ISO via install-helium.sh; updates via cicada-helium) ---
 nss
 nspr
 gtk3

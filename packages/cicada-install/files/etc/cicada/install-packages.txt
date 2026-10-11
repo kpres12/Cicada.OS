@@ -120,6 +120,17 @@ meek
 torsocks
 zram-generator
 
+# Cicada product layer (from [cicada-stable] when the channel is reachable;
+# skipped if missing — the live rootfs already carried the trees).
+cicada-run
+cicada-defaults
+cicada-profiles
+cicada-install
+cicada-shell
+cicada-desktop
+cicada-malloc
+cicada-helium
+
 # Tirimid: editor + compile toolchain + Python
 nano
 base-devel

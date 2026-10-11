@@ -170,6 +170,7 @@ copy_product() {
   [[ -d /usr/local/share/applications ]] && rsync -a /usr/local/share/applications/ "${mnt}/usr/local/share/applications/"
   for d in \
     /etc/cicada \
+    /etc/apparmor.d \
     /etc/nftables.d \
     /etc/sysctl.d \
     /etc/modprobe.d \

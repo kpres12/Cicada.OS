@@ -1,0 +1,59 @@
+#----------------------------------------------------------------
+# Cicada AppArmor profile — Helium (/opt/helium)
+# Complements cicada-run bwrap scopes. Deny credential paths even if
+# something launches the browser outside the wrapper.
+#----------------------------------------------------------------
+#include <tunables/global>
+
+profile cicada-helium /opt/helium/* {
+  #include <abstractions/base>
+  #include <abstractions/fonts>
+  #include <abstractions/nameservice>
+  #include <abstractions/openssl>
+  #include <abstractions/user-download>
+  #include <abstractions/audio>
+  #include <abstractions/dconf>
+
+  /opt/helium/** mrix,
+  /usr/share/** r,
+  /usr/lib/** mr,
+  /usr/lib64/** mr,
+  /etc/helium/** r,
+  /etc/chromium/** r,
+  /etc/fonts/** r,
+  /etc/ssl/** r,
+  /etc/ca-certificates/** r,
+  /etc/machine-id r,
+  /sys/devices/** r,
+  /sys/fs/cgroup/** rw,
+  /proc/*/setgroups rw,
+  /proc/*/uid_map rw,
+  /proc/*/gid_map rw,
+  /dev/dri/** rw,
+  /dev/shm/** rwk,
+  /tmp/** rwk,
+  /var/tmp/** rwk,
+
+  owner @{HOME}/.config/helium/** rwk,
+  owner @{HOME}/.config/chromium/** rwk,
+  owner @{HOME}/.cache/helium/** rwk,
+  owner @{HOME}/.cache/chromium/** rwk,
+  owner @{HOME}/Downloads/** rw,
+  owner @{HOME}/Pictures/** rw,
+
+  # Network (browser)
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network netlink raw,
+
+  # Fail closed on high-value local secrets
+  deny @{HOME}/.ssh/** rwx,
+  deny @{HOME}/.gnupg/** rwx,
+  deny @{HOME}/.password-store/** rwx,
+  deny @{HOME}/.local/share/kwalletd/** rwx,
+  deny /etc/shadow r,
+  deny /etc/gshadow r,
+  deny /etc/cicada/duress* r,
+}

@@ -1,0 +1,30 @@
+# GrapheneOS hardened_malloc, built from a pinned tag (channel/malloc.lock).
+# Not AUR. Opt-in via cicada-malloc — default off (breaks Helium if global).
+pkgname=cicada-malloc
+pkgver=14
+pkgrel=1
+pkgdesc="Cicada.OS hardened_malloc (GrapheneOS), opt-in preload"
+arch=('x86_64')
+url="https://github.com/GrapheneOS/hardened_malloc"
+license=('MIT')
+depends=('glibc')
+makedepends=('git' 'gcc' 'make' 'python')
+options=(!strip)
+source=()
+sha256sums=()
+
+package() {
+  local lock="${startdir}/malloc.lock"
+  local builder="${startdir}/build-hardened-malloc.sh"
+  [[ -f "${lock}" ]] || { echo "cicada-malloc: malloc.lock missing" >&2; exit 1; }
+  [[ -f "${builder}" ]] || { echo "cicada-malloc: build-hardened-malloc.sh missing" >&2; exit 1; }
+  local tag=""
+  while IFS='=' read -r k v; do
+    [[ -z "${k}" || "${k}" == \#* ]] && continue
+    [[ "${k}" == tag ]] && tag="${v}"
+  done < "${lock}"
+  [[ -n "${tag}" ]] || { echo "cicada-malloc: tag= missing in malloc.lock" >&2; exit 1; }
+  HARDENED_MALLOC_TAG="${tag}" \
+    bash "${builder}" "${pkgdir}"
+  install -Dm644 "${lock}" "${pkgdir}/usr/share/cicada/malloc.lock"
+}

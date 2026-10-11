@@ -1,0 +1,30 @@
+#----------------------------------------------------------------
+# Cicada AppArmor profile — Tor Browser launcher wrapper
+#----------------------------------------------------------------
+#include <tunables/global>
+
+profile cicada-tor-browser /usr/local/bin/cicada-tor-browser {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/bash>
+
+  /usr/local/bin/cicada-tor-browser rix,
+  /usr/bin/bash rix,
+  /usr/bin/torbrowser-launcher rix,
+  /usr/bin/firejail rix,
+  /usr/bin/bwrap rix,
+  /usr/local/bin/cicada-run rix,
+  /usr/share/** r,
+  /etc/cicada/** r,
+  /tmp/** rwk,
+
+  owner @{HOME}/.local/share/torbrowser/** rwk,
+  owner @{HOME}/Downloads/** rw,
+
+  network inet stream,
+  network inet6 stream,
+
+  deny @{HOME}/.ssh/** rwx,
+  deny @{HOME}/.gnupg/** rwx,
+  deny /etc/shadow r,
+}

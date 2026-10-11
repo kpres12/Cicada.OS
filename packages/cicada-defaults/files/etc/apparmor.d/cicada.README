@@ -1,0 +1,6 @@
+# Cicada-authored AppArmor profiles (installed systems; LSM via lsm=).
+# Loaded by apparmor.service. Live ISO leaves AppArmor off by design.
+#
+# These complement cicada-run bwrap scopes — they are not a replacement.
+# If a profile breaks a daily-driver app: sudo aa-disable <profile>
+# and file a bug. Fail closed on credential paths; never fail open on those.

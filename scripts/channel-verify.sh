@@ -19,6 +19,20 @@ grep -q '^url=https://github.com/imputnet/helium-linux/' "${lock}" || die "heliu
 grep -Eq '^sha256=[0-9a-f]{64}$' "${lock}" || die "helium.lock sha256"
 say "helium.lock pinned"
 
+malloc_lock="${ROOT}/channel/malloc.lock"
+test -f "${malloc_lock}" || die "malloc.lock missing"
+grep -q '^tag=' "${malloc_lock}" || die "malloc.lock tag"
+say "malloc.lock pinned"
+
+hypr_lock="${ROOT}/channel/hyprland.lock"
+test -f "${hypr_lock}" || die "hyprland.lock missing"
+grep -q '^hyprland=' "${hypr_lock}" || die "hyprland.lock hyprland="
+test -f "${ROOT}/packages/cicada-helium/PKGBUILD" || die "cicada-helium PKGBUILD missing"
+test -f "${ROOT}/packages/cicada-malloc/PKGBUILD" || die "cicada-malloc PKGBUILD missing"
+test -f "${ROOT}/scripts/check-helium-upstream.sh" || die "check-helium-upstream.sh missing"
+test -f "${ROOT}/scripts/channel-pin-hyprland.sh" || die "channel-pin-hyprland.sh missing"
+say "product packages + hyprland pin wired"
+
 doom="${ROOT}/channel/doom.lock"
 test -f "${doom}" || die "doom.lock missing"
 grep -q '^engine_version=' "${doom}" || die "doom.lock engine_version"

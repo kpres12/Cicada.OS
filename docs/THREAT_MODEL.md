@@ -186,8 +186,9 @@ user, with that user's files and keys; profiles remain the blast-radius layer
 above it. Compared to OpenBSD, where pledge and unveil confine essentially every
 program in the base system, Cicada confines what it launches and inherits the
 rest of Arch unconfined. AppArmor is in the LSM stack on installed systems
-(`lsm=` on the kernel command line) but Cicada authors no profiles of its own
-yet, so what it enforces is whatever upstream ships.
+(`lsm=` on the kernel command line). Cicada ships enforce profiles for Helium,
+KeePassXC, the Tor Browser wrapper, and `cicada-run` (`/etc/apparmor.d/cicada-*`);
+everything else remains whatever upstream ships.
 
 **`/usr` is not verity-protected, and mostly does not need to be.** Graphene
 relies on dm-verity because Android's system partition is *unencrypted* and
