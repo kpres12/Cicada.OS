@@ -146,6 +146,17 @@ fi
 
 export CICADA_APP_ID="${APP_ID}"
 
+# Landlock second floor (inside bwrap). Same degrade-visible rule as seccomp.
+LANDLOCK_BIN="${CICADA_LANDLOCK_BIN:-/usr/local/lib/cicada/cicada-landlock-exec}"
+LANDLOCK=1
+LANDLOCK_RW=()
+if [[ "${CICADA_LANDLOCK:-1}" != 1 ]] || grep -qw cicada.nolandlock /proc/cmdline 2>/dev/null; then
+  LANDLOCK=0
+elif [[ ! -x "${LANDLOCK_BIN}" ]]; then
+  LANDLOCK=0
+  echo "cicada-run: Landlock helper missing — filesystem floor is bwrap only." >&2
+fi
+
 bind_opt() {
   local src="$1" dest="${2:-$1}"
   [[ -e "${src}" ]] || return 0
@@ -156,6 +167,12 @@ bind_rw() {
   local src="$1" dest="${2:-$1}"
   [[ -e "${src}" ]] || return 0
   args+=(--bind "${src}" "${dest}")
+}
+
+landlock_rw() {
+  local p="$1"
+  [[ -e "${p}" ]] || return 0
+  LANDLOCK_RW+=(--rw "${p}")
 }
 
 mkdir -p "${HOME}/.config" "${HOME}/.cache" "${HOME}/.local/share" "${HOME}/Downloads"
@@ -354,30 +371,69 @@ case "${NETWORK}" in
     ;;
 esac
 
+# Profile netns (opt-in). Tor wins if both are set — onion is the stricter path.
+if [[ "${#netns_wrap[@]}" -eq 0 \
+   && "${CICADA_PROFILE_NETNS:-0}" == "1" \
+   && -n "${CICADA_PROFILE:-}" \
+   && "${NETWORK}" != "deny" ]]; then
+  if [[ ! -f "/run/cicada/profile-netns/${CICADA_PROFILE}" ]]; then
+    echo "cicada-run: profile ${CICADA_PROFILE} wants a netns, but it is down." >&2
+    echo "  cicada-profile netns on ${CICADA_PROFILE}" >&2
+    echo "  Refusing clearnet on the host namespace." >&2
+    exit 78
+  fi
+  if ! command -v cicada-profile-netns-helper >/dev/null 2>&1; then
+    echo "cicada-run: cicada-profile-netns-helper missing." >&2
+    exit 78
+  fi
+  netns_wrap=(sudo -n /usr/local/bin/cicada-profile-netns-helper exec "${CICADA_PROFILE}" --)
+fi
+
 case "${FILES}" in
   deny)
     args+=(--tmpfs "${HOME}")
+    landlock_rw /tmp
+    [[ -n "${XDG_RUNTIME_DIR:-}" ]] && landlock_rw "${XDG_RUNTIME_DIR}"
     ;;
   portal)
+    # Toolkit hint: GTK/Chromium use the portal FileChooser. Direct $HOME is a
+    # tmpfs — there is no other file path. Qt apps still need portal-aware
+    # dialogs; bwrap is the enforcer either way.
     export GTK_USE_PORTAL=1
     export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals"
+    export GIO_USE_PORTALS=1
+    if ! pgrep -x xdg-desktop-portal >/dev/null 2>&1 \
+       && ! pgrep -f xdg-desktop-portal >/dev/null 2>&1; then
+      echo "cicada-run: xdg-desktop-portal not running — file pickers will fail closed." >&2
+    fi
     args+=(--tmpfs "${HOME}")
     args+=(--dir "${HOME}/.config" --dir "${HOME}/.cache" --dir "${HOME}/.local/share" --dir "${HOME}/Downloads")
     args+=(--bind "${HOME}/Downloads" "${HOME}/Downloads")
+    landlock_rw "${HOME}/Downloads"
+    landlock_rw /tmp
+    [[ -n "${XDG_RUNTIME_DIR:-}" ]] && landlock_rw "${XDG_RUNTIME_DIR}"
     case "${APP_ID}" in
       org.cicada.helium)
         args+=(--bind "${HOME}/.config/helium" "${HOME}/.config/helium")
         args+=(--bind "${HOME}/.cache/helium" "${HOME}/.cache/helium")
         args+=(--bind "${HOME}/.config/chromium" "${HOME}/.config/chromium")
         args+=(--bind "${HOME}/.cache/chromium" "${HOME}/.cache/chromium")
+        landlock_rw "${HOME}/.config/helium"
+        landlock_rw "${HOME}/.cache/helium"
+        landlock_rw "${HOME}/.config/chromium"
+        landlock_rw "${HOME}/.cache/chromium"
         ;;
       org.keepassxc.KeePassXC)
         args+=(--bind "${HOME}/.config/keepassxc" "${HOME}/.config/keepassxc")
         args+=(--bind "${HOME}/.local/share/keepassxc" "${HOME}/.local/share/keepassxc")
+        landlock_rw "${HOME}/.config/keepassxc"
+        landlock_rw "${HOME}/.local/share/keepassxc"
         ;;
       org.torproject.torbrowser)
         args+=(--bind "${HOME}/.local/share/torbrowser" "${HOME}/.local/share/torbrowser")
         args+=(--bind "${HOME}/.cache/torbrowser" "${HOME}/.cache/torbrowser")
+        landlock_rw "${HOME}/.local/share/torbrowser"
+        landlock_rw "${HOME}/.cache/torbrowser"
         ;;
       # Messengers get their store directory and nothing else. Note what is
       # absent: no ~/.cache bind, because an Electron cache that survives the
@@ -385,29 +441,40 @@ case "${FILES}" in
       # thinks of as the message store. It comes back as a tmpfs each launch.
       org.signal.Signal)
         args+=(--bind "${HOME}/.config/Signal" "${HOME}/.config/Signal")
+        landlock_rw "${HOME}/.config/Signal"
         ;;
       im.riot.Riot)
         args+=(--bind "${HOME}/.config/Element" "${HOME}/.config/Element")
+        landlock_rw "${HOME}/.config/Element"
         ;;
       chat.simplex.simplex)
         args+=(--bind "${HOME}/.local/share/simplex" "${HOME}/.local/share/simplex")
         args+=(--bind "${HOME}/.config/simplex" "${HOME}/.config/simplex")
+        landlock_rw "${HOME}/.local/share/simplex"
+        landlock_rw "${HOME}/.config/simplex"
         ;;
       org.cicada.kleopatra)
         args+=(--bind "${HOME}/.gnupg" "${HOME}/.gnupg")
         args+=(--bind "${HOME}/.config/kleopatra" "${HOME}/.config/kleopatra")
+        landlock_rw "${HOME}/.gnupg"
+        landlock_rw "${HOME}/.config/kleopatra"
         ;;
       org.cicada.thunderbird)
         args+=(--bind "${HOME}/.thunderbird" "${HOME}/.thunderbird")
+        landlock_rw "${HOME}/.thunderbird"
         ;;
       *)
         mkdir -p "${HOME}/.local/share/${APP_ID}"
         args+=(--bind "${HOME}/.local/share/${APP_ID}" "${HOME}/.local/share/${APP_ID}")
+        landlock_rw "${HOME}/.local/share/${APP_ID}"
         ;;
     esac
     ;;
   *)
     args+=(--bind "${HOME}" "${HOME}")
+    landlock_rw "${HOME}"
+    landlock_rw /tmp
+    [[ -n "${XDG_RUNTIME_DIR:-}" ]] && landlock_rw "${XDG_RUNTIME_DIR}"
     ;;
 esac
 
@@ -480,17 +547,21 @@ if [[ "${APP_ID}" == "org.cicada.helium" ]]; then
   set -- "$@" --disable-namespace-sandbox --disable-setuid-sandbox
 fi
 
+# Landlock runs *inside* bwrap so the mount view already matches FILES.
+landlock_prefix=()
+if [[ "${LANDLOCK}" -eq 1 ]]; then
+  landlock_prefix=("${LANDLOCK_BIN}" "${LANDLOCK_RW[@]}" --)
+fi
+
 rc=0
 if [[ "${#netns_wrap[@]}" -gt 0 ]]; then
-  # The Tor path goes through sudo, and sudo closes every descriptor above 2
-  # before the helper starts — so fd 9 cannot be inherited from here. The helper
-  # reopens the same root-owned path itself; see cicada-netns-helper. Passing
-  # `--seccomp 9` without that would be a hard bwrap failure, which is why the
-  # two files name the same default path.
-  "${netns_wrap[@]}" "${args[@]}" "$@" || rc=$?
+  # The Tor / profile-netns path goes through sudo, and sudo closes every
+  # descriptor above 2 before the helper starts — so fd 9 cannot be inherited
+  # from here. The helper reopens the same root-owned path itself.
+  "${netns_wrap[@]}" "${args[@]}" "${landlock_prefix[@]}" "$@" || rc=$?
 elif [[ "${SECCOMP}" -eq 1 ]]; then
-  "${args[@]}" "$@" 9<"${SECCOMP_BLOB}" || rc=$?
+  "${args[@]}" "${landlock_prefix[@]}" "$@" 9<"${SECCOMP_BLOB}" || rc=$?
 else
-  "${args[@]}" "$@" || rc=$?
+  "${args[@]}" "${landlock_prefix[@]}" "$@" || rc=$?
 fi
 exit "${rc}"

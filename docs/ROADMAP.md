@@ -66,19 +66,13 @@
       maid on Tier 0, where prevention is impossible (`tests/beacon.sh`)
 - [ ] Beacon exercised on real hardware: Meshtastic radio, and a boot-hash
       change that is a genuine kernel upgrade rather than a fixture
-- [ ] Reproducible build CI — `SOURCE_DATE_EPOCH` now threaded through
-      `iso/build.sh` (defaults to the commit's own timestamp) and the
-      assemble stage is proven byte-identical across independent runs
-      (`tests/reproducible-assemble.sh`, in CI). `.github/workflows/
-      reproducible-build.yml` builds the actual ISO twice and diffs it, but
-      is manual/weekly (a full build is minutes and gigabytes even natively).
-      It has run, and the answer so far is **no**: the one honest comparison
-      (2026-09-09) produced two ISOs that differ from byte 32947 —
-      mkarchiso/squashfs/xorriso have their own timestamp and ordering surface
-      this hasn't touched. Every scheduled run after that hung instead of
-      comparing, on a Flatpak helper holding the preload hook's output pipe
-      (fixed in `preload-flatpak-apps.sh`); the next run is the first that can
-      say where the two images actually diverge
+- [ ] Reproducible build CI — assemble stage is proven byte-identical
+      (`tests/reproducible-assemble.sh`). Full ISO is **not** claimed yet:
+      the 2026-09-09 compare differed from byte 32947 (squashfs/xorriso).
+      `assemble-profile.sh` now pins mksquashfs `-all-time`/`-mkfs-time`/
+      `-reproducible` to `SOURCE_DATE_EPOCH`. Flatpak preload hang fixed.
+      Re-run `.github/workflows/reproducible-build.yml` before checking this
+      box — do not advertise bit-identical ISOs until that job is green.
 - [ ] Immutable signed rootfs (the only thing dm-verity would add over FDE — a
       redesign, not a patch; see docs/GRAPHENE_PARITY.md)
 - [ ] Tier-3 hardware docs (Librem / NitroPad / Heads)

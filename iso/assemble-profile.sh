@@ -502,7 +502,11 @@ insert = '''  ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/cicada-tor"]="0:0:755"
   ["/usr/local/bin/cicada-tor-netns"]="0:0:755"
   ["/usr/local/bin/cicada-netns-helper"]="0:0:755"
+  ["/usr/local/bin/cicada-profile-netns"]="0:0:755"
+  ["/usr/local/bin/cicada-profile-netns-helper"]="0:0:755"
+  ["/usr/local/lib/cicada/cicada-landlock-exec"]="0:0:755"
   ["/etc/sudoers.d/cicada-netns"]="0:0:440"
+  ["/etc/sudoers.d/cicada-profile-netns"]="0:0:440"
   ["/usr/local/bin/cicada-duress-check"]="0:0:700"
   ["/usr/local/lib/cicada/install-chroot.sh"]="0:0:755"
   ["/usr/local/bin/chromium"]="0:0:755"
@@ -731,6 +735,33 @@ chmod 755 "${PROFILE}/airootfs/usr/local/lib/cicada/"* 2>/dev/null || true
 chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-profile" 2>/dev/null || true
 chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-live" 2>/dev/null || true
 chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-netns" 2>/dev/null || true
+chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-profile-netns" 2>/dev/null || true
 chmod 400 "${PROFILE}/airootfs/etc/shadow"
+
+# Pin squashfs timestamps to SOURCE_DATE_EPOCH so two builds of the same tree
+# do not diverge inside airootfs.sfs (the known ISO byte-32947 class of drift
+# was squashfs/xorriso wall-clock, not assemble). -reproducible sorts dirents;
+# -all-time / -mkfs-time need squashfs-tools ≥4.5 — probe and degrade.
+if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
+  python3 - "${PROFILE}/profiledef.sh" "${SOURCE_DATE_EPOCH}" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+epoch = sys.argv[2]
+text = path.read_text()
+old = "airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86,arm64' '-b' '1M' '-Xdict-size' '1M')"
+new = (
+    "airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86,arm64' '-b' '1M' "
+    f"'-Xdict-size' '1M' '-all-time' '{epoch}' '-mkfs-time' '{epoch}' '-reproducible')"
+)
+if old not in text:
+    if "-all-time" in text:
+        print("==> squashfs already pinned to SOURCE_DATE_EPOCH")
+    else:
+        raise SystemExit("profiledef.sh airootfs_image_tool_options changed upstream")
+else:
+    path.write_text(text.replace(old, new, 1))
+    print(f"==> squashfs times pinned to SOURCE_DATE_EPOCH={epoch}")
+PY
+fi
 
 echo "==> assembled ${PROFILE}"

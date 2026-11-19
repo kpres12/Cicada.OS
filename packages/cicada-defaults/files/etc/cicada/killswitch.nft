@@ -5,8 +5,8 @@ table inet cicada_ks {
     type filter hook output priority 100; policy drop;
     oif "lo" accept
     oifname "wg0" accept
-    # Handshake: only to the configured Endpoint when cicada-vpn injects a
-    # peer allowrule; fallback below is port-only (still better than open net).
+    # Handshake: cicada-vpn on rewrites this to `ip daddr <peer> udp dport
+    # 51820` when the Endpoint resolves. Port-only fallback otherwise.
     udp dport 51820 accept
     # DHCP client → broadcast/multicast only (not arbitrary UDP/67 exfil).
     udp dport 67 ip daddr 255.255.255.255 accept

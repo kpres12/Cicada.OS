@@ -128,6 +128,22 @@ grep -q 'SENSORS=deny' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-r
 grep -q 'pipewire' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "MIC=deny must mention pipewire omit"
 grep -q 'hidraw\|/sys/bus/iio\|SENSORS' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "SENSORS deny path missing"
 grep -q 'GTK_USE_PORTAL=1' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "FILES=portal must set GTK_USE_PORTAL"
+grep -q 'GIO_USE_PORTALS=1' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "FILES=portal must set GIO_USE_PORTALS"
+grep -q 'cicada-landlock-exec' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must invoke Landlock helper"
+grep -q 'cicada.nolandlock' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "no bootloader escape hatch for Landlock"
+test -x "${ROOT}/packages/cicada-defaults/files/usr/local/lib/cicada/cicada-landlock-exec" \
+  || die "cicada-landlock-exec missing or not executable"
+grep -q 'cicada-profile-netns-helper' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" \
+  || die "cicada-run must support per-profile netns"
+test -x "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-profile-netns" \
+  || die "cicada-profile-netns missing"
+test -x "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-profile-netns-helper" \
+  || die "cicada-profile-netns-helper missing"
+grep -q 'NOPASSWD: /usr/local/bin/cicada-profile-netns-helper' \
+  "${ROOT}/packages/cicada-defaults/files/etc/sudoers.d/cicada-profile-netns" \
+  || die "profile-netns sudoers missing helper"
+grep -q 'getent ahostsv4' "${ROOT}/packages/cicada-defaults/files/usr/local/bin/cicada-vpn" \
+  || die "cicada-vpn must pin handshake to Endpoint IP"
 grep -q 'av-kill.env' "${ROOT}/packages/cicada-run/files/usr/local/bin/cicada-run" || die "cicada-run must honor system AV kill"
 grep -q 'Camera & microphone' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Camera & microphone"
 grep -q '"Security"' "${ROOT}/packages/cicada-shell/files/usr/local/bin/cicada-settings" || die "Settings missing Security"
@@ -678,6 +694,9 @@ aa="${ROOT}/packages/cicada-defaults/files/etc/apparmor.d"
 for p in cicada-helium cicada-keepassxc cicada-tor-browser cicada-run; do
   test -f "${aa}/${p}" || die "AppArmor profile missing: ${p}"
 done
+# Helium AppArmor must not be broader than FILES=portal (Downloads + config).
+grep -F 'Pictures/**' "${aa}/cicada-helium" && die "Helium AppArmor still allows Pictures (broader than portal)"
+grep -F 'Downloads/**' "${aa}/cicada-helium" || die "Helium AppArmor must allow Downloads"
 say "Cicada AppArmor profiles present for Helium / KeePassXC / Tor / cicada-run"
 
 echo "==> duress reachable from a session, not just at power-on"

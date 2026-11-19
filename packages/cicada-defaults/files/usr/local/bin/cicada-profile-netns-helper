@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Enter a profile netns as the calling user. Same threat model as
+# cicada-netns-helper: hardcoded naming rules, stamp required, drop privs.
+set -euo pipefail
+
+die() { echo "cicada-profile-netns-helper: $*" >&2; exit 1; }
+[[ ${EUID} -eq 0 ]] || die "must be invoked through sudo"
+
+uid="${SUDO_UID:-}"
+gid="${SUDO_GID:-}"
+[[ "${uid}" =~ ^[0-9]+$ && "${gid}" =~ ^[0-9]+$ ]] || die "no calling uid/gid"
+[[ "${uid}" != 0 ]] || die "refusing to run as root inside the namespace"
+
+[[ "${1:-}" == "exec" ]] || {
+  echo "usage: cicada-profile-netns-helper exec <profile> -- COMMAND [ARGS...]" >&2
+  exit 1
+}
+shift
+name="${1:-}"
+shift
+[[ "${name}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || die "invalid profile name"
+[[ "${1:-}" == "--" ]] && shift
+[[ $# -ge 1 ]] || die "no command given"
+
+ns="cicada-p-${name}"
+stamp="/run/cicada/profile-netns/${name}"
+[[ -f "${stamp}" ]] || die "profile netns stamp missing (cicada-profile netns on ${name})"
+[[ "$(tr -d '[:space:]' <"${stamp}")" == "${ns}" ]] || die "stamp/namespace mismatch"
+ip netns list 2>/dev/null | grep -qw "${ns}" || die "namespace ${ns} is down"
+
+SECCOMP_BLOB=/run/cicada/seccomp/default.bpf
+[[ -r "${SECCOMP_BLOB}" ]] && exec 9<"${SECCOMP_BLOB}"
+
+exec ip netns exec "${ns}" \
+  setpriv --reuid "${uid}" --regid "${gid}" --clear-groups --no-new-privs -- "$@"

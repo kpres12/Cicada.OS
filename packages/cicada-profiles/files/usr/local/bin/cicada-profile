@@ -12,17 +12,20 @@ usage() {
 cicada-profile — Work / Personal / Burner compartments
 
   cicada-profile list
-  cicada-profile create <name> [--encrypt|--user]
+  cicada-profile create <name> [--encrypt|--user|--netns]
   cicada-profile switch <name>     # directory profiles: next cicada-run apps
   cicada-profile enter <name>      # subshell with HOME set
   cicada-profile login <name>      # Unix-UID profile: new TTY session (Ctrl+Alt+F3)
   cicada-profile freeze <name>
   cicada-profile unlock <name>
   cicada-profile dispose <name>
+  cicada-profile netns on|off|status <name>
 
 --encrypt  LUKS2 loop (sudo). Unlocking Work does not unwrap Burner.
 --user     real Unix account cicada-NAME (different UID). Same Hyprland cannot
            see that user's files. Log in as that user (Graphene users analogue).
+--netns    put sandboxed apps for this profile in an isolated netns (NAT to
+           host). Also: cicada-profile netns on <name> after create.
 EOF
 }
 
@@ -33,9 +36,12 @@ img_of() { echo "${BASE}/${1}/vault.img"; }
 
 write_current() {
   local n="$1"
+  local netns=0
+  [[ -f "$(dest "${n}")/state/NETNS" ]] && netns=1
   cat > "${CUR}" <<EOF
 CICADA_PROFILE=${n}
 CICADA_PROFILE_HOME=$(home_of "${n}")
+CICADA_PROFILE_NETNS=${netns}
 EOF
 }
 
@@ -58,6 +64,7 @@ case "${cmd}" in
         extra=""
         [[ -f "$(img_of "${n}")" ]] && extra=" encrypted"
         [[ -f "${d}/state/UID" ]] && extra="${extra} uid"
+        [[ -f "${d}/state/NETNS" ]] && extra="${extra} netns"
         [[ -f "${d}/state/FROZEN" ]] && extra="${extra} frozen"
         if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${n}$" "${CUR}"; then
           extra="${extra} active"
@@ -70,12 +77,26 @@ case "${cmd}" in
     ;;
   create)
     [[ -n "${name}" ]] || { usage; exit 1; }
+    [[ "${name}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || {
+      echo "profile name must match [a-z][a-z0-9-]{0,31}" >&2
+      exit 1
+    }
     mkdir -p "$(dest "${name}")/state"
-    if [[ "${3:-}" == "--user" ]]; then
+    want_netns=0
+    mode=""
+    for arg in "${@:3}"; do
+      case "${arg}" in
+        --user) mode=user ;;
+        --encrypt) mode=encrypt ;;
+        --netns) want_netns=1 ;;
+        *) echo "unknown option: ${arg}" >&2; exit 1 ;;
+      esac
+    done
+    if [[ "${mode}" == "user" ]]; then
       sudo -n /usr/local/bin/cicada-profile-helper create "${name}"
       echo "uid" > "$(dest "${name}")/state/UID"
       echo "login: cicada-${name}  (Ctrl+Alt+F3 after cicada-profile login ${name})"
-    elif [[ "${3:-}" == "--encrypt" ]]; then
+    elif [[ "${mode}" == "encrypt" ]]; then
       img="$(img_of "${name}")"
       [[ ${EUID} -eq 0 ]] || { echo "create --encrypt needs sudo" >&2; exit 1; }
       [[ -f "${img}" ]] && { echo "already encrypted: ${name}" >&2; exit 1; }
@@ -99,6 +120,11 @@ case "${cmd}" in
     else
       seed_home "$(home_of "${name}")"
       echo "created profile ${name}"
+    fi
+    if [[ "${want_netns}" -eq 1 ]]; then
+      touch "$(dest "${name}")/state/NETNS"
+      sudo -n /usr/local/bin/cicada-profile-netns up "${name}" \
+        || echo "netns mark set; bring Wi-Fi up then: cicada-profile netns on ${name}" >&2
     fi
     ;;
   switch)
@@ -182,6 +208,9 @@ case "${cmd}" in
   dispose)
     [[ -n "${name}" ]] || { usage; exit 1; }
     command -v cicada-auth >/dev/null && cicada-auth confirm profile.dispose
+    if [[ -f "$(dest "${name}")/state/NETNS" ]] || [[ -f /run/cicada/profile-netns/"${name}" ]]; then
+      sudo -n /usr/local/bin/cicada-profile-netns down "${name}" 2>/dev/null || true
+    fi
     if [[ -f "$(dest "${name}")/state/UID" ]]; then
       sudo -n /usr/local/bin/cicada-profile-helper dispose "${name}"
     fi
@@ -197,7 +226,45 @@ case "${cmd}" in
     fi
     echo "disposed ${name}"
     ;;
+  netns)
+    action="${name}"
+    name="${3:-}"
+    case "${action}" in
+      on)
+        [[ -n "${name}" ]] || { usage; exit 1; }
+        [[ -d "$(dest "${name}")" ]] || { echo "missing profile: ${name}" >&2; exit 1; }
+        [[ "${name}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || {
+          echo "profile name must match [a-z][a-z0-9-]{0,31}" >&2
+          exit 1
+        }
+        mkdir -p "$(dest "${name}")/state"
+        touch "$(dest "${name}")/state/NETNS"
+        sudo -n /usr/local/bin/cicada-profile-netns up "${name}"
+        if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${name}$" "${CUR}"; then
+          write_current "${name}"
+        fi
+        echo "netns on for ${name}"
+        ;;
+      off)
+        [[ -n "${name}" ]] || { usage; exit 1; }
+        rm -f "$(dest "${name}")/state/NETNS"
+        sudo -n /usr/local/bin/cicada-profile-netns down "${name}" 2>/dev/null || true
+        if [[ -f "${CUR}" ]] && grep -q "CICADA_PROFILE=${name}$" "${CUR}"; then
+          write_current "${name}"
+        fi
+        echo "netns off for ${name}"
+        ;;
+      status)
+        sudo -n /usr/local/bin/cicada-profile-netns status "${name}"
+        ;;
+      *)
+        usage
+        exit 1
+        ;;
+    esac
+    ;;
   *)
     usage
+    exit 1
     ;;
 esac

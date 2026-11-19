@@ -98,9 +98,9 @@ Graphene: per-app network permission (network-down, not crash), Sensors, Storage
 - [x] Helium / KeePass / Files ship explicit scopes; D-Bus proxy when `xdg-dbus-proxy` exists
 - [x] `cicada-profile`: Work UID auto-created on install firstboot (`create-locked`); Burner is directory HOME; `--encrypt` LUKS loop
 - [x] **Syscall filter on every scope** (`--seccomp`, built at boot from the running kernel's table), plus `--new-session` and `--unshare-ipc`. Android confines apps by UID *and* by seccomp; namespaces alone were only the first half
-- [ ] Flatpak FileChooser as the *only* file path for every native toolkit
+- [x] FileChooser portal as the *only* file path for `FILES=portal` scopes — `$HOME` is a tmpfs; only Downloads + app config are bound; `GTK_USE_PORTAL=1` / `GIO_USE_PORTALS=1`. Toolkit-native dialogs that ignore portals see an empty home. Helium AppArmor matched to the same floor (no Pictures broaden).
 - [x] AppArmor profiles for shipped Cicada units — `cicada-helium`, `cicada-keepassxc`, `cicada-tor-browser`, `cicada-run` under `/etc/apparmor.d/` (installed systems; live leaves AppArmor off)
-- [ ] Landlock as a second filesystem floor under bwrap
+- [x] Landlock as a second filesystem floor under bwrap — `cicada-landlock-exec` inside the sandbox; escape hatch `cicada.nolandlock` / `CICADA_LANDLOCK=0`
 
 See [docs/SANDBOX.md](SANDBOX.md) and [docs/AMNESIC.md](AMNESIC.md) (live USB forgets; installed disk persists).
 
@@ -112,7 +112,7 @@ Graphene: DNS leak on VPN crash, multicast bypass block, no cross-profile tunnel
 - [x] WireGuard + nftables kill switch (`cicada-vpn on`; off is `cicada-auth` gated)
 - [x] LLMNR/mDNS disabled; inbound multicast not accepted on the baseline nft table
 - [ ] Kill switch loaded at boot (would black-hole first Wi-Fi — stays opt-in)
-- [ ] Per-profile netns if/when profiles are real
+- [x] Per-profile netns — opt-in `cicada-profile netns on <name>` / `--netns` at create; NAT via host default route; `cicada-run` refuses clearnet on the host ns when the stamp is missing. Handshake kill switch pins Endpoint IP when resolvable.
 
 ## 8. Hardened browser
 

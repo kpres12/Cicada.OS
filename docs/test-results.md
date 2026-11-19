@@ -2,9 +2,13 @@
 
 Hardware under test: Intel MacBook Air 2015–2017 live USB unless noted.
 
+On a live or installed Cicada machine, run `scripts/hardware-validate.sh` and
+merge rows from `docs/test-results.local.md` into this table with real dates.
+Do not flip a row to `pass` without that evidence.
+
 | Test | Result | Date | Notes |
 |---|---|---|---|
-| Live ISO boots to Hyprland + left dock + Waybar | pending | | Flash `cicada-2026.08.20` (or newer) |
+| Live ISO boots to Hyprland + left dock + Waybar | pending | | Flash current ISO; then `scripts/hardware-validate.sh` |
 | Wi-Fi: click dock / Super+N, associate, browse | pending | | See `docs/HARDWARE.md` Broadcom checklist; default/`linux` boot entry |
 | Wallpaper visible; Kitty translucent | pending | | |
 | `ldd`/`LD_PRELOAD` on Chromium shows hardened_malloc | pending | | GrapheneOS tag 14 built in ISO Docker; live wrapper preloads; global preload on installed |

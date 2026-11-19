@@ -80,7 +80,12 @@ Every launched app gets a **Cicada app-id** (`org.cicada.helium`, `org.keepassxc
 - **Terminal / IPC:** `--new-session` so a sandboxed app cannot push characters
   into the launching shell with TIOCSTI, `--unshare-ipc` so two scopes cannot
   share SysV memory.
-- **Landlock** later, as a second floor under bwrap.
+- **Landlock** as a second floor under bwrap: `cicada-landlock-exec` runs
+  inside the mount namespace with an allowlist matching the FILES binds.
+  Unavailable kernels degrade visibly; `cicada.nolandlock` disables.
+- **Profile netns** (opt-in): `cicada-profile netns on <name>` puts sandboxed
+  apps for that profile in `cicada-p-<name>` with NAT to the host. Tor scopes
+  still win when `NETWORK=tor`.
 
 This is weaker than Android UIDs: a compromised app that escapes bwrap is still *your user*. Profiles (separate UIDs/homes) are the blast-radius layer above this. System AV kill is **software** — root can reverse it; firmware implants ignore it; Librem-style hardware kill is the real ceiling.
 

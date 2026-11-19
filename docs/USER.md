@@ -147,6 +147,14 @@ cicada-profile create burner
 cicada-profile switch burner
 ```
 
+Optional **profile netns** (separate network namespace + NAT; apps cannot hit host localhost):
+
+```bash
+cicada-profile create burner --netns
+# or later:
+cicada-profile netns on burner
+```
+
 **Camera & microphone** (software kill — Settings → Camera & microphone):
 
 ```bash

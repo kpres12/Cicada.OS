@@ -38,8 +38,9 @@ profile cicada-helium /opt/helium/* {
   owner @{HOME}/.config/chromium/** rwk,
   owner @{HOME}/.cache/helium/** rwk,
   owner @{HOME}/.cache/chromium/** rwk,
+  # Match FILES=portal: Downloads + browser config only. Pictures was a silent
+  # broaden over the bwrap floor.
   owner @{HOME}/Downloads/** rw,
-  owner @{HOME}/Pictures/** rw,
 
   # Network (browser)
   network inet stream,

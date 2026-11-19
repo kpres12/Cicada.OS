@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Per-profile network namespace: separate netns + NAT out the host default
+# route. Apps cannot reach host localhost; they share the host public IP.
+# Opt-in via `cicada-profile netns on <name>`.
+set -euo pipefail
+
+die() { echo "cicada-profile-netns: $*" >&2; exit 1; }
+[[ ${EUID} -eq 0 ]] || die "run as root"
+
+valid_name() {
+  [[ "${1}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || return 1
+  [[ "${1}" != *--* ]] || return 1
+}
+
+ns_of() { echo "cicada-p-${1}"; }
+veth_h() { echo "veth-p-${1}"; }
+veth_n() { echo "vp-${1:0:12}"; }
+stamp_dir=/run/cicada/profile-netns
+
+octet_of() {
+  local h
+  h="$(printf '%s' "$1" | sha256sum | head -c 4)"
+  echo $(( (16#${h} % 250) + 1 ))
+}
+
+up() {
+  local name="${1:-}"
+  valid_name "${name}" || die "invalid profile name"
+  local ns veth peer oct host_ip ns_ip iface
+  ns="$(ns_of "${name}")"
+  veth="$(veth_h "${name}")"
+  peer="$(veth_n "${name}")"
+  oct="$(octet_of "${name}")"
+  host_ip="10.72.${oct}.1"
+  ns_ip="10.72.${oct}.2"
+
+  if ip netns list 2>/dev/null | grep -qw "${ns}"; then
+    mkdir -p "${stamp_dir}"
+    printf '%s\n' "${ns}" >"${stamp_dir}/${name}"
+    echo "already up: ${ns}"
+    exit 0
+  fi
+
+  iface="$(ip -o route show default 2>/dev/null | awk '{print $5; exit}')"
+  [[ -n "${iface}" ]] || die "no default route — bring Wi-Fi up first"
+
+  ip netns add "${ns}"
+  ip link add "${veth}" type veth peer name "${peer}"
+  ip link set "${peer}" netns "${ns}"
+
+  ip addr add "${host_ip}/30" dev "${veth}"
+  ip link set "${veth}" up
+
+  ip -n "${ns}" addr add "${ns_ip}/30" dev "${peer}"
+  ip -n "${ns}" link set "${peer}" up
+  ip -n "${ns}" link set lo up
+  ip -n "${ns}" route add default via "${host_ip}"
+
+  # resolv.conf for this netns only (ip netns exec bind-mounts it).
+  mkdir -p "/etc/netns/${ns}"
+  if [[ -r /etc/resolv.conf ]]; then
+    # Keep host resolvers; packets go out via NAT, not to host_ip:53.
+    grep -E '^(nameserver|search|options) ' /etc/resolv.conf \
+      >"/etc/netns/${ns}/resolv.conf" || true
+  fi
+  if [[ ! -s "/etc/netns/${ns}/resolv.conf" ]]; then
+    printf 'nameserver 9.9.9.9\nnameserver 2620:fe::fe\n' \
+      >"/etc/netns/${ns}/resolv.conf"
+  fi
+
+  nft -f - <<EOF
+table inet cicada_p_${oct} {
+  chain postrouting {
+    type nat hook postrouting priority srcnat;
+    ip saddr ${ns_ip} oifname "${iface}" masquerade
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    iifname "${veth}" oifname "${iface}" accept
+    iifname "${iface}" oifname "${veth}" ct state established,related accept
+  }
+  chain input {
+    type filter hook input priority filter;
+    iifname "${veth}" ip protocol icmp accept
+    iifname "${veth}" drop
+  }
+}
+EOF
+
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null
+
+  mkdir -p "${stamp_dir}"
+  printf '%s\n' "${ns}" >"${stamp_dir}/${name}"
+  logger -t cicada-profile-netns "up ${ns} via ${iface}" 2>/dev/null || true
+  echo "profile netns up: ${ns} (NAT via ${iface})"
+}
+
+down() {
+  local name="${1:-}"
+  valid_name "${name}" || die "invalid profile name"
+  local ns veth oct
+  ns="$(ns_of "${name}")"
+  veth="$(veth_h "${name}")"
+  oct="$(octet_of "${name}")"
+  nft delete table inet "cicada_p_${oct}" 2>/dev/null || true
+  ip netns del "${ns}" 2>/dev/null || true
+  ip link del "${veth}" 2>/dev/null || true
+  rm -f "${stamp_dir}/${name}"
+  rm -rf "/etc/netns/${ns}"
+  echo "profile netns down: ${ns}"
+}
+
+status() {
+  local name="${1:-}"
+  if [[ -z "${name}" ]]; then
+    if [[ -d "${stamp_dir}" ]]; then
+      local any=0
+      for f in "${stamp_dir}"/*; do
+        [[ -f "${f}" ]] || continue
+        any=1
+        echo "$(basename "${f}"): $(tr -d '[:space:]' <"${f}")"
+      done
+      [[ "${any}" -eq 1 ]] || echo "no profile netns up"
+    else
+      echo "no profile netns up"
+    fi
+    return 0
+  fi
+  valid_name "${name}" || die "invalid profile name"
+  local ns
+  ns="$(ns_of "${name}")"
+  if ip netns list 2>/dev/null | grep -qw "${ns}"; then
+    echo "${name}: up (${ns})"
+  else
+    echo "${name}: down"
+  fi
+}
+
+case "${1:-}" in
+  up) up "${2:-}" ;;
+  down) down "${2:-}" ;;
+  status) status "${2:-}" ;;
+  *)
+    echo "usage: cicada-profile-netns up|down|status [profile]" >&2
+    exit 1
+    ;;
+esac

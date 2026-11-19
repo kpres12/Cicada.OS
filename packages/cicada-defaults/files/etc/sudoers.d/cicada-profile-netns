@@ -1,0 +1,4 @@
+# Profile netns: create/destroy namespaces and enter them. Helpers validate
+# names and drop privileges; see cicada-profile-netns{,-helper}.
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-netns
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/cicada-profile-netns-helper

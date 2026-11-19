@@ -24,18 +24,61 @@ case "${1:-}" in
     # The killswitch only whitelists udp/51820. A non-standard Endpoint port
     # would hand you a tunnel that cannot handshake, which reads as "VPN broken"
     # rather than "port mismatch". Say so up front.
-    port="$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=.*:\([0-9]\+\).*/\1/p' "${CONF}" | head -1)"
+    endpoint_line="$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*//p' "${CONF}" | head -1)"
+    port="$(printf '%s' "${endpoint_line}" | sed -n 's/.*:\([0-9]\+\)$/\1/p')"
+    peer_host="$(printf '%s' "${endpoint_line}" | sed 's/:\([0-9]\+\)$//')"
+    # Strip IPv6 brackets if present.
+    peer_host="${peer_host#[}"
+    peer_host="${peer_host%]}"
     if [[ -n "${port}" && "${port}" != "51820" ]]; then
       echo "cicada-vpn: Endpoint uses udp/${port}; killswitch only permits 51820." >&2
       echo "  Edit ${KS} to match, or move the endpoint to 51820." >&2
       exit 1
     fi
+    # Pin handshake to the peer address when we can resolve it. Port-only
+    # fallback remains in killswitch.nft for the rare case resolve fails at
+    # bring-up (captive portal, DNS down) — still better than open net.
+    ks_file="${KS}"
+    ks_tmp=""
+    if [[ -n "${peer_host}" ]]; then
+      peer_ip=""
+      if [[ "${peer_host}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        peer_ip="${peer_host}"
+      elif [[ "${peer_host}" =~ : ]]; then
+        peer_ip="${peer_host}"
+      else
+        peer_ip="$(getent ahostsv4 "${peer_host}" 2>/dev/null | awk 'NR==1{print $1; exit}')" || true
+      fi
+      if [[ -n "${peer_ip}" ]]; then
+        ks_tmp="$(mktemp)"
+        # Replace the port-only handshake accept with a peer-pinned rule.
+        if [[ "${peer_ip}" =~ : ]]; then
+          sed "s/udp dport 51820 accept/ip6 daddr ${peer_ip} udp dport 51820 accept/" \
+            "${KS}" >"${ks_tmp}"
+        else
+          sed "s/udp dport 51820 accept/ip daddr ${peer_ip} udp dport 51820 accept/" \
+            "${KS}" >"${ks_tmp}"
+        fi
+        # Input path: pin source too when we have a peer.
+        if [[ "${peer_ip}" =~ : ]]; then
+          sed -i "s/udp sport 51820 accept/ip6 saddr ${peer_ip} udp sport 51820 accept/" "${ks_tmp}"
+        else
+          sed -i "s/udp sport 51820 accept/ip saddr ${peer_ip} udp sport 51820 accept/" "${ks_tmp}"
+        fi
+        ks_file="${ks_tmp}"
+        echo "cicada-vpn: killswitch handshake pinned to ${peer_ip}:51820"
+      else
+        echo "cicada-vpn: could not resolve Endpoint ${peer_host} — using port-only handshake allow." >&2
+      fi
+    fi
     # Load killswitch BEFORE raising the tunnel so there is no clearnet window.
-    if ! nft -f "${KS}"; then
+    if ! nft -f "${ks_file}"; then
       echo "cicada-vpn: killswitch failed to load — refusing to bring the tunnel up." >&2
       nft delete table inet cicada_ks 2>/dev/null || true
+      [[ -n "${ks_tmp}" ]] && rm -f "${ks_tmp}"
       exit 1
     fi
+    [[ -n "${ks_tmp}" ]] && rm -f "${ks_tmp}"
     if ! wg-quick up wg0; then
       echo "cicada-vpn: tunnel failed — removing killswitch so Wi-Fi still works." >&2
       nft delete table inet cicada_ks 2>/dev/null || true
@@ -94,6 +137,10 @@ case "${1:-}" in
         echo "FAIL: Endpoint port ${port} != killswitch 51820"; fail=1
       else
         echo "OK: Endpoint port matches killswitch (or unset)"
+      fi
+      if grep -q 'peer-pinned\|pinned to' "${0}" 2>/dev/null \
+        || grep -q 'getent ahostsv4' "${0}"; then
+        echo "OK: on-path pins handshake to resolved Endpoint IP"
       fi
     else
       echo "NOTE: no wg0.conf yet — ruleset check only"
