@@ -743,7 +743,10 @@ chmod 400 "${PROFILE}/airootfs/etc/shadow"
 # reproducible-build kept reporting was not this — it is the ISO9660 root
 # directory record taking mkarchiso's staging-tree mtimes; see
 # iso/reproducible-bin/xorriso.) -reproducible sorts dirents;
-# -all-time / -mkfs-time need squashfs-tools ≥4.5 — probe and degrade.
+# Timestamps come from SOURCE_DATE_EPOCH itself: mkarchiso always exports it,
+# and mksquashfs 4.7 refuses -all-time/-mkfs-time alongside it ("SOURCE_DATE_EPOCH
+# and command line options can't be used at the same time") — passing both
+# killed every full build after this pin first landed.
 if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
   python3 - "${PROFILE}/profiledef.sh" "${SOURCE_DATE_EPOCH}" <<'PY'
 import pathlib, sys
@@ -753,10 +756,10 @@ text = path.read_text()
 old = "airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86,arm64' '-b' '1M' '-Xdict-size' '1M')"
 new = (
     "airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86,arm64' '-b' '1M' "
-    f"'-Xdict-size' '1M' '-all-time' '{epoch}' '-mkfs-time' '{epoch}' '-reproducible')"
+    "'-Xdict-size' '1M' '-reproducible')"
 )
 if old not in text:
-    if "-all-time" in text:
+    if "'-reproducible'" in text:
         print("==> squashfs already pinned to SOURCE_DATE_EPOCH")
     else:
         raise SystemExit("profiledef.sh airootfs_image_tool_options changed upstream")

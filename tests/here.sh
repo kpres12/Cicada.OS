@@ -271,7 +271,9 @@ mkdir -p "${nobwrap}"
 for d in /usr/bin /bin; do
   for f in "${d}"/*; do
     n="${f##*/}"
-    [[ "${n}" == bwrap || -e "${nobwrap}/${n}" ]] && continue
+    # -L too: on merged-/usr hosts /bin is /usr/bin, so every name comes round
+    # twice, and -e is false for a dangling link (Ubuntu ships some).
+    [[ "${n}" == bwrap || -e "${nobwrap}/${n}" || -L "${nobwrap}/${n}" ]] && continue
     ln -s "${f}" "${nobwrap}/${n}"
   done
 done
