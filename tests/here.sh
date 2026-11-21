@@ -262,14 +262,28 @@ say "scopes (browser works, keepass net-off, files home, default-deny, skel == f
 echo "==> cicada-run is not bind-all"
 grep -q -- '--bind / /' "${RUN_BIN}/cicada-run" && die "cicada-run still bind-mounts /" || true
 grep -q -- '--ro-bind /usr /usr' "${RUN_BIN}/cicada-run" || die "no ro-bind /usr"
-# Homebrew must not supply bwrap — sandboxed apps fail closed when it is missing.
+# Sandboxed apps fail closed when bwrap is missing. "Missing" has to be built,
+# not assumed: PATH=/usr/bin:/bin used to be enough (it only hid Homebrew), until
+# ubuntu-latest moved to 26.04, which ships /usr/bin/bwrap — cicada-run then got
+# past the check, bwrap failed inside the runner, and the test saw exit 1.
+nobwrap="${tmp}/nobwrap-bin"
+mkdir -p "${nobwrap}"
+for d in /usr/bin /bin; do
+  for f in "${d}"/*; do
+    n="${f##*/}"
+    # -L too: on merged-/usr hosts /bin is /usr/bin, so every name comes round
+    # twice, and -e is false for a dangling link (Ubuntu ships some).
+    [[ "${n}" == bwrap || -e "${nobwrap}/${n}" || -L "${nobwrap}/${n}" ]] && continue
+    ln -s "${f}" "${nobwrap}/${n}"
+  done
+done
 expect_exit 78 "cicada-run without bwrap" \
-  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.keepassxc.KeePassXC -- true
+  env PATH="${nobwrap}" bash "${RUN_BIN}/cicada-run" org.keepassxc.KeePassXC -- true
 expect_exit 78 "Helium without bwrap fails closed" \
-  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.helium -- true
+  env PATH="${nobwrap}" bash "${RUN_BIN}/cicada-run" org.cicada.helium -- true
 # Host-admin apps still launch when bwrap is absent (terminal must not be a no-op).
 expect_exit 0 "Kitty without bwrap still runs" \
-  env PATH="/usr/bin:/bin" bash "${RUN_BIN}/cicada-run" org.cicada.kitty -- true
+  env PATH="${nobwrap}" bash "${RUN_BIN}/cicada-run" org.cicada.kitty -- true
 
 echo "==> sysusers fragments declare the groups they reference"
 # The bug this catches shipped in the public beta and was invisible for weeks:

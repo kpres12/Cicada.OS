@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# xorriso shim, put first on PATH by iso/build.sh for the mkarchiso run only.
+#
+# xorriso honours SOURCE_DATE_EPOCH for the volume dates and UUID, but every
+# file and directory record in the ISO9660/Rock Ridge/Joliet trees takes its
+# date from the mtime on disk ("all_file_dates set_to_mtime"). mkarchiso builds
+# that staging tree (work/.../iso/) fresh each run, so two builds of the same
+# commit got different mtimes there — the root directory record sits at byte
+# 32946-32947 of the image, which is exactly where every weekly
+# reproducible-build Compare reported the first difference.
+#
+# Clamp the tree to SOURCE_DATE_EPOCH, then hand off to the real xorriso
+# untouched. Without SOURCE_DATE_EPOCH this is a pure pass-through.
+set -euo pipefail
+
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+real=""
+IFS=: read -r -a path_dirs <<<"${PATH}"
+for d in "${path_dirs[@]}"; do
+  [[ -n "${d}" ]] || continue
+  [[ "$(cd "${d}" 2>/dev/null && pwd)" == "${self_dir}" ]] && continue
+  if [[ -x "${d}/xorriso" ]]; then
+    real="${d}/xorriso"
+    break
+  fi
+done
+[[ -n "${real}" ]] || { echo "xorriso shim: real xorriso not found on PATH" >&2; exit 127; }
+
+if [[ -n "${SOURCE_DATE_EPOCH:-}" && "$*" == *"-as mkisofs"* && $# -ge 1 ]]; then
+  # mkarchiso passes the staging dir as the final argument ("${isofs_dir}/").
+  src="${!#}"
+  if [[ -d "${src}" ]]; then
+    find "${src}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+    echo "xorriso shim: clamped mtimes under ${src} to SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" >&2
+  fi
+fi
+
+exec "${real}" "$@"

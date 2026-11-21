@@ -23,7 +23,7 @@ jobs:
     # runner-hours every Monday for a month before anyone looked.
     timeout-minutes: 100
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Pin SOURCE_DATE_EPOCH to this commit
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"

@@ -11,7 +11,7 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # ${{ }} is substituted into the script BEFORE the shell sees it, so an
       # input containing shell metacharacters executes as part of the command.
       # Passing it through env makes the shell treat it as data. Only a user with

@@ -32,7 +32,7 @@ jobs:
       # actions/checkout does not fetch submodules by default. Bit me on the
       # first three pushes: passed locally (submodule already checked out on
       # the Mac that wrote this workflow) and failed in CI every time.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - run: bash tests/preflight.sh
@@ -44,5 +44,5 @@ jobs:
     # standard GitHub-hosted ubuntu-latest runner already.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: bash tests/linux.sh
