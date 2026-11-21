@@ -19,14 +19,24 @@ on:
 jobs:
   build-twice-and-diff:
     runs-on: ubuntu-latest
-    # Two full builds finish in under an hour. 180 let a hung build burn three
-    # runner-hours every Monday for a month before anyone looked.
-    timeout-minutes: 100
+    # Two full builds took 88 minutes on 2026-11-21 — 100 left no headroom for
+    # a slow mirror. 180 let a hung build burn three runner-hours every
+    # Monday for a month before anyone looked; 130 is the compromise.
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v5
 
       - name: Pin SOURCE_DATE_EPOCH to this commit
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      # Same timestamps are not enough: A and B used to pacstrap from live
+      # rolling mirrors ~40 minutes apart, so any package pushed in between
+      # made the images differ. A freezes the repo databases into pkg-snapshot
+      # and B resolves against those same databases (CICADA_PKG_SNAPSHOT in
+      # iso/build.sh); the shared pkg-cache means B installs the exact package
+      # files A downloaded, without fetching them again.
+      - name: Prepare shared package snapshot and cache
+        run: mkdir -p pkg-snapshot pkg-cache
 
       - name: Build builder image
         run: docker build -f Dockerfile.build -t cicada-iso-builder .
@@ -35,19 +45,22 @@ jobs:
         run: |
           mkdir -p out-a work-a
           docker run --rm --privileged \
-            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH \
+            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH -e CICADA_PKG_SNAPSHOT=/snapshot \
             -v "${PWD}:/src:ro" -v "${PWD}/out-a:/out" -v "${PWD}/work-a:/work" \
+            -v "${PWD}/pkg-snapshot:/snapshot" -v "${PWD}/pkg-cache:/var/cache/pacman/pkg" \
             cicada-iso-builder
 
       - name: Build B
         run: |
           mkdir -p out-b work-b
           docker run --rm --privileged \
-            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH \
+            -e CICADA_OUT=/out -e CICADA_WORK=/work -e SOURCE_DATE_EPOCH -e CICADA_PKG_SNAPSHOT=/snapshot \
             -v "${PWD}:/src:ro" -v "${PWD}/out-b:/out" -v "${PWD}/work-b:/work" \
+            -v "${PWD}/pkg-snapshot:/snapshot" -v "${PWD}/pkg-cache:/var/cache/pacman/pkg" \
             cicada-iso-builder
 
       - name: Compare
+        id: compare
         run: |
           # -not -type l: cicada-latest-x86_64.iso is a symlink alongside the
           # real dated ISO. A bare glob matches both, sha256sum gets two paths
@@ -77,3 +90,22 @@ jobs:
             cmp "${iso_a}" "${iso_b}" || true
             exit 1
           fi
+
+      # A bare "differ: byte N" is what kept this red for weeks — nobody could
+      # tell which file moved. Name it, and keep the report.
+      - name: Explain the difference
+        if: failure() && steps.compare.outcome == 'failure'
+        run: |
+          docker run --rm --privileged --entrypoint bash \
+            -v "${PWD}:/w" -w /w cicada-iso-builder \
+            scripts/repro-diff.sh \
+              "$(find out-a -maxdepth 1 -name 'cicada-*-x86_64.iso' -not -type l)" \
+              "$(find out-b -maxdepth 1 -name 'cicada-*-x86_64.iso' -not -type l)" \
+              work-a/mkarchiso work-b/mkarchiso | tee repro-diff.txt
+
+      - name: Upload difference report
+        if: failure() && steps.compare.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: repro-diff
+          path: repro-diff.txt
