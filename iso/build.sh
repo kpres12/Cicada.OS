@@ -90,10 +90,17 @@ echo "==> mkarchiso  work=${WORK}/mkarchiso  out=${OUT}"
 rm -rf "${WORK}/mkarchiso"
 mkdir -p "${WORK}/mkarchiso"
 
+# iso/reproducible-bin/xorriso clamps the ISO staging tree's mtimes to
+# SOURCE_DATE_EPOCH before the real xorriso runs (see the shim for why).
+MKARCHISO_PATH="${ROOT}/iso/reproducible-bin:${PATH}"
+
 run_mkarchiso() {
   local MKARCHISO=(mkarchiso -v -w "${WORK}/mkarchiso" -o "${OUT}" "${PROFILE}")
   if [[ "${EUID}" -ne 0 ]]; then
-    MKARCHISO=(sudo "${MKARCHISO[@]}")
+    # sudo resets PATH (secure_path) and drops SOURCE_DATE_EPOCH; pass both.
+    MKARCHISO=(sudo env PATH="${MKARCHISO_PATH}" ${SOURCE_DATE_EPOCH:+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"} "${MKARCHISO[@]}")
+  else
+    MKARCHISO=(env PATH="${MKARCHISO_PATH}" "${MKARCHISO[@]}")
   fi
   "${MKARCHISO[@]}"
 }

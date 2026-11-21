@@ -739,8 +739,10 @@ chmod 440 "${PROFILE}/airootfs/etc/sudoers.d/cicada-profile-netns" 2>/dev/null |
 chmod 400 "${PROFILE}/airootfs/etc/shadow"
 
 # Pin squashfs timestamps to SOURCE_DATE_EPOCH so two builds of the same tree
-# do not diverge inside airootfs.sfs (the known ISO byte-32947 class of drift
-# was squashfs/xorriso wall-clock, not assemble). -reproducible sorts dirents;
+# do not diverge inside airootfs.sfs. (The ISO byte-32946/32947 drift the weekly
+# reproducible-build kept reporting was not this — it is the ISO9660 root
+# directory record taking mkarchiso's staging-tree mtimes; see
+# iso/reproducible-bin/xorriso.) -reproducible sorts dirents;
 # -all-time / -mkfs-time need squashfs-tools ≥4.5 — probe and degrade.
 if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
   python3 - "${PROFILE}/profiledef.sh" "${SOURCE_DATE_EPOCH}" <<'PY'

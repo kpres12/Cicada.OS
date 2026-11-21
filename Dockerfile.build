@@ -30,7 +30,8 @@ RUN sed -i \
       sdl2_mixer \
       sdl2_net \
       reflector \
- && reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist \
+ && { reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist \
+      || echo 'reflector failed (mirrorstatus unreachable?) — keeping the stock mirrorlist'; } \
  && pacman -Sy --noconfirm \
  && rm -rf /var/cache/pacman/pkg/*
 
