@@ -11,7 +11,8 @@
 #   4. files/symlinks that differ inside the airootfs (what went into the sfs),
 #      with a unified diff for small text files
 #   5. packages whose versions differ (the usual suspect on a rolling distro)
-# Never fails on a difference — it exists to describe one.
+# Never fails on a difference — it exists to describe one. Exits 2 if a tool
+# it needs is missing, so a broken report can't pass for a clean one.
 set -uo pipefail
 
 iso_a="$1" iso_b="$2" wa="$3" wb="$4"
@@ -21,11 +22,22 @@ section() { printf '\n===== %s =====\n' "$*"; }
 
 hash_tree() {
   # Relative path + sha256 for files, "-> target" for symlinks. Sorted, stable.
-  ( cd "$1" && find . \( -type f -o -type l \) -print0 | sort -z | while IFS= read -r -d '' p; do
-      if [[ -L "${p}" ]]; then printf '%s  -> %s\n' "${p}" "$(readlink "${p}")"
-      else printf '%s  %s\n' "${p}" "$(sha256sum "${p}" | cut -d' ' -f1)"; fi
-    done )
+  # One sha256sum per batch, not per file: the airootfs has ~236k files.
+  ( cd "$1" && {
+      find . -type f -print0 | xargs -0 -r sha256sum | awk '{h=$1; sub(/^[0-9a-f]+  /, ""); print $0 "  " h}'
+      find . -type l -printf '%p  -> %l\n'
+    } | LC_ALL=C sort )
 }
+
+# Without these the sections below "pass" silently: the first run of this
+# script hit a builder image with no diffutils, every diff/cmp was "command not
+# found", and section 4 reported "identical file contents" off an empty file.
+missing=()
+for t in cmp diff xorriso sha256sum xargs; do command -v "${t}" >/dev/null 2>&1 || missing+=("${t}"); done
+if [[ ${#missing[@]} -gt 0 ]]; then
+  echo "repro-diff: missing required tool(s): ${missing[*]} — install them in the builder image" >&2
+  exit 2
+fi
 
 section "1. first differing byte"
 first="$(cmp "${iso_a}" "${iso_b}" 2>&1 | head -1)"
@@ -65,7 +77,10 @@ fi
 section "4. airootfs contents (${root_a} vs ${root_b})"
 if [[ -d "${root_a}" && -d "${root_b}" ]]; then
   diff <(hash_tree "${root_a}") <(hash_tree "${root_b}") > /tmp/repro-airootfs.diff
-  if [[ ! -s /tmp/repro-airootfs.diff ]]; then
+  rc=$?
+  if [[ ${rc} -gt 1 ]]; then
+    echo "diff failed (exit ${rc}); cannot compare airootfs trees"
+  elif [[ ${rc} -eq 0 ]]; then
     echo "identical file contents (any sfs difference is metadata: modes, owners, xattrs, ordering)"
     diff <(cd "${root_a}" && find . -printf '%M %U:%G %p\n' | sort) \
          <(cd "${root_b}" && find . -printf '%M %U:%G %p\n' | sort) | head -n "${limit}"

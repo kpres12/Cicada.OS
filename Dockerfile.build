@@ -14,6 +14,7 @@ RUN sed -i \
  && pacman -S --noconfirm --needed \
       archiso \
       squashfs-tools \
+      diffutils \
       dosfstools \
       e2fsprogs \
       libisoburn \
