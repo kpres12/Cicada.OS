@@ -33,6 +33,60 @@ if [[ -z "${SOURCE_DATE_EPOCH:-}" ]] && git -C "${ROOT}" rev-parse --git-dir >/d
   export SOURCE_DATE_EPOCH="$(git -C "${ROOT}" log -1 --format=%ct)"
 fi
 
+# Package-set pin. SOURCE_DATE_EPOCH fixes every timestamp, but not WHICH
+# packages get installed: pacstrap resolves against live rolling mirrors, so
+# two builds of the same commit forty minutes apart pull whatever was pushed in
+# between, and the images differ for a reason no timestamp pin can touch.
+#
+# CICADA_PKG_SNAPSHOT=<dir> freezes the repo databases into <dir> on the first
+# build that sees it empty, and every later build with the same <dir> resolves
+# against those frozen databases instead. The builder's mirrorlist (the one the
+# profile's pacman.conf Includes for pacstrap) gets file://<dir> first, so the
+# databases come from the snapshot; package files are not in it, so pacman
+# falls through to the live mirrors for them — or, with a shared
+# /var/cache/pacman/pkg, never downloads them at all. Package signatures live
+# in the databases and are still verified. Build-time only: the image's own
+# mirrorlist comes from packages, not from the builder. Unset: as before.
+if [[ -n "${CICADA_PKG_SNAPSHOT:-}" ]]; then
+  [[ "${EUID}" -eq 0 ]] || {
+    echo "error: CICADA_PKG_SNAPSHOT rewrites /etc/pacman.d/mirrorlist; run as root (the builder container)" >&2
+    exit 1
+  }
+  snap="${CICADA_PKG_SNAPSHOT}"
+  mapfile -t live_mirrors < <(grep -E '^[[:space:]]*Server[[:space:]]*=' /etc/pacman.d/mirrorlist \
+                               | grep -v 'file://' | sed -E 's/^[[:space:]]*Server[[:space:]]*=[[:space:]]*//')
+  [[ ${#live_mirrors[@]} -gt 0 ]] || { echo "error: no Server lines in /etc/pacman.d/mirrorlist" >&2; exit 1; }
+  pinned_from=""
+  if [[ -f "${snap}/MIRROR" ]]; then
+    pinned_from="$(<"${snap}/MIRROR")"
+    echo "==> package databases: reusing snapshot ${snap} (frozen from ${pinned_from})"
+  else
+    # All databases from ONE mirror, so they describe one consistent sync.
+    for m in "${live_mirrors[@]}"; do
+      ok=1
+      for repo in core extra multilib; do
+        url="${m//\$repo/${repo}}"; url="${url//\$arch/x86_64}"
+        mkdir -p "${snap}/${repo}/os/x86_64"
+        curl -fsSL --retry 2 --max-time 300 -o "${snap}/${repo}/os/x86_64/${repo}.db" "${url}/${repo}.db" \
+          || { ok=0; break; }
+      done
+      if [[ ${ok} -eq 1 ]]; then pinned_from="${m}"; break; fi
+    done
+    [[ -n "${pinned_from}" ]] || { echo "error: could not fetch repo databases from any mirror" >&2; exit 1; }
+    printf '%s\n' "${pinned_from}" > "${snap}/MIRROR"
+    echo "==> package databases: froze snapshot ${snap} from ${pinned_from}"
+  fi
+  # Snapshot first; then the mirror it was frozen from (most likely to still
+  # carry those exact versions); then the rest.
+  {
+    # shellcheck disable=SC2016  # $repo/$arch are pacman's variables, not ours
+    printf 'Server = file://%s/$repo/os/$arch\n' "${snap}"
+    printf 'Server = %s\n' "${pinned_from}"
+    for m in "${live_mirrors[@]}"; do [[ "${m}" == "${pinned_from}" ]] || printf 'Server = %s\n' "${m}"; done
+  } > /etc/pacman.d/mirrorlist.cicada
+  mv /etc/pacman.d/mirrorlist.cicada /etc/pacman.d/mirrorlist
+fi
+
 "${ROOT}/iso/assemble-profile.sh"
 
 # malloc: prefer cicada-malloc from the product pacstrap repo; otherwise bake
